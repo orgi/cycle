@@ -34,3 +34,6 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
 * For the system testing there needs to be at last a GUI test
 * Tests need to be executed for acceptance of any automated edit
 
+## Updating this file
+
+This file shall be kept up-to-date automatically.
