@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Record a screen video of the GPS simulation: dashboard metrics updating, then
+# the map view with the location marker moving along a route through Monaco
+# (matches the bundled demo map). Output: videos/gps_simulation.mp4
+set -euo pipefail
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_DEV_IMAGE:-cycle-flutter-dev}"
+DOCKER_ARGS=()
+[[ -e /dev/kvm ]] && DOCKER_ARGS+=(--device=/dev/kvm --group-add=keep-groups)
+mkdir -p "${REPO}/videos"
+
+exec docker run --rm "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" -w /work \
+  -e PUB_CACHE=/work/.cache/pub -e HOME=/work/.cache/home \
+  "${IMAGE}" bash -lc '
+    set -euo pipefail
+    APP_ID=com.cycleapp.cycle
+    export ANDROID_AVD_HOME=/tmp/avd; rm -rf "$ANDROID_AVD_HOME"; mkdir -p "$ANDROID_AVD_HOME"
+    echo "no" | avdmanager create avd --force -n cycle_test -k "system-images;android-34;google_apis;x86_64" >/dev/null
+    adb start-server >/dev/null 2>&1 || true
+    echo ">> booting…"
+    nohup emulator -avd cycle_test -no-window -no-audio -no-boot-anim -no-snapshot -read-only -gpu swiftshader_indirect -accel on > /tmp/emulator.log 2>&1 &
+    adb wait-for-device
+    until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 2; done
+    adb shell cmd location set-location-enabled true || true
+    adb shell settings put secure location_mode 3 || true
+
+    if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then echo ">> building…"; flutter build apk --debug >/dev/null; fi
+    adb install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_FINE_LOCATION || true
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_COARSE_LOCATION || true
+
+    LAT0=43.7384; LON0=7.4246; STEP=0.00007
+
+    adb emu geo fix "$LON0" "$LAT0" >/dev/null 2>&1 || true
+    echo ">> recording…"
+    adb shell screenrecord --time-limit 150 --bit-rate 6000000 /sdcard/cycle.mp4 &
+    SR=$!
+    sleep 1
+    adb shell am start -n "$APP_ID/.MainActivity" >/dev/null
+    sleep 5
+
+    read W H < <(adb shell wm size | grep -o "[0-9]*x[0-9]*" | tr "x" " ")
+    DENS=$(adb shell wm density | grep -o "[0-9]*" | head -1)
+    AX=$(( W - DENS*28/160 )); AY=$(( DENS*28/160 + DENS*28/160 ))
+
+    fix() { LON=$(awk "BEGIN{printf \"%.6f\", $LON0 + $1*$STEP}"); LAT=$(awk "BEGIN{printf \"%.6f\", $LAT0 + $1*0.00002}"); adb emu geo fix "$LON" "$LAT" >/dev/null 2>&1 || true; }
+
+    echo ">> phase 1: dashboard"
+    for i in $(seq 0 28); do fix "$i"; sleep 1; done
+
+    echo ">> phase 2: map view"
+    adb shell input tap "$AX" "$AY"; sleep 4
+    for i in $(seq 29 70); do fix "$i"; sleep 1; done
+
+    echo ">> stopping recording…"
+    adb shell pkill -INT screenrecord || true
+    wait "$SR" 2>/dev/null || true
+    sleep 2
+    adb pull /sdcard/cycle.mp4 videos/gps_simulation.mp4 >/dev/null
+    echo ">> wrote videos/gps_simulation.mp4"
+    echo ">> done"
+  '

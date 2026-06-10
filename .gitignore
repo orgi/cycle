@@ -34,3 +34,6 @@ ios/Flutter/ephemeral/
 
 # Captured screenshots (local viewing only)
 /screenshots/
+
+# Captured videos (local viewing only)
+/videos/
