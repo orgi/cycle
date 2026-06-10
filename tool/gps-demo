@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Boot a headless emulator, enable real GPS emulation, install the app, then
+# stream a route of GPS fixes (simulating riding ~20 km/h) and capture dashboard
+# screenshots so we can confirm speed/distance update from real emulator GPS.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_DEV_IMAGE:-cycle-flutter-dev}"
+
+DOCKER_ARGS=()
+if [[ -e /dev/kvm ]]; then
+  DOCKER_ARGS+=(--device=/dev/kvm --group-add=keep-groups)
+fi
+
+mkdir -p "${REPO}/screenshots"
+
+exec docker run --rm \
+  "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" -w /work \
+  -e PUB_CACHE=/work/.cache/pub \
+  -e HOME=/work/.cache/home \
+  "${IMAGE}" \
+  bash -lc '
+    set -euo pipefail
+    APP_ID=com.cycleapp.cycle
+
+    export ANDROID_AVD_HOME=/tmp/avd
+    rm -rf "$ANDROID_AVD_HOME"; mkdir -p "$ANDROID_AVD_HOME"
+    echo ">> creating AVD…"
+    echo "no" | avdmanager create avd --force -n cycle_test \
+      -k "system-images;android-34;google_apis;x86_64" >/dev/null
+
+    adb start-server >/dev/null 2>&1 || true
+    echo ">> booting emulator…"
+    nohup emulator -avd cycle_test -no-window -no-audio -no-boot-anim \
+      -no-snapshot -read-only -gpu swiftshader_indirect -accel on \
+      > /tmp/emulator.log 2>&1 &
+    adb wait-for-device
+    until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 2; done
+    adb shell input keyevent 82 >/dev/null 2>&1 || true
+
+    echo ">> enabling location services…"
+    adb shell cmd location set-location-enabled true || true
+    adb shell settings put secure location_mode 3 || true
+
+    echo ">> building + installing app…"
+    flutter build apk --debug >/dev/null
+    adb install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_FINE_LOCATION || true
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_COARSE_LOCATION || true
+
+    LAT=43.7384
+    LON0=7.4246
+    STEP=0.00007   # ~5.6 m east per fix; at 1 fix/s that is ~20 km/h
+
+    # Prime a first fix, then launch.
+    adb emu geo fix "$LON0" "$LAT" >/dev/null 2>&1 || true
+    echo ">> launching app…"
+    adb shell am start -n "$APP_ID/.MainActivity" >/dev/null
+    sleep 5
+
+    cap() { adb exec-out screencap -p > "screenshots/$1.png"; echo "   captured $1.png"; }
+
+    echo ">> streaming GPS route…"
+    for i in $(seq 0 34); do
+      LON=$(awk "BEGIN{printf \"%.6f\", $LON0 + $i*$STEP}")
+      adb emu geo fix "$LON" "$LAT" >/dev/null 2>&1 || true
+      sleep 1
+      if [ "$i" = "2" ];  then cap gps_01_start; fi
+      if [ "$i" = "18" ]; then cap gps_02_mid; fi
+    done
+    cap gps_03_end
+
+    set +e
+    {
+      echo "=== [cycle] logs ==="; adb logcat -d | grep -F "[cycle]" | tail -25
+      echo "=== gps provider request (look for cycleapp) ==="; adb shell dumpsys location | grep -iE "gps provider" -A2
+    } > screenshots/gps-demo-log.txt 2>&1
+    echo ">> done"
+  '

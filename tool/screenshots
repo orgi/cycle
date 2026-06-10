@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Boot a headless emulator, install the app, drive it with a mock GPS location
+# and capture screenshots into ./screenshots so you can see the current UI.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_DEV_IMAGE:-cycle-flutter-dev}"
+
+DOCKER_ARGS=()
+if [[ -e /dev/kvm ]]; then
+  DOCKER_ARGS+=(--device=/dev/kvm --group-add=keep-groups)
+fi
+
+mkdir -p "${REPO}/screenshots"
+
+exec docker run --rm \
+  "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" -w /work \
+  -e PUB_CACHE=/work/.cache/pub \
+  -e HOME=/work/.cache/home \
+  "${IMAGE}" \
+  bash -lc '
+    set -euo pipefail
+    APP_ID=com.cycleapp.cycle
+
+    export ANDROID_AVD_HOME=/tmp/avd
+    rm -rf "$ANDROID_AVD_HOME"; mkdir -p "$ANDROID_AVD_HOME"
+    echo ">> creating AVD…"
+    echo "no" | avdmanager create avd --force -n cycle_test \
+      -k "system-images;android-34;google_apis;x86_64" >/dev/null
+
+    adb start-server >/dev/null 2>&1 || true
+    echo ">> booting emulator…"
+    nohup emulator -avd cycle_test -no-window -no-audio -no-boot-anim \
+      -no-snapshot -read-only -gpu swiftshader_indirect -accel on \
+      > /tmp/emulator.log 2>&1 &
+    adb wait-for-device
+    until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 2; done
+    adb shell input keyevent 82 >/dev/null 2>&1 || true
+
+    echo ">> building debug APK…"
+    flutter build apk --debug >/dev/null
+    echo ">> installing…"
+    adb install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null
+
+    # Permissions + a mock GPS fix over Monaco (matches the bundled demo map).
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_FINE_LOCATION || true
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_COARSE_LOCATION || true
+    adb emu geo fix 7.4262 43.7399 >/dev/null 2>&1 || true
+
+    echo ">> launching app…"
+    adb shell am start -n "$APP_ID/.MainActivity" >/dev/null
+    sleep 6
+
+    # Tap helper: top-right AppBar action, computed from screen size + density.
+    read W H < <(adb shell wm size | grep -o "[0-9]*x[0-9]*" | tr "x" " ")
+    DENS=$(adb shell wm density | grep -o "[0-9]*" | head -1)
+    dp() { echo $(( $1 * DENS / 160 )); }
+    AX=$(( W - $(dp 28) ))
+    AY=$(( $(dp 28) + $(dp 28) ))
+    echo ">> screen ${W}x${H} density ${DENS}, action tap @ ${AX},${AY}"
+
+    cap() { adb exec-out screencap -p > "screenshots/$1.png"; echo "   captured $1.png"; }
+
+    cap 01_dashboard
+
+    # Simulate a little movement so distance/speed are non-zero.
+    adb emu geo fix 7.4275 43.7408 >/dev/null 2>&1 || true; sleep 2
+    adb emu geo fix 7.4291 43.7420 >/dev/null 2>&1 || true; sleep 2
+    cap 02_dashboard_moving
+
+    # Dashboard -> Map.
+    adb shell input tap "$AX" "$AY"; sleep 8
+    cap 03_map
+
+    # Map -> Manage maps (same top-right action position).
+    adb shell input tap "$AX" "$AY"; sleep 3
+    cap 04_manage_maps
+
+    echo ">> done"
+  '

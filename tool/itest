@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Run the integration (GUI) tests on a headless Android emulator inside the
+# devcontainer image. Requires the `cycle-flutter-dev` image (see
+# .devcontainer/Dockerfile) and /dev/kvm on the host for acceleration.
+#
+#   tool/itest                      # runs all of integration_test/
+#   tool/itest integration_test/app_test.dart
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_DEV_IMAGE:-cycle-flutter-dev}"
+TARGET="${1:-integration_test}"
+
+DOCKER_ARGS=()
+if [[ -e /dev/kvm ]]; then
+  DOCKER_ARGS+=(--device=/dev/kvm --group-add=keep-groups)
+fi
+
+exec docker run --rm \
+  "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" -w /work \
+  -e PUB_CACHE=/work/.cache/pub \
+  -e HOME=/work/.cache/home \
+  -e TARGET="${TARGET}" \
+  "${IMAGE}" \
+  bash -lc '
+    set -euo pipefail
+    # Create the AVD fresh in an ephemeral (non-mounted) location each run, so a
+    # stale lock file can never persist between runs and block boot. Gradle/pub
+    # caches still live under the mounted HOME.
+    export ANDROID_AVD_HOME=/tmp/avd
+    rm -rf "$ANDROID_AVD_HOME"
+    mkdir -p "$ANDROID_AVD_HOME"
+    echo ">> creating AVD cycle_test…"
+    echo "no" | avdmanager create avd --force -n cycle_test \
+      -k "system-images;android-34;google_apis;x86_64"
+    adb start-server >/dev/null 2>&1 || true
+    echo ">> booting emulator (headless)…"
+    nohup emulator -avd cycle_test -no-window -no-audio -no-boot-anim \
+      -no-snapshot -read-only -gpu swiftshader_indirect -accel on \
+      > /tmp/emulator.log 2>&1 &
+    adb wait-for-device
+    echo ">> waiting for boot to complete…"
+    until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do
+      sleep 2
+    done
+    adb shell input keyevent 82 >/dev/null 2>&1 || true
+    echo ">> running: flutter test ${TARGET}"
+    flutter test "${TARGET}"
+  '

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Run a command inside the project's container toolchain.
+#
+#   tool/fl flutter --version
+#   tool/fl flutter create .
+#   tool/fl flutter pub get
+#   tool/fl flutter test
+#   tool/fl flutter analyze
+#   tool/fl bash -lc '...'
+#
+# Caches (pub, gradle, android) live under the repo in gitignored dirs so they
+# persist between invocations and keep the host clean.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_FLUTTER_IMAGE:-ghcr.io/cirruslabs/flutter:stable}"
+
+DOCKER_ARGS=()
+# Pass KVM through when present so the Android emulator is accelerated.
+if [[ -e /dev/kvm ]]; then
+  DOCKER_ARGS+=(--device=/dev/kvm)
+fi
+
+exec docker run --rm \
+  "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" \
+  -w /work \
+  -e PUB_CACHE=/work/.cache/pub \
+  -e HOME=/work/.cache/home \
+  "${IMAGE}" \
+  "$@"
