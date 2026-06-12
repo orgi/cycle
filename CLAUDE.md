@@ -46,9 +46,15 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
   (free, no account) — OruxMaps-style. A small `monaco.map` ships as a demo so the map
   works out of the box. Render theme: bundled minimal dark theme (`assets/render_themes/dark.xml`),
   no external symbol assets. [M2]
-* **GPS:** `geolocator`. **BLE sensors:** `flutter_blue_plus` using the standard
-  Bluetooth SIG GATT profiles (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin
-  dual-band sensors work over BLE with no special code. [M3]
+* **GPS:** `geolocator` — note we **poll `getCurrentPosition` at 1 Hz** (not
+  `getPositionStream`, which is broken on Android 14) with `forceLocationManager: true`
+  (raw GPS). See `lib/core/services/location_service.dart`.
+* **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
+  (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
+  with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in
+  `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
+  `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
+  `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package. **Keep-awake:** `wakelock_plus`.
 
@@ -78,9 +84,31 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
   live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
   progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
-* **M3** BLE sensors · **M4** recording & track DB · **M5** follow-GPX · **M6** upload
+* **M3 — BLE sensors:** done. Scan/pair screen + live HR/cadence/power on the dashboard;
+  GPS+BLE speed fusion (BLE wheel speed preferred when fresh). GATT parsers, CSC calculator
+  and fusion unit-tested; emulator GUI test uses a fake BLE backend (emulators have no BLE,
+  so real-sensor/Garmin verification needs a physical device).
+* **M4 — Recording & track DB:** done. `drift`/SQLite (`tracks` + `trackPoints`); recording
+  persists a point per GPS sample with sensor values and finalises stats on stop; Rides list
+  + detail (stats, route-sketch, elevation chart) with GPX export. DB/GPX/persistence
+  unit-tested; list/detail widget-tested; record→stop→Rides verified on the emulator.
+  NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
+  main-thread ANR on Android 14. A real foreground service (background recording with screen
+  off) is **deferred to M7**; recording currently runs while the screen is on (wakelock).
+* **M5** follow-GPX · **M6** upload
   (self-hosted/Strava/Komoot) · **M7** physical buttons & polish — pending. Full plan:
   `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
+
+## Known gotchas
+
+* **Tests don't catch startup hangs.** Widget/integration tests bypass real app launch, so a
+  green suite is NOT proof the app runs. After adding a plugin/package or touching startup,
+  boot the emulator and screenshot the app. Two packages broke launch despite green tests and
+  were removed: `flutter_foreground_task` (main-thread ANR) and `dashboard` (first-frame hang,
+  splash forever) — the latter was for the customisable dashboard, now **deferred**; build any
+  editor from first-party widgets.
+* `MetricTile` reserves the widest value (`referenceValue`) so the speed/avg/etc. value does
+  not resize when it gains a digit.
 
 ## Updating this file
 

@@ -9,6 +9,7 @@ class MetricTile extends StatelessWidget {
     required this.value,
     required this.unit,
     this.emphasized = false,
+    this.referenceValue,
   });
 
   final String label;
@@ -17,6 +18,19 @@ class MetricTile extends StatelessWidget {
 
   /// The primary metric (current speed) is rendered larger.
   final bool emphasized;
+
+  /// The widest value this tile will ever show (e.g. "88.8"). Reserving its
+  /// width keeps the font size constant, so the value does not shrink/jump when
+  /// it gains a digit (e.g. 9.9 → 24.5). Defaults to [value].
+  final String? referenceValue;
+
+  TextStyle? _valueStyle(ThemeData theme) =>
+      (emphasized ? theme.textTheme.displayLarge : theme.textTheme.displaySmall)
+          ?.copyWith(
+        color: emphasized ? theme.colorScheme.primary : Colors.white,
+        fontFeatures: const [FontFeature.tabularFigures()],
+        fontWeight: FontWeight.w600,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -38,24 +52,26 @@ class MetricTile extends StatelessWidget {
               ),
             ),
             // Expanded + FittedBox: the value takes the remaining height and is
-            // scaled down to fit any tile size, so the tile never overflows.
+            // scaled to fit. A hidden reference of the widest value reserves the
+            // width so the font size stays constant (no jump when a digit is
+            // added) and the tile never overflows.
             Expanded(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  style: (emphasized
-                          ? theme.textTheme.displayLarge
-                          : theme.textTheme.displaySmall)
-                      ?.copyWith(
-                    color: emphasized
-                        ? theme.colorScheme.primary
-                        : Colors.white,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: referenceValue == null
+                    ? Text(value, maxLines: 1, style: _valueStyle(theme))
+                    : Stack(
+                        children: [
+                          // Hidden widest value reserves the width (constant size).
+                          Opacity(
+                            opacity: 0,
+                            child: Text(referenceValue!,
+                                maxLines: 1, style: _valueStyle(theme)),
+                          ),
+                          Text(value, maxLines: 1, style: _valueStyle(theme)),
+                        ],
+                      ),
               ),
             ),
             Text(

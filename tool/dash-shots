@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Capture the editable dashboard: grid, long-press menu, and edit mode.
+set -euo pipefail
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${CYCLE_DEV_IMAGE:-cycle-flutter-dev}"
+DOCKER_ARGS=()
+[[ -e /dev/kvm ]] && DOCKER_ARGS+=(--device=/dev/kvm --group-add=keep-groups)
+mkdir -p "${REPO}/screenshots"
+
+exec docker run --rm "${DOCKER_ARGS[@]}" \
+  -v "${REPO}:/work" -w /work \
+  -e PUB_CACHE=/work/.cache/pub -e HOME=/work/.cache/home \
+  "${IMAGE}" bash -lc '
+    set -euo pipefail
+    APP_ID=com.cycleapp.cycle
+    export ANDROID_AVD_HOME=/tmp/avd; rm -rf "$ANDROID_AVD_HOME"; mkdir -p "$ANDROID_AVD_HOME"
+    echo "no" | avdmanager create avd --force -n cycle_test -k "system-images;android-34;google_apis;x86_64" >/dev/null
+    adb start-server >/dev/null 2>&1 || true
+    echo ">> booting…"
+    nohup emulator -avd cycle_test -no-window -no-audio -no-boot-anim -no-snapshot -read-only -gpu swiftshader_indirect -accel on > /tmp/emulator.log 2>&1 &
+    adb wait-for-device
+    until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 2; done
+    adb shell cmd location set-location-enabled true || true; adb shell settings put secure location_mode 3 || true
+
+    if [ ! -f build/app/outputs/flutter-apk/app-debug.apk ]; then echo ">> building…"; flutter build apk --debug >/dev/null; fi
+    adb install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null
+    adb shell pm grant "$APP_ID" android.permission.ACCESS_FINE_LOCATION || true
+
+    # Stream a few GPS fixes so the metrics are non-zero.
+    LAT=43.7384; LON0=7.4246
+    adb emu geo fix "$LON0" "$LAT" >/dev/null 2>&1 || true
+    adb logcat -c || true
+    adb shell am start -n "$APP_ID/.MainActivity" >/dev/null
+    echo ">> waiting for first frame…"
+    for i in $(seq 1 60); do
+      adb logcat -d 2>/dev/null | grep -q "Displayed $APP_ID/.MainActivity" && break
+      sleep 1
+    done
+    sleep 5  # let the grid layout load + settle
+    for i in 1 2 3 4 5 6 7 8; do adb emu geo fix "$(awk "BEGIN{printf \"%.6f\", $LON0 + $i*0.00009}")" "$LAT" >/dev/null 2>&1 || true; sleep 1; done
+
+    read W H < <(adb shell wm size | grep -o "[0-9]*x[0-9]*" | tr "x" " ")
+    CX=$(( W / 2 )); CY=$(( H / 3 ))
+    cap() { adb exec-out screencap -p > "screenshots/$1.png"; echo "   $1"; }
+
+    cap dash_01_grid
+    echo ">> long-press"
+    adb shell input touchscreen swipe "$CX" "$CY" "$CX" "$CY" 800   # long press
+    sleep 1; cap dash_02_menu
+    echo ">> tap Edit layout (first item)"
+    adb shell input tap "$CX" "$(( CY + 40 ))"
+    sleep 2; cap dash_03_editmode
+    echo ">> done"
+  '

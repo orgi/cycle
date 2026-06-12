@@ -21,6 +21,21 @@ class RideMetrics {
   final double maxSpeedMps;
   final Duration elapsed;
 
+  RideMetrics copyWith({
+    double? distanceMeters,
+    double? currentSpeedMps,
+    double? avgSpeedMps,
+    double? maxSpeedMps,
+    Duration? elapsed,
+  }) =>
+      RideMetrics(
+        distanceMeters: distanceMeters ?? this.distanceMeters,
+        currentSpeedMps: currentSpeedMps ?? this.currentSpeedMps,
+        avgSpeedMps: avgSpeedMps ?? this.avgSpeedMps,
+        maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
+        elapsed: elapsed ?? this.elapsed,
+      );
+
   double get distanceKm => distanceMeters / 1000.0;
   double get currentSpeedKmh => currentSpeedMps * 3.6;
   double get avgSpeedKmh => avgSpeedMps * 3.6;

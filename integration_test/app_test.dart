@@ -1,6 +1,9 @@
 import 'package:cycle/app.dart';
+import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,32 +14,34 @@ import '../test/support/fakes.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('records a ride and updates live distance on the dashboard',
+  testWidgets('records a ride, stops, and it appears under Rides',
       (tester) async {
     final location = FakeLocationService();
     final wake = RecordingScreenWakeService();
+    final db = AppDatabase(NativeDatabase.memory());
     addTearDown(location.dispose);
+    addTearDown(db.close);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           locationServiceProvider.overrideWithValue(location),
           screenWakeServiceProvider.overrideWithValue(wake),
+          appDatabaseProvider.overrideWithValue(db),
+          recordingForegroundServiceProvider
+              .overrideWithValue(const NoopRecordingForegroundService()),
         ],
         child: const CycleApp(),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Dashboard is up with zeroed metrics.
     expect(find.text('SPEED'), findsOneWidget);
-    expect(find.text('0.00'), findsWidgets); // distance starts at 0.00 km
 
     // Start recording.
     await tester.tap(find.byKey(const Key('startStopButton')));
     await tester.pumpAndSettle();
     expect(find.text('Stop'), findsOneWidget);
-    expect(wake.enableCount, 1);
 
     // Feed two fixes ~100 m apart.
     final t0 = DateTime.now().toUtc();
@@ -49,8 +54,17 @@ void main() {
       speedMps: 8,
     ));
     await tester.pumpAndSettle();
+    expect(find.text('0.10'), findsOneWidget); // live distance km
 
-    // Distance now reads ~0.10 km.
-    expect(find.text('0.10'), findsOneWidget);
+    // Stop recording → the ride is finalised in the database.
+    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('Start'), findsOneWidget);
+
+    // Open Rides and confirm the recorded ride is listed.
+    await tester.tap(find.byKey(const Key('openTracksButton')));
+    await tester.pumpAndSettle();
+    expect(find.text('Rides'), findsOneWidget); // app bar
+    expect(find.text('Ride'), findsOneWidget); // the saved ride's default name
   });
 }

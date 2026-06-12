@@ -4,6 +4,14 @@ String formatSpeedKmh(double kmh) => kmh.toStringAsFixed(1);
 
 String formatDistanceKm(double km) => km.toStringAsFixed(2);
 
+/// `YYYY-MM-DD HH:MM` in local time.
+String formatDateTime(DateTime t) {
+  final l = t.toLocal();
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${l.year}-${two(l.month)}-${two(l.day)} '
+      '${two(l.hour)}:${two(l.minute)}';
+}
+
 /// Human-readable byte size, e.g. 27 MB, 1.2 GB.
 String formatBytes(int bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

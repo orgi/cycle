@@ -7,6 +7,9 @@
 	<!-- Live GPS tracking while riding. Background location is added in M4. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Cycle uses your location to measure speed, distance and your route while you ride.</string>
+	<!-- BLE cycling sensors (heart rate, speed/cadence, power). -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Cycle connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
