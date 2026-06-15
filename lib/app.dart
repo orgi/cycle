@@ -2,23 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
-import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
 import 'features/tracks/presentation/track_detail_screen.dart';
 import 'features/tracks/presentation/tracks_screen.dart';
 
-/// App-wide router. Dashboard is home; the map and its download manager are
-/// reachable from there. Tracks/settings routes are added in later milestones.
+/// App-wide router. The home screen combines the map + live stats; the download
+/// manager, sensors and rides are reachable from its app bar.
 final GoRouter appRouter = GoRouter(
   routes: [
     GoRoute(
       path: '/',
-      builder: (context, state) => const DashboardScreen(),
-    ),
-    GoRoute(
-      path: '/map',
       builder: (context, state) => const MapScreen(),
     ),
     GoRoute(

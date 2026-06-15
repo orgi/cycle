@@ -11,36 +11,29 @@ import '../test/support/fakes.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('navigates to the offline map and the map manager',
-      (tester) async {
+  testWidgets('home shows the map and opens the map manager', (tester) async {
     final location = FakeLocationService();
-    final wake = RecordingScreenWakeService();
     addTearDown(location.dispose);
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           locationServiceProvider.overrideWithValue(location),
-          screenWakeServiceProvider.overrideWithValue(wake),
         ],
         child: const CycleApp(),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Dashboard -> Map.
-    await tester.tap(find.byKey(const Key('openMapButton')));
-    await tester.pumpAndSettle();
-
-    // The bundled demo (Monaco) map renders offline via Mapsforge.
-    // Give the map model a moment to build and render its first tiles.
+    // The home screen renders the bundled demo (Monaco) map offline.
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(find.byType(MapsforgeView), findsOneWidget);
+    expect(find.text('SPEED'), findsOneWidget); // stats overlay on the map
     expect(tester.takeException(), isNull);
 
-    // Map -> Manage maps, and the catalogue is shown.
+    // Open the map manager from the app bar.
     await tester.tap(find.byKey(const Key('manageMapsButton')));
     await tester.pumpAndSettle();
     expect(find.text('Manage maps'), findsOneWidget);

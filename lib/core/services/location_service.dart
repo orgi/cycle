@@ -16,7 +16,11 @@ abstract class LocationService {
 }
 
 class GeolocatorLocationService implements LocationService {
-  const GeolocatorLocationService();
+  GeolocatorLocationService();
+
+  // One shared polling loop feeds all listeners (metrics + map), so they never
+  // desync and we don't poll the GPS twice.
+  Stream<GeoSample>? _shared;
 
   @override
   Future<bool> ensurePermission() async {
@@ -32,7 +36,9 @@ class GeolocatorLocationService implements LocationService {
   }
 
   @override
-  Stream<GeoSample> positions() async* {
+  Stream<GeoSample> positions() => _shared ??= _poll().asBroadcastStream();
+
+  Stream<GeoSample> _poll() async* {
     // geolocator 14's getPositionStream binds a foreground service that, on
     // Android 14 (incl. the emulator), often connects but never starts
     // requestLocationUpdates — yielding no fixes and no error. Polling the

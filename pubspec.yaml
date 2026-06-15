@@ -67,6 +67,13 @@ dev_dependencies:
   drift_dev: ^2.33.0
   build_runner: ^2.15.0
 
+# Vendored + patched mapsforge_flutter 4.0.0: fixes the GPS-follow map staying
+# frozen and jumping ~one tile at a time instead of panning smoothly. See
+# third_party/mapsforge_flutter/PATCH.md. Remove once fixed upstream.
+dependency_overrides:
+  mapsforge_flutter:
+    path: third_party/mapsforge_flutter
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

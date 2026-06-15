@@ -38,13 +38,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Live heart rate appears on the dashboard.
-    sensors.emitSnapshot(const SensorSnapshot(heartRate: 148, cadenceRpm: 92));
-    await tester.pumpAndSettle();
-    expect(find.text('HEART'), findsOneWidget);
-    expect(find.text('148'), findsOneWidget);
-
-    // Pair a sensor from the Sensors screen.
+    // Pair a sensor from the Sensors screen (reachable from the home app bar).
     await tester.tap(find.byKey(const Key('openSensorsButton')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('scanButton')));

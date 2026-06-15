@@ -16,7 +16,7 @@ import '../../sensors/application/sensor_providers.dart';
 
 /// Platform GPS source. Overridden with a fake in tests.
 final locationServiceProvider = Provider<LocationService>(
-  (ref) => const GeolocatorLocationService(),
+  (ref) => GeolocatorLocationService(),
 );
 
 /// Keep-screen-awake service. Overridden with a no-op in tests.

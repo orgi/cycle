@@ -46,6 +46,13 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
   (free, no account) — OruxMaps-style. A small `monaco.map` ships as a demo so the map
   works out of the box. Render theme: bundled minimal dark theme (`assets/render_themes/dark.xml`),
   no external symbol assets. [M2]
+  * **Vendored + patched** at `third_party/mapsforge_flutter` (via `dependency_overrides`,
+    see `third_party/mapsforge_flutter/PATCH.md`): upstream 4.0.0's `TileJobQueue` emitted
+    tilesets stamped with the render's *old* center and dropped position updates while a
+    render was in flight, so a GPS-follow map left the tiles frozen and jumped ~one tile
+    (~hundreds of m) at a time while the marker/track followed correctly. The patch
+    re-stamps every emitted tileset to `mapModel.lastPosition` (cheap re-projection of
+    already-loaded tiles) so the map pans smoothly. Drop the override if fixed upstream.
 * **GPS:** `geolocator` — note we **poll `getCurrentPosition` at 1 Hz** (not
   `getPositionStream`, which is broken on Android 14) with `forceLocationManager: true`
   (raw GPS). See `lib/core/services/location_service.dart`.
@@ -79,8 +86,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 ## Milestone progress
 
-* **M1 — Skeleton & always-on dashboard:** done. OLED-black dashboard (fixed non-scrolling
-  layout) with live speed/avg/max/distance/time from GPS, start/stop + wakelock. Tests green.
+* **M1 — Skeleton & always-on dashboard:** done. Live speed/avg/max/distance/time from GPS,
+  start/stop + wakelock. **UI later consolidated (post-M4):** the home screen is now a single
+  combined view — a full-screen map with the recorded track + location dot and the 5 ride
+  stats as semi-transparent overlay boxes (SPEED/TIME top, DIST/AVG/MAX bottom). The separate
+  metric-only dashboard was removed. An editable/drag-resize dashboard was attempted but the
+  only suitable package hangs on-device, so it's **deferred** (build from first-party widgets
+  if revisited). `lib/features/map/presentation/map_screen.dart` is the home.
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
   live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
   progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.

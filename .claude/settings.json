@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -dt ~/.claude/projects/*/ 2>/dev/null | head -50; echo \"---DIRS---\"; ls -d ~/.claude/projects/*/ 2>/dev/null | wc -l)",
+      "Read(//home/mac/.claude/projects/**)",
+      "Bash(awk '{print $2}')",
+      "Bash(jq -rc 'select\\(.name==\"Bash\"\\) | .cmd' /tmp/all_tools.jsonl > /tmp/bash_cmds.txt *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

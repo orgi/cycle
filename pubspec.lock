@@ -642,10 +642,9 @@ packages:
   mapsforge_flutter:
     dependency: "direct main"
     description:
-      name: mapsforge_flutter
-      sha256: "0e7fc60536dbe6050a9d540ed2a5b022c49a6e10628b537311164fc895793e83"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/mapsforge_flutter"
+      relative: true
+    source: path
     version: "4.0.0"
   mapsforge_flutter_core:
     dependency: "direct main"
