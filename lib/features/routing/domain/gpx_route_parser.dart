@@ -18,33 +18,33 @@ FollowRoute parseGpxRoute(String xml, {String fallbackName = 'Route'}) {
     throw FormatException('not a valid GPX file: $e');
   }
 
-  final coords = <(double, double)>[];
+  final points = <({double lat, double lon, DateTime? time})>[];
   String? name;
 
   for (final trk in gpx.trks) {
     name ??= _nonEmpty(trk.name);
     for (final seg in trk.trksegs) {
       for (final p in seg.trkpts) {
-        coords.add((p.lat ?? 0, p.lon ?? 0));
+        points.add((lat: p.lat ?? 0, lon: p.lon ?? 0, time: p.time));
       }
     }
   }
-  if (coords.isEmpty) {
+  if (points.isEmpty) {
     for (final rte in gpx.rtes) {
       name ??= _nonEmpty(rte.name);
       for (final p in rte.rtepts) {
-        coords.add((p.lat ?? 0, p.lon ?? 0));
+        points.add((lat: p.lat ?? 0, lon: p.lon ?? 0, time: p.time));
       }
     }
   }
-  if (coords.isEmpty) {
+  if (points.isEmpty) {
     for (final p in gpx.wpts) {
-      coords.add((p.lat ?? 0, p.lon ?? 0));
+      points.add((lat: p.lat ?? 0, lon: p.lon ?? 0, time: p.time));
     }
   }
 
   name ??= _nonEmpty(gpx.metadata?.name);
-  return FollowRoute.fromCoordinates(name ?? fallbackName, coords);
+  return FollowRoute.fromGpxPoints(name ?? fallbackName, points);
 }
 
 String? _nonEmpty(String? s) => (s != null && s.trim().isNotEmpty) ? s : null;

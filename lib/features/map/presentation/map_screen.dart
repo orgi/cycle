@@ -27,10 +27,12 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with WidgetsBindingObserver {
   final DefaultMarkerDatastore _markers = DefaultMarkerDatastore();
   final List<LatLong> _path = [];
   CircleMarker? _meMarker;
+  CircleMarker? _ghostMarker;
   PolylineMarker? _trackLine;
   PolylineMarker? _routeLine;
   bool _initialPositionSet = false;
@@ -42,7 +44,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _seedFromCurrentRecording();
+    // Pick up a GPX the app was opened/shared with.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkIncomingGpx());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A GPX may have been opened/shared while we were backgrounded.
+    if (state == AppLifecycleState.resumed) _checkIncomingGpx();
+  }
+
+  /// Follows a GPX the app was opened with ("Open with Cycle" / "Share to
+  /// Cycle"), if any.
+  Future<void> _checkIncomingGpx() async {
+    if (!mounted) return;
+    String? name;
+    try {
+      name =
+          await ref.read(followRouteProvider.notifier).followIncomingIfAny();
+    } on FormatException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Invalid GPX: ${e.message}')));
+      }
+      return;
+    } on Object catch (_) {
+      return;
+    }
+    if (name != null && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Following $name')));
+    }
   }
 
   Future<void> _seedFromCurrentRecording() async {
@@ -124,7 +164,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           for (final p in route.points) LatLong(p.latitude, p.longitude),
         ],
         strokeColor: 0xFF448AFF, // blue route guide
-        strokeWidth: 2.0,
+        strokeWidth: 1.0, // slim guide line, thinner than the recorded track
         strokeDasharray: const [6, 4],
       );
       _markers.addMarker(_routeLine!);
@@ -137,12 +177,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _markers.requestRepaint();
   }
 
+  /// Moves (or clears) the ghost-rider marker — a translucent dot racing along
+  /// the route.
+  void _onGhost(GhostState? ghost) {
+    final previous = _ghostMarker;
+    if (previous != null) {
+      _markers.removeMarker(previous);
+      _ghostMarker = null;
+    }
+    if (ghost != null) {
+      _ghostMarker = CircleMarker(
+        latLong: LatLong(ghost.latitude, ghost.longitude),
+        radius: 2.6,
+        fillColor: 0x99FFFFFF, // translucent white ghost
+        strokeColor: 0xFFBDBDBD,
+        strokeWidth: 0.8,
+      );
+      _markers.addMarker(_ghostMarker!);
+    }
+    _markers.requestRepaint();
+  }
+
   @override
   Widget build(BuildContext context) {
     final mapModelAsync = ref.watch(activeMapModelProvider);
     final m = ref.watch(rideMetricsProvider);
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
+    final ghost = ref.watch(ghostProvider);
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -157,6 +219,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.listen(followRouteProvider, (_, next) {
       _onRouteChanged(ref.read(activeMapModelProvider).value, next);
     });
+
+    // Move the ghost-rider marker as the race progresses.
+    ref.listen(ghostProvider, (_, next) => _onGhost(next));
 
     return Scaffold(
       appBar: AppBar(
@@ -243,7 +308,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     left: 8,
                     right: 8,
                     child: Center(
-                      child: _RouteBanner(route: route, progress: progress),
+                      child: _RouteBanner(
+                          route: route, progress: progress, ghost: ghost),
                     ),
                   ),
                 Positioned(
@@ -489,10 +555,15 @@ class _MenuRow extends StatelessWidget {
 /// Compact semi-transparent banner shown while following a route: name, remaining
 /// distance and an off-route warning.
 class _RouteBanner extends StatelessWidget {
-  const _RouteBanner({required this.route, required this.progress});
+  const _RouteBanner({
+    required this.route,
+    required this.progress,
+    required this.ghost,
+  });
 
   final FollowRoute route;
   final RouteProgress? progress;
+  final GhostState? ghost;
 
   @override
   Widget build(BuildContext context) {
@@ -531,8 +602,43 @@ class _RouteBanner extends StatelessWidget {
               style: theme.textTheme.labelLarge?.copyWith(color: Colors.white70),
             ),
           ],
+          if (ghost != null) ...[
+            const SizedBox(width: 10),
+            _GhostDelta(ghost: ghost!),
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// "ghost" chip in the banner: how far ahead/behind the ghost rider you are.
+class _GhostDelta extends StatelessWidget {
+  const _GhostDelta({required this.ghost});
+
+  final GhostState ghost;
+
+  @override
+  Widget build(BuildContext context) {
+    final ahead = ghost.youAreAhead;
+    final meters = ghost.deltaMeters.abs();
+    final text = meters >= 1000
+        ? '${(meters / 1000).toStringAsFixed(1)} km'
+        : '${meters.round()} m';
+    final color = ahead ? const Color(0xFF66BB6A) : const Color(0xFFEF5350);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.circle, size: 11, color: Color(0xFFBDBDBD)), // ghost
+        const SizedBox(width: 4),
+        Text(
+          '${ahead ? '+' : '−'}$text',
+          style: Theme.of(context)
+              .textTheme
+              .labelLarge
+              ?.copyWith(color: color, fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 }

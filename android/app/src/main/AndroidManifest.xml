@@ -41,9 +41,52 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- We handle opened/shared .gpx files ourselves via the
+                 cycle/incoming_gpx MethodChannel. Disable Flutter's URI deep
+                 linking so go_router doesn't try to route the file:// intent
+                 data and show "Page Not Found". -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Open a .gpx file with Cycle (file managers, downloads, mail
+                 attachments). GPX mime types vary, so match the common ones. -->
+            <intent-filter android:label="Follow GPX route">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:host="*"/>
+                <data android:mimeType="application/gpx+xml"/>
+                <data android:mimeType="application/xml"/>
+                <data android:mimeType="text/xml"/>
+            </intent-filter>
+            <!-- Fall back to matching by .gpx extension when the mime type is
+                 generic/unknown (common for downloads and file:// URIs). -->
+            <intent-filter android:label="Follow GPX route">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:host="*"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:pathPattern=".*\\.gpx"/>
+                <data android:pathPattern=".*\\..*\\.gpx"/>
+            </intent-filter>
+            <!-- Share a .gpx to Cycle. -->
+            <intent-filter android:label="Follow GPX route">
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/gpx+xml"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/xml"/>
+                <data android:mimeType="text/xml"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

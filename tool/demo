@@ -96,5 +96,30 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     wait "$SR" 2>/dev/null || true
     sleep 2
     adb pull /sdcard/demo.mp4 videos/demo.mp4 >/dev/null
-    echo ">> wrote videos/demo.mp4 + screenshots"; echo ">> done"
+    echo ">> wrote videos/demo.mp4 + screenshots"
+
+    # Best-effort "Open .gpx with Cycle" test, fully fault-isolated (set +e in a
+    # subshell) so it can never break the rest of the demo. The gpx is placed in
+    # the app'\''s OWN internal storage via run-as: adb-pushing to
+    # /sdcard/Android/data is invisible to the app (separate FUSE views on API
+    # 30+), and a real file manager hands over a content:// URI — both reach the
+    # same contentResolver.openInputStream() path in MainActivity.
+    ( set +e
+      INT="/data/data/$APP_ID/files/imported_ride.gpx"
+      echo ">> open a .gpx via VIEW intent"
+      adb push assets/routes/monaco_loop.gpx /sdcard/Download/imported_ride.gpx >/dev/null 2>&1
+      adb shell "run-as $APP_ID mkdir -p /data/data/$APP_ID/files" 2>/dev/null
+      adb shell "cat /sdcard/Download/imported_ride.gpx | run-as $APP_ID tee $INT >/dev/null" 2>/dev/null
+      echo "   placed file bytes: [$(adb shell run-as $APP_ID wc -c $INT 2>/dev/null)]"
+      adb shell am force-stop "$APP_ID"
+      adb logcat -c
+      adb shell am start -a android.intent.action.VIEW -d "file://$INT" \
+        -t application/gpx+xml -n "$APP_ID/.MainActivity" >/dev/null 2>&1
+      sleep 12
+      adb exec-out screencap -p > "screenshots/shot_5_opened_gpx.png"; echo "   shot_5_opened_gpx"
+      echo ">> CycleGpx logs:"; adb logcat -d -s CycleGpx:* | tail -10
+      echo ">> gpx VIEW filters:"; adb shell dumpsys package "$APP_ID" | grep -iC1 gpx | head -8
+    ) 2>&1 || true
+
+    echo ">> done"
   '

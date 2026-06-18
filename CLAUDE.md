@@ -116,12 +116,18 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
   main-thread ANR on Android 14. A real foreground service (background recording with screen
   off) is **deferred to M7**; recording currently runs while the screen is on (wakelock).
-* **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack) or load the
-  bundled demo route; dashed-blue route overlay on the map + nav banner (name · remaining km ·
-  OFF-ROUTE warning). `FollowRoute`/`parseGpxRoute`/`RouteNavigator` (off-route + remaining)
-  unit-tested; follow-route GUI test loads the demo route on the emulator; build + launch +
-  live follow verified via `tool/demo` (`screenshots/m5_follow_route.png`). Also fixed a
-  mapsforge GPS-follow drift here — see the vendored patch in tech stack/Known gotchas.
+* **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack), load the
+  bundled demo route, or **open/share a `.gpx` into the app** (Android intent-filters +
+  native `MainActivity` `cycle/incoming_gpx` MethodChannel → `IncomingGpxService`; iOS
+  document types registered, delivery handler is a macOS-time TODO). Slim dashed-blue route
+  overlay + nav banner (name · remaining km · OFF-ROUTE · ghost ±delta).
+  `FollowRoute`/`parseGpxRoute`/`RouteNavigator`/`GhostRider` all unit-tested; follow-route
+  GUI test on the emulator; build + follow + ghost + open-intent verified via `tool/demo`.
+  **Ghost rider:** `GhostRider` replays the GPX's own timestamps when present, else paces at a
+  default target speed (25 km/h); translucent marker + ahead/behind delta, active only while
+  recording. **Live metrics now only accumulate while recording** (TIME/dist/avg/max stay 0
+  until Start; current speed still shows). Also fixed a mapsforge GPS-follow drift here — see
+  the vendored patch in tech stack/Known gotchas.
 * **M6** upload (self-hosted/Strava/Komoot) · **M7** physical buttons & polish — pending.
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
 
@@ -149,6 +155,11 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * **Static screenshots can't verify motion.** The drift bug looked fine in stills but was
   obvious across video frames. For map-follow/animation, extract a frame *sequence*
   (`ffmpeg -ss`) and compare — byte-identical consecutive frames = frozen screen.
+* **go_router eats file:// open intents.** With Flutter deep linking enabled (the default),
+  opening a `.gpx` made go_router try to route the `file://…gpx` intent URI → "Page Not Found".
+  We set `flutter_deeplinking_enabled=false` in the manifest and handle opened/shared GPX via
+  the `cycle/incoming_gpx` MethodChannel instead. Re-enable deep linking only if you add real
+  URL routes (and then exclude the file/content intents).
 
 ## Updating this file
 

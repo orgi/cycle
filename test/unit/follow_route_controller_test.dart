@@ -1,7 +1,9 @@
 import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/services/incoming_gpx_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/map/application/map_providers.dart';
 import 'package:cycle/features/routing/application/follow_route_providers.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,6 +19,27 @@ const _validGpx = '''<?xml version="1.0"?>
 </gpx>''';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('followIncomingIfAny follows a GPX delivered by the platform', () async {
+    const channel = MethodChannel('cycle/incoming_gpx');
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(
+        channel, (_) async => {'name': 'Opened', 'xml': _validGpx});
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+
+    final container = ProviderContainer(overrides: [
+      incomingGpxServiceProvider.overrideWithValue(IncomingGpxService(channel)),
+    ]);
+    addTearDown(container.dispose);
+
+    final name =
+        await container.read(followRouteProvider.notifier).followIncomingIfAny();
+    expect(name, 'Loop');
+    expect(container.read(followRouteProvider), isNotNull);
+  });
+
   test('loadDemo follows the bundled route', () async {
     final import = FakeRouteImportService(assetXml: _validGpx);
     final container = ProviderContainer(

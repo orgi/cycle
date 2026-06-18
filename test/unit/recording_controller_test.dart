@@ -52,7 +52,7 @@ void main() {
     expect(wake.disableCount, 1);
   });
 
-  test('live metrics update as samples arrive', () async {
+  test('idle: live speed shows but ride totals stay at zero', () async {
     final t0 = DateTime.utc(2026, 1, 1, 12);
     container.listen(rideControllerProvider, (_, _) {});
 
@@ -67,8 +67,32 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final metrics = container.read(rideControllerProvider);
+    expect(metrics.currentSpeedMps, 8); // live speed still shown
+    expect(metrics.distanceMeters, 0); // but no ride accumulates
+    expect(metrics.elapsed, Duration.zero);
+  });
+
+  test('recording: metrics accumulate as samples arrive', () async {
+    final notifier = container.read(recordingProvider.notifier);
+    container.listen(rideControllerProvider, (_, _) {});
+    await notifier.start();
+
+    final t0 = DateTime.utc(2026, 1, 1, 12);
+    location.emit(GeoSample(latitude: 0, longitude: 0, time: t0, speedMps: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    location.emit(GeoSample(
+      latitude: 0,
+      longitude: 0.00089932,
+      time: t0.add(const Duration(seconds: 10)),
+      speedMps: 8,
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final metrics = container.read(rideControllerProvider);
     expect(metrics.distanceMeters, closeTo(100, 1));
     expect(metrics.currentSpeedMps, 8);
+    expect(metrics.elapsed, const Duration(seconds: 10));
+    await notifier.stop();
   });
 
   test('recording persists a track with points and finalises stats', () async {

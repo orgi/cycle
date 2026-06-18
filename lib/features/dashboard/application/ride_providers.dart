@@ -137,6 +137,17 @@ class RideController extends Notifier<RideMetrics> {
   }
 
   void _onSample(GeoSample sample) {
+    // Only a recording ride accumulates time/distance/avg/max. When idle we
+    // still show the live current speed, but the ride totals stay at zero so
+    // e.g. the timer does not run before the rider taps Start.
+    if (!ref.read(recordingProvider)) {
+      final gps = (sample.speedMps != null && sample.speedMps! >= 0)
+          ? sample.speedMps!
+          : 0.0;
+      _fusion.updateGps(gps);
+      state = RideMetrics.zero().copyWith(currentSpeedMps: _fusion.fused(DateTime.now()));
+      return;
+    }
     final metrics = _accumulator.add(sample);
     _fusion.updateGps(metrics.currentSpeedMps);
     final fused = _fusedSpeed(DateTime.now());
@@ -151,7 +162,12 @@ class RideController extends Notifier<RideMetrics> {
     final wheelSpeed = snapshot.wheelSpeedMps;
     if (wheelSpeed == null) return;
     _fusion.updateBle(wheelSpeed, DateTime.now());
-    // Re-derive the displayed speed from the existing distance/avg/time.
+    // When idle, show live speed only; while recording, also track the max.
+    if (!ref.read(recordingProvider)) {
+      state = RideMetrics.zero()
+          .copyWith(currentSpeedMps: _fusion.fused(DateTime.now()));
+      return;
+    }
     state = state.copyWith(
       currentSpeedMps: _fusedSpeed(DateTime.now()),
       maxSpeedMps: _maxSpeedMps,

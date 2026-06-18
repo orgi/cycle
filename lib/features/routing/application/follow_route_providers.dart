@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/incoming_gpx_service.dart';
 import '../../../core/services/route_import_service.dart';
+import '../../dashboard/application/ride_providers.dart';
 import '../../map/application/map_providers.dart';
 import '../domain/follow_route.dart';
+import '../domain/ghost_rider.dart';
 import '../domain/gpx_route_parser.dart';
 import '../domain/route_navigator.dart';
 
@@ -12,6 +15,11 @@ const String kDemoRouteAsset = 'assets/routes/monaco_loop.gpx';
 /// GPX picker/loader. Overridden with a fake in tests.
 final routeImportServiceProvider = Provider<RouteImportService>(
   (ref) => FileRouteImportService(),
+);
+
+/// Bridge for GPX files the app was opened/shared with. Overridable in tests.
+final incomingGpxServiceProvider = Provider<IncomingGpxService>(
+  (ref) => IncomingGpxService(),
 );
 
 /// The route currently being followed, or null. Set by importing a GPX file or
@@ -47,6 +55,16 @@ class FollowRouteController extends Notifier<FollowRoute?> {
     state = parseGpxRoute(imported.xml, fallbackName: imported.name);
   }
 
+  /// Follows a GPX delivered via "Open with" / "Share to" Cycle, if any. Returns
+  /// the route name when one was loaded, else null. Throws [FormatException] on
+  /// an invalid file.
+  Future<String?> followIncomingIfAny() async {
+    final imported = await ref.read(incomingGpxServiceProvider).consumePending();
+    if (imported == null) return null;
+    state = parseGpxRoute(imported.xml, fallbackName: imported.name);
+    return state?.name;
+  }
+
   /// Stops following.
   void clear() => state = null;
 }
@@ -60,4 +78,43 @@ final routeProgressProvider = Provider<RouteProgress?>((ref) {
   final sample = ref.watch(currentPositionProvider).value;
   if (sample == null) return null;
   return RouteNavigator(route).locate(sample.latitude, sample.longitude);
+});
+
+/// The ghost rider's live position + how far ahead/behind you are.
+class GhostState {
+  const GhostState({
+    required this.latitude,
+    required this.longitude,
+    required this.ghostDistanceMeters,
+    required this.deltaMeters,
+  });
+
+  final double latitude;
+  final double longitude;
+
+  /// Distance the ghost has covered along the route.
+  final double ghostDistanceMeters;
+
+  /// Your along-route distance minus the ghost's (positive = you are ahead).
+  final double deltaMeters;
+
+  bool get youAreAhead => deltaMeters >= 0;
+}
+
+/// Live ghost rider while a ride is being recorded with a route loaded. The
+/// ghost paces off the recorded ride elapsed time; null when not recording or
+/// no route is loaded.
+final ghostProvider = Provider<GhostState?>((ref) {
+  final route = ref.watch(followRouteProvider);
+  if (route == null) return null;
+  if (!ref.watch(recordingProvider)) return null;
+  final elapsed = ref.watch(rideMetricsProvider).elapsed;
+  final ghost = GhostRider(route).positionAt(elapsed);
+  final yourDistance = ref.watch(routeProgressProvider)?.traveledMeters ?? 0;
+  return GhostState(
+    latitude: ghost.latitude,
+    longitude: ghost.longitude,
+    ghostDistanceMeters: ghost.distanceMeters,
+    deltaMeters: yourDistance - ghost.distanceMeters,
+  );
 });
