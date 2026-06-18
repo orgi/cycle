@@ -63,7 +63,16 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
   `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
   `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
-* **GPX:** `gpx` package. **Keep-awake:** `wakelock_plus`.
+* **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
+* **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`
+  (cumulative distances), `RouteNavigator` does nearest-segment projection for
+  cross-track/off-route + remaining distance (pure Dart, unit-tested). The route shows as a
+  dashed-blue overlay on the map with a nav banner (name · km left · OFF-ROUTE). Import is
+  **folder-based, not a system picker**: users drop `.gpx` files into the app's
+  `routes/` folder (Android external files dir / iOS documents) and pick from an in-app list;
+  a bundled `assets/routes/monaco_loop.gpx` is the "Follow demo route". We deliberately do
+  **not** use `file_picker` — see Known gotchas.
+* **Keep-awake:** `wakelock_plus`.
 
 Code is organised under `lib/` as `core/` (services, models, metrics, utils) and
 `features/<feature>/` split into `presentation/` · `application/` (Riverpod) · `domain/`.
@@ -107,9 +116,14 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
   main-thread ANR on Android 14. A real foreground service (background recording with screen
   off) is **deferred to M7**; recording currently runs while the screen is on (wakelock).
-* **M5** follow-GPX · **M6** upload
-  (self-hosted/Strava/Komoot) · **M7** physical buttons & polish — pending. Full plan:
-  `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
+* **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack) or load the
+  bundled demo route; dashed-blue route overlay on the map + nav banner (name · remaining km ·
+  OFF-ROUTE warning). `FollowRoute`/`parseGpxRoute`/`RouteNavigator` (off-route + remaining)
+  unit-tested; follow-route GUI test loads the demo route on the emulator; build + launch +
+  live follow verified via `tool/demo` (`screenshots/m5_follow_route.png`). Also fixed a
+  mapsforge GPS-follow drift here — see the vendored patch in tech stack/Known gotchas.
+* **M6** upload (self-hosted/Strava/Komoot) · **M7** physical buttons & polish — pending.
+  Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
 
 ## Known gotchas
 
@@ -121,6 +135,20 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   editor from first-party widgets.
 * `MetricTile` reserves the widest value (`referenceValue`) so the speed/avg/etc. value does
   not resize when it gains a digit.
+* **`file_picker` does not build here.** The project uses **AGP 9 + standalone Kotlin**
+  (`android.builtInKotlin=false`). `file_picker` 11's Android `build.gradle` skips applying the
+  Kotlin plugin when AGP ≥ 9 (assuming built-in Kotlin), so its `FilePickerPlugin.kt` never
+  compiles → "cannot find symbol FilePickerPlugin". No project flag fixes both it and the
+  plugins that unconditionally apply KGP (`wakelock_plus`, `package_info_plus`). M5 import is
+  therefore folder-based via `path_provider`. Revisit a system picker only with a package that
+  builds on AGP 9 (or vendor+patch its gradle).
+* **GPS-follow map drift (fixed).** mapsforge_flutter 4.0.0 left the tiles frozen and jumping
+  ~one tile at a time while the marker/track followed correctly. Vendored + patched at
+  `third_party/mapsforge_flutter` (`dependency_overrides`); details in its `PATCH.md`. The
+  patch only lives in `third_party/` — a `pub get` won't carry it via the cache copy.
+* **Static screenshots can't verify motion.** The drift bug looked fine in stills but was
+  obvious across video frames. For map-follow/animation, extract a frame *sequence*
+  (`ffmpeg -ss`) and compare — byte-identical consecutive frames = frozen screen.
 
 ## Updating this file
 

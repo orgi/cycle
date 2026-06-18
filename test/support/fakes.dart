@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/location_service.dart';
+import 'package:cycle/core/services/route_import_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
 
 /// A [LocationService] driven by the test: push samples via [emit].
@@ -90,4 +91,32 @@ class FakeSensorService implements SensorService {
 
   @override
   Stream<SensorSnapshot> snapshots() => _snapshots.stream;
+}
+
+/// A [RouteImportService] driven by the test: [filesXml] maps a route file name
+/// to its GPX contents (the importable folder), and [assetXml] backs `loadAsset`.
+class FakeRouteImportService implements RouteImportService {
+  FakeRouteImportService({Map<String, String>? filesXml, this.assetXml = ''})
+      : filesXml = filesXml ?? {};
+
+  Map<String, String> filesXml;
+  String assetXml;
+
+  @override
+  Future<List<RouteFile>> listImportableRoutes() async => [
+        for (final name in filesXml.keys)
+          RouteFile(name: name, path: '/fake/$name.gpx'),
+      ];
+
+  @override
+  Future<ImportedGpx> readRoute(RouteFile file) async =>
+      ImportedGpx(name: file.name, xml: filesXml[file.name] ?? '');
+
+  @override
+  Future<ImportedGpx> loadAsset(String assetPath, {required String name}) async {
+    return ImportedGpx(name: name, xml: assetXml);
+  }
+
+  @override
+  Future<String> routesFolderPath() async => '/fake/routes';
 }

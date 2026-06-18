@@ -6,10 +6,14 @@ import 'package:mapsforge_flutter/marker.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../core/models/geo_sample.dart';
+import '../../../core/services/route_import_service.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/start_stop_button.dart';
+import '../../routing/application/follow_route_providers.dart';
+import '../../routing/domain/follow_route.dart';
+import '../../routing/domain/route_navigator.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 
@@ -28,6 +32,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final List<LatLong> _path = [];
   CircleMarker? _meMarker;
   PolylineMarker? _trackLine;
+  PolylineMarker? _routeLine;
   bool _initialPositionSet = false;
   bool _centeredInitial = false;
 
@@ -105,10 +110,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  /// Draws (or clears) the route being followed as a dashed blue guide line. The
+  /// recorded track and location dot keep drawing on top of it.
+  void _onRouteChanged(MapModel? model, FollowRoute? route) {
+    final previous = _routeLine;
+    if (previous != null) {
+      _markers.removeMarker(previous);
+      _routeLine = null;
+    }
+    if (route != null) {
+      _routeLine = PolylineMarker(
+        path: [
+          for (final p in route.points) LatLong(p.latitude, p.longitude),
+        ],
+        strokeColor: 0xFF448AFF, // blue route guide
+        strokeWidth: 2.0,
+        strokeDasharray: const [6, 4],
+      );
+      _markers.addMarker(_routeLine!);
+      // If we have no GPS fix yet, show the route by centring on its start.
+      if (model != null && !_initialPositionSet) {
+        final start = route.points.first;
+        model.setPosition(MapPosition(start.latitude, start.longitude, 16));
+      }
+    }
+    _markers.requestRepaint();
+  }
+
   @override
   Widget build(BuildContext context) {
     final mapModelAsync = ref.watch(activeMapModelProvider);
     final m = ref.watch(rideMetricsProvider);
+    final route = ref.watch(followRouteProvider);
+    final progress = ref.watch(routeProgressProvider);
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -119,10 +153,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       });
     });
 
+    // Draw / clear the followed route's guide line when it changes.
+    ref.listen(followRouteProvider, (_, next) {
+      _onRouteChanged(ref.read(activeMapModelProvider).value, next);
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cycle'),
         actions: [
+          _FollowRouteMenu(active: route != null),
           IconButton(
             key: const Key('openTracksButton'),
             icon: const Icon(Icons.history),
@@ -196,6 +236,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ],
                   ),
                 ),
+                // Follow-route navigation banner (only while following a route).
+                if (route != null)
+                  Positioned(
+                    top: 72,
+                    left: 8,
+                    right: 8,
+                    child: Center(
+                      child: _RouteBanner(route: route, progress: progress),
+                    ),
+                  ),
                 Positioned(
                   bottom: 8,
                   left: 8,
@@ -303,6 +353,184 @@ class _MapStat extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// App-bar menu to start/stop following a GPX route.
+class _FollowRouteMenu extends ConsumerWidget {
+  const _FollowRouteMenu({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return PopupMenuButton<String>(
+      key: const Key('followRouteMenu'),
+      icon: Icon(active ? Icons.navigation : Icons.navigation_outlined),
+      tooltip: 'Follow a route',
+      onSelected: (value) => _onSelected(context, ref, value),
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          key: Key('followImportItem'),
+          value: 'import',
+          child: _MenuRow(icon: Icons.file_open_outlined, label: 'Import GPX…'),
+        ),
+        const PopupMenuItem(
+          key: Key('followDemoItem'),
+          value: 'demo',
+          child: _MenuRow(icon: Icons.route_outlined, label: 'Follow demo route'),
+        ),
+        if (active)
+          const PopupMenuItem(
+            key: Key('followClearItem'),
+            value: 'clear',
+            child: _MenuRow(icon: Icons.close, label: 'Stop following'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _onSelected(
+      BuildContext context, WidgetRef ref, String value) async {
+    final controller = ref.read(followRouteProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      switch (value) {
+        case 'demo':
+          await controller.loadDemo();
+        case 'import':
+          await _importFlow(context, ref);
+        case 'clear':
+          controller.clear();
+      }
+    } on FormatException catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('Invalid GPX: ${e.message}')));
+    } on Object catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text('Could not load route: $e')));
+    }
+  }
+
+  /// Lists the `.gpx` files in the routes folder and follows the chosen one.
+  /// If the folder is empty, tells the user where to drop files.
+  Future<void> _importFlow(BuildContext context, WidgetRef ref) async {
+    final controller = ref.read(followRouteProvider.notifier);
+    final files = await controller.importableRoutes();
+    if (!context.mounted) return;
+
+    if (files.isEmpty) {
+      final folder = await controller.routesFolderPath();
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('No routes found'),
+          content: Text('Put .gpx files into:\n\n$folder\n\nthen try again.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final chosen = await showDialog<RouteFile>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        key: const Key('routeChooser'),
+        title: const Text('Follow a route'),
+        children: [
+          for (final f in files)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, f),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.route_outlined, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(f.name)),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen != null) await controller.followFile(chosen);
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
+    );
+  }
+}
+
+/// Compact semi-transparent banner shown while following a route: name, remaining
+/// distance and an off-route warning.
+class _RouteBanner extends StatelessWidget {
+  const _RouteBanner({required this.route, required this.progress});
+
+  final FollowRoute route;
+  final RouteProgress? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final off = progress?.offRoute ?? false;
+    final remaining = progress?.remainingMeters;
+    return Container(
+      key: const Key('routeBanner'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: (off ? const Color(0xFF7F1414) : Colors.black)
+            .withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            off ? Icons.warning_amber_rounded : Icons.navigation,
+            size: 16,
+            color: off ? Colors.orangeAccent : const Color(0xFF448AFF),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              off ? 'OFF ROUTE · ${route.name}' : route.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelLarge?.copyWith(color: Colors.white),
+            ),
+          ),
+          if (remaining != null) ...[
+            const SizedBox(width: 10),
+            Text(
+              '${formatDistanceKm(remaining / 1000)} km left',
+              style: theme.textTheme.labelLarge?.copyWith(color: Colors.white70),
+            ),
+          ],
         ],
       ),
     );

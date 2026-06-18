@@ -48,11 +48,35 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     APPBAR_Y=$(dp 56)
     MAP_X=$(( W - $(dp 24) ))
     TRACKS_X=$(( W - $(dp 120) ))
+    FOLLOW_X=$(( W - $(dp 168) ))   # leftmost app-bar action (follow-route menu)
     BTN_X=$(( W / 2 )); BTN_Y=$(( H - $(dp 34) ))
     cap() { adb exec-out screencap -p > "screenshots/$1.png"; echo "   $1"; }
 
+    # Open the follow-route menu and tap "Follow demo route" — robustly, by
+    # reading the popup item bounds from a uiautomator dump (no guessed coords).
+    # NB: this whole script runs inside bash -lc "..." (single-quoted by docker),
+    # so use double quotes only — no nested single quotes.
+    load_demo_route() {
+      adb shell input tap "$FOLLOW_X" "$APPBAR_Y"; sleep 1
+      adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+      # One node per line, keep the one with the menu label, pull its bounds.
+      local nums; nums="$( { adb shell cat /sdcard/ui.xml 2>/dev/null \
+        | tr ">" "\n" \
+        | grep "Follow demo route" \
+        | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
+        | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
+      if [ -n "$nums" ]; then
+        set -- $nums
+        adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 ))
+      else
+        echo "   (could not locate route menu item)"
+      fi
+      sleep 2
+    }
+
     # Home is the combined map + stats screen.
     cap shot_1_home
+    echo ">> follow demo route"; load_demo_route; cap shot_1a_route
     echo ">> start recording"; adb shell input tap "$BTN_X" "$BTN_Y"; sleep 2
     # ~10 m between route points; 1.1 s each ≈ 33 km/h (realistic).
     for i in $(seq 1 7); do next_fix; sleep 1.1; done
