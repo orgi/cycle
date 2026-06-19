@@ -15,7 +15,17 @@ class TracksScreen extends ConsumerWidget {
     final tracks = ref.watch(tracksProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Rides')),
+      appBar: AppBar(
+        title: const Text('Rides'),
+        actions: [
+          IconButton(
+            key: const Key('uploadAccountsButton'),
+            icon: const Icon(Icons.cloud_outlined),
+            tooltip: 'Upload accounts',
+            onPressed: () => context.push('/upload-accounts'),
+          ),
+        ],
+      ),
       body: tracks.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),

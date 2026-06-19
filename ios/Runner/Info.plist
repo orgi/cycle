@@ -77,6 +77,20 @@
 	     `application(_:open:options:)` handler that forwards to the
 	     `cycle/incoming_gpx` MethodChannel — to be added when building on macOS.
 	     Until then the Dart side safely no-ops on iOS. -->
+	<!-- Custom URL scheme for the Strava OAuth redirect (cycle://strava-callback).
+	     Delivering it to Dart needs an AppDelegate application(_:open:options:)
+	     handler forwarding to the cycle/oauth channel — a macOS-time TODO. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.cycleapp.cycle.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>cycle</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

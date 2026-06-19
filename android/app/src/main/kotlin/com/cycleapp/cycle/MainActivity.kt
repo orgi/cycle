@@ -9,36 +9,66 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Captures a `.gpx` the app was opened with (ACTION_VIEW) or shared with
- * (ACTION_SEND), reads its contents, and hands them to Dart on demand over a
- * MethodChannel. Done natively (no plugin) to stay compatible with this
- * project's AGP 9 + standalone-Kotlin build.
+ * Native bridges (no plugins, to stay compatible with this project's AGP 9 +
+ * standalone-Kotlin build):
+ *  - `cycle/incoming_gpx`: a `.gpx` the app was opened with (ACTION_VIEW) or
+ *    shared with (ACTION_SEND) — read and handed to Dart on demand.
+ *  - `cycle/oauth`: open a browser URL and capture the `cycle://…` OAuth
+ *    redirect (Strava sign-in) so Dart can pull the authorization code.
  */
 class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
-    private val channelName = "cycle/incoming_gpx"
+    private val gpxChannel = "cycle/incoming_gpx"
+    private val oauthChannel = "cycle/oauth"
+
     private var pendingName: String? = null
     private var pendingXml: String? = null
+    private var pendingRedirect: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-            .setMethodCallHandler { call, result ->
-                if (call.method == "consumePending") {
-                    val xml = pendingXml
-                    Log.i(TAG, "consumePending -> ${if (xml == null) "null" else "${xml.length} chars"}")
-                    if (xml == null) {
-                        result.success(null)
-                    } else {
-                        val map = mapOf("name" to (pendingName ?: "Route"), "xml" to xml)
-                        pendingName = null
-                        pendingXml = null
-                        result.success(map)
-                    }
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        MethodChannel(messenger, gpxChannel).setMethodCallHandler { call, result ->
+            if (call.method == "consumePending") {
+                val xml = pendingXml
+                if (xml == null) {
+                    result.success(null)
                 } else {
-                    result.notImplemented()
+                    val map = mapOf("name" to (pendingName ?: "Route"), "xml" to xml)
+                    pendingName = null
+                    pendingXml = null
+                    result.success(map)
                 }
+            } else {
+                result.notImplemented()
             }
+        }
+
+        MethodChannel(messenger, oauthChannel).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "openUrl" -> {
+                    val url = call.arguments as? String
+                    if (url == null) {
+                        result.error("bad_args", "url required", null)
+                    } else {
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("open_failed", e.message, null)
+                        }
+                    }
+                }
+                "consumeRedirect" -> {
+                    val r = pendingRedirect
+                    pendingRedirect = null
+                    result.success(r)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         handleIntent(intent)
     }
 
@@ -57,8 +87,16 @@ class MainActivity : FlutterActivity() {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM)
             else -> null
         }
-        Log.i(TAG, "handleIntent action=${intent.action} uri=$uri")
         uri ?: return
+
+        // OAuth redirect (cycle://strava-callback?code=…) — not a file.
+        if (uri.scheme == "cycle") {
+            pendingRedirect = uri.toString()
+            Log.i(TAG, "captured oauth redirect host=${uri.host}")
+            return
+        }
+
+        Log.i(TAG, "handleIntent action=${intent.action} uri=$uri")
         try {
             val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return
             pendingXml = String(bytes, Charsets.UTF_8)

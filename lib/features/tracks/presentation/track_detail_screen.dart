@@ -1,12 +1,17 @@
+import 'dart:convert';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/db/database.dart';
+import '../../../core/export/gpx_exporter.dart';
+import '../../../core/services/upload/upload_models.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
+import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
 import 'widgets/route_preview.dart';
 
@@ -24,6 +29,12 @@ class TrackDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Ride'),
         actions: [
+          IconButton(
+            key: const Key('uploadRideButton'),
+            icon: const Icon(Icons.cloud_upload_outlined),
+            tooltip: 'Upload',
+            onPressed: () => _upload(context, ref),
+          ),
           IconButton(
             key: const Key('exportButton'),
             icon: const Icon(Icons.ios_share),
@@ -65,6 +76,53 @@ class TrackDetailScreen extends ConsumerWidget {
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     await ref.read(appDatabaseProvider).deleteTrack(trackId);
     if (context.mounted) context.pop();
+  }
+
+  Future<void> _upload(BuildContext context, WidgetRef ref) async {
+    final track = ref.read(trackProvider(trackId)).value;
+    final points =
+        ref.read(trackPointsProvider(trackId)).value ?? const <TrackPoint>[];
+    if (track == null) return;
+
+    final provider = await showModalBottomSheet<UploadProvider>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final p in UploadProvider.values)
+              ListTile(
+                key: Key('upload_${p.name}'),
+                leading: const Icon(Icons.cloud_upload_outlined),
+                title: Text('Upload to ${p.label}'),
+                onTap: () => Navigator.pop(ctx, p),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (provider == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final gpx = GpxExporter.export(track, points);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    final result = await ref.read(uploadControllerProvider.notifier).upload(
+          provider,
+          gpxBytes: utf8.encode(gpx),
+          name: track.name,
+          movingSeconds: track.durationSeconds,
+        );
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    messenger.showSnackBar(SnackBar(
+      content: Text(result.ok
+          ? 'Uploaded to ${provider.label}'
+              '${result.activityUrl != null ? ' — ${result.activityUrl}' : ''}'
+          : 'Upload failed: ${result.error}'),
+    ));
   }
 }
 

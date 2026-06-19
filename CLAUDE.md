@@ -128,7 +128,18 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   recording. **Live metrics now only accumulate while recording** (TIME/dist/avg/max stay 0
   until Start; current speed still shows). Also fixed a mapsforge GPS-follow drift here — see
   the vendored patch in tech stack/Known gotchas.
-* **M6** upload (self-hosted/Strava/Komoot) · **M7** physical buttons & polish — pending.
+* **M6 — Upload (Strava + Komoot):** done (self-hosted skipped per user). `lib/core/services/upload/`:
+  `StravaClient` (official OAuth2 + multipart `/uploads` + poll), `KomootClient` (UNOFFICIAL
+  session-cookie login + `/v007/tours/` — Komoot's official API is partner-only; fragile, may
+  break), `UploadStore` (creds/token in `shared_preferences`), `RideUploader` (token/refresh/
+  interactive-OAuth orchestration). OAuth is plugin-free: native `MainActivity` `cycle/oauth`
+  channel (`openUrl` + capture `cycle://strava-callback` redirect) + manifest intent-filter;
+  `NativeOAuthAuthenticator` polls it. UI: Rides → "Upload accounts" settings (`/upload-accounts`)
+  + cloud-upload action on ride detail. Verified: 23 unit/widget tests + a real-socket
+  mock-server Strava test; build/launch on the emulator. **Real OAuth + a real upload need the
+  user's own Strava API app (client_id/secret) + account, done once on a device — see the M6
+  device checklist.** Komoot is unverifiable without a live account + attempt.
+* **M7** physical buttons & polish — pending.
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
 
 ## Known gotchas
