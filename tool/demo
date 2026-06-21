@@ -46,9 +46,12 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     DENS=$(adb shell wm density | grep -o "[0-9]*" | head -1)
     dp() { echo $(( $1 * DENS / 160 )); }
     APPBAR_Y=$(dp 56)
-    MAP_X=$(( W - $(dp 24) ))
-    TRACKS_X=$(( W - $(dp 120) ))
-    FOLLOW_X=$(( W - $(dp 168) ))   # leftmost app-bar action (follow-route menu)
+    # Map app-bar actions, right-aligned (centres at 24,72,120,168,216 dp from
+    # the right): settings, maps, sensors, tracks, follow.
+    MAP_X=$(( W - $(dp 24) ))        # rightmost app-bar action
+    SETTINGS_X=$(( W - $(dp 24) ))   # settings (rightmost on the map screen)
+    TRACKS_X=$(( W - $(dp 168) ))    # Rides (history)
+    FOLLOW_X=$(( W - $(dp 216) ))    # leftmost action (follow-route menu)
     BTN_X=$(( W / 2 )); BTN_Y=$(( H - $(dp 34) ))
     cap() { adb exec-out screencap -p > "screenshots/$1.png"; echo "   $1"; }
 
@@ -124,6 +127,31 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
       adb exec-out screencap -p > "screenshots/shot_5_opened_gpx.png"; echo "   shot_5_opened_gpx"
       echo ">> CycleGpx logs:"; adb logcat -d -s CycleGpx:* | tail -10
       echo ">> gpx VIEW filters:"; adb shell dumpsys package "$APP_ID" | grep -iC1 gpx | head -8
+    ) 2>&1 || true
+
+    # Volume-key start/stop + Settings, fault-isolated. Relaunch fresh, then
+    # inject the hardware volume keys and confirm they toggle recording.
+    ( set +e
+      echo ">> volume-key start/stop test"
+      adb shell am force-stop "$APP_ID"
+      adb shell am start -n "$APP_ID/.MainActivity" >/dev/null 2>&1
+      sleep 10
+      adb logcat -c
+      # Baseline media volume; it must NOT change when we press the keys.
+      VOL0=$(adb shell cmd media_session volume --stream 3 --get 2>/dev/null | grep -oE "volume is [0-9]+" | grep -oE "[0-9]+" | head -1)
+      adb exec-out screencap -p > "screenshots/shot_7_home_idle.png"; echo "   shot_7_home_idle (vol=$VOL0)"
+      adb shell input keyevent KEYCODE_VOLUME_UP   # start recording
+      sleep 3
+      adb exec-out screencap -p > "screenshots/shot_8_volkey_recording.png"; echo "   shot_8_volkey_recording"
+      adb shell input keyevent KEYCODE_VOLUME_DOWN # stop recording
+      sleep 2
+      adb exec-out screencap -p > "screenshots/shot_9_volkey_stopped.png"; echo "   shot_9_volkey_stopped"
+      VOL1=$(adb shell cmd media_session volume --stream 3 --get 2>/dev/null | grep -oE "volume is [0-9]+" | grep -oE "[0-9]+" | head -1)
+      echo "   media volume: before=$VOL0 after=$VOL1 (should be equal = keys intercepted)"
+      echo ">> volume-key native logs:"; adb logcat -d -s CycleGpx:* | grep -i "volume key" | tail -6
+      # Settings screen (rightmost app-bar action).
+      adb shell input tap "$SETTINGS_X" "$APPBAR_Y"; sleep 2
+      adb exec-out screencap -p > "screenshots/shot_10_settings.png"; echo "   shot_10_settings"
     ) 2>&1 || true
 
     echo ">> done"

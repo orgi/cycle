@@ -6,6 +6,7 @@ import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
 import 'features/tracks/presentation/track_detail_screen.dart';
+import 'features/settings/presentation/settings_screen.dart';
 import 'features/tracks/presentation/tracks_screen.dart';
 import 'features/upload/presentation/upload_settings_screen.dart';
 
@@ -38,6 +39,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/upload-accounts',
       builder: (context, state) => const UploadSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsScreen(),
     ),
   ],
 );

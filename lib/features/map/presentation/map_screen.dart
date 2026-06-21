@@ -14,6 +14,8 @@ import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
 import '../../routing/domain/follow_route.dart';
 import '../../routing/domain/route_navigator.dart';
+import '../../settings/application/hardware_button_providers.dart';
+import '../../settings/application/settings_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 
@@ -205,6 +207,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
     final ghost = ref.watch(ghostProvider);
+    final units = ref.watch(settingsProvider).units;
+    final speedUnit = units.speedLabel;
+    // Keep the volume-key control + wheel-size sync alive while the home screen
+    // is mounted.
+    ref.watch(hardwareButtonControllerProvider);
+    ref.watch(sensorSettingsSyncProvider);
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -246,6 +254,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
             tooltip: 'Manage maps',
             onPressed: () => context.push('/maps'),
           ),
+          IconButton(
+            key: const Key('openSettingsButton'),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => context.push('/settings'),
+          ),
         ],
       ),
       body: Column(
@@ -285,8 +299,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       Expanded(
                         child: _MapStat(
                           label: 'SPEED',
-                          value: formatSpeedKmh(m.currentSpeedKmh),
-                          unit: 'km/h',
+                          value: formatSpeed(m.currentSpeedKmh, units),
+                          unit: speedUnit,
                           emphasized: true,
                         ),
                       ),
@@ -321,24 +335,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       Expanded(
                         child: _MapStat(
                           label: 'DIST',
-                          value: formatDistanceKm(m.distanceKm),
-                          unit: 'km',
+                          value: formatDistance(m.distanceKm, units),
+                          unit: units.distanceLabel,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: _MapStat(
                           label: 'AVG',
-                          value: formatSpeedKmh(m.avgSpeedKmh),
-                          unit: 'km/h',
+                          value: formatSpeed(m.avgSpeedKmh, units),
+                          unit: speedUnit,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: _MapStat(
                           label: 'MAX',
-                          value: formatSpeedKmh(m.maxSpeedKmh),
-                          unit: 'km/h',
+                          value: formatSpeed(m.maxSpeedKmh, units),
+                          unit: speedUnit,
                         ),
                       ),
                     ],

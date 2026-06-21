@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/location_service.dart';
 import 'package:cycle/core/services/route_import_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
+import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/core/services/settings/settings_store.dart';
 
 /// A [LocationService] driven by the test: push samples via [emit].
 class FakeLocationService implements LocationService {
@@ -86,6 +89,12 @@ class FakeSensorService implements SensorService {
     _connectedCtrl.add(List.of(_connected));
   }
 
+  /// Last value pushed via [setWheelCircumference].
+  double wheelCircumference = 2.105;
+
+  @override
+  void setWheelCircumference(double meters) => wheelCircumference = meters;
+
   @override
   Stream<List<ConnectedSensor>> connectedSensors() => _connectedCtrl.stream;
 
@@ -119,4 +128,33 @@ class FakeRouteImportService implements RouteImportService {
 
   @override
   Future<String> routesFolderPath() async => '/fake/routes';
+}
+
+/// A [HardwareButtonService] the test drives via [press]; records enabled state.
+class FakeHardwareButtonService implements HardwareButtonService {
+  final StreamController<HardwareButton> _controller =
+      StreamController<HardwareButton>.broadcast();
+  bool enabled = false;
+
+  void press(HardwareButton button) => _controller.add(button);
+
+  Future<void> dispose() => _controller.close();
+
+  @override
+  Stream<HardwareButton> get events => _controller.stream;
+
+  @override
+  Future<void> setEnabled(bool value) async => enabled = value;
+}
+
+/// An in-memory [SettingsStore] seeded with [initial].
+class FakeSettingsStore implements SettingsStore {
+  FakeSettingsStore([this._settings = const AppSettings()]);
+  AppSettings _settings;
+
+  @override
+  Future<AppSettings> load() async => _settings;
+
+  @override
+  Future<void> save(AppSettings settings) async => _settings = settings;
 }

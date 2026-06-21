@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -20,10 +21,14 @@ class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
     private val gpxChannel = "cycle/incoming_gpx"
     private val oauthChannel = "cycle/oauth"
+    private val buttonsChannel = "cycle/hardware_buttons"
 
     private var pendingName: String? = null
     private var pendingXml: String? = null
     private var pendingRedirect: String? = null
+
+    private var buttons: MethodChannel? = null
+    private var buttonsEnabled = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -42,6 +47,17 @@ class MainActivity : FlutterActivity() {
                 }
             } else {
                 result.notImplemented()
+            }
+        }
+
+        buttons = MethodChannel(messenger, buttonsChannel)
+        buttons!!.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setEnabled" -> {
+                    buttonsEnabled = call.arguments as? Boolean ?: false
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
         }
 
@@ -76,6 +92,32 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
+    }
+
+    // When hardware-button control is enabled, the volume keys toggle recording
+    // (start = up, stop = down) instead of changing the volume. Mounted on a
+    // handlebar, the phone's physical buttons are the natural ride control.
+    //
+    // We intercept in dispatchKeyEvent, NOT onKeyDown: a FlutterActivity routes
+    // key events through the FlutterView first, which consumes the volume keys
+    // before they ever reach Activity.onKeyDown — so onKeyDown never fires and
+    // the system changes the volume. dispatchKeyEvent is the activity's first
+    // look at the event, before the view hierarchy / default volume handling.
+    // We consume BOTH down and up (and ignore key-repeat) so the volume neither
+    // changes nor shows its UI, and a long press toggles only once.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (buttonsEnabled &&
+            (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+                event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                val which =
+                    if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) "up" else "down"
+                Log.i(TAG, "volume key -> $which")
+                buttons?.invokeMethod("onVolumeKey", which)
+            }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handleIntent(intent: Intent?) {

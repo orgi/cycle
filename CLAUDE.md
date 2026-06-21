@@ -34,6 +34,11 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
 * For the system testing there needs to be at last a GUI test
 * Tests need to be executed for acceptance of any automated edit
 
+The actual phones available for manual testing will be
+
+* A Galaxy A33 5G
+* Possibly a Galaxy A3 2017
+
 ## Tech stack & architecture
 
 * **Framework:** Flutter (Dart), single codebase for Android + iOS.
@@ -139,7 +144,22 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   mock-server Strava test; build/launch on the emulator. **Real OAuth + a real upload need the
   user's own Strava API app (client_id/secret) + account, done once on a device — see the M6
   device checklist.** Komoot is unverifiable without a live account + attempt.
-* **M7** physical buttons & polish — pending.
+* **M7 — Physical buttons & polish:** done. **Volume-key start/stop:** native `MainActivity`
+  intercepts VOLUME_UP (start) / VOLUME_DOWN (stop) in **`dispatchKeyEvent`** (NOT `onKeyDown`
+  — a FlutterActivity routes keys through the FlutterView first, which swallows the volume keys
+  before `onKeyDown`; `dispatchKeyEvent` is the activity's first look, before the view hierarchy
+  / default volume handling) and routes them over the `cycle/hardware_buttons` MethodChannel
+  (plugin-free). Consumes both down+up (ignores key-repeat) so the volume neither changes nor
+  shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
+  setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
+  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op).
+  **Settings screen** (`/settings`, gear in the map app bar):
+  units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
+  wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),
+  and the volume-key toggle. `AppSettings`/`SettingsStore` on `shared_preferences`. Verified:
+  unit/widget tests incl. the volume-key→recording wiring; on the emulator the injected
+  `adb input keyevent KEYCODE_VOLUME_UP/DOWN` starts/stops a recording **and the media volume
+  stays unchanged** (proving interception), with the native `volume key -> up/down` log firing.
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
 
 ## Known gotchas

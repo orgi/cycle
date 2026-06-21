@@ -86,6 +86,11 @@ abstract class SensorService {
   Future<void> connect(String deviceId);
   Future<void> disconnect(String deviceId);
 
+  /// Sets the wheel circumference (metres) used to derive speed from a CSC
+  /// sensor. Applies to sensors connected after this call. Concrete default is
+  /// a no-op so fakes/implementations need not override it.
+  void setWheelCircumference(double meters) {}
+
   /// Sensors currently known (connected or reconnecting).
   Stream<List<ConnectedSensor>> connectedSensors();
 

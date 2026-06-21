@@ -21,6 +21,12 @@ class BleSensorService implements SensorService {
   final Map<String, ConnectedSensor> _connected = {};
   final Map<String, CscCalculator> _csc = {};
   final Map<String, List<StreamSubscription<dynamic>>> _subs = {};
+  double _wheelCircumferenceMeters = 2.105;
+
+  @override
+  void setWheelCircumference(double meters) {
+    if (meters > 0) _wheelCircumferenceMeters = meters;
+  }
 
   static final List<Guid> _serviceGuids = [
     Guid(GattIds.full(GattIds.heartRateService)),
@@ -105,7 +111,8 @@ class BleSensorService implements SensorService {
     }));
 
     _subs[deviceId] = subs;
-    _csc[deviceId] = CscCalculator();
+    _csc[deviceId] =
+        CscCalculator(wheelCircumferenceMeters: _wheelCircumferenceMeters);
     _connected[deviceId] = ConnectedSensor(
       id: deviceId,
       name: _nameOf(device),

@@ -1,8 +1,28 @@
 // Display formatting helpers for ride metrics. Pure functions, unit-tested.
 
+import '../services/settings/app_settings.dart';
+
+const double _kmPerMile = 1.609344;
+
+/// Converts a speed in km/h to the user's units.
+double speedInUnits(double kmh, UnitSystem units) =>
+    units == UnitSystem.imperial ? kmh / _kmPerMile : kmh;
+
+/// Converts a distance in km to the user's units.
+double distanceInUnits(double km, UnitSystem units) =>
+    units == UnitSystem.imperial ? km / _kmPerMile : km;
+
 String formatSpeedKmh(double kmh) => kmh.toStringAsFixed(1);
 
 String formatDistanceKm(double km) => km.toStringAsFixed(2);
+
+/// Formats a km/h speed in the user's units (value only; unit label separate).
+String formatSpeed(double kmh, UnitSystem units) =>
+    speedInUnits(kmh, units).toStringAsFixed(1);
+
+/// Formats a km distance in the user's units (value only; unit label separate).
+String formatDistance(double km, UnitSystem units) =>
+    distanceInUnits(km, units).toStringAsFixed(2);
 
 /// `YYYY-MM-DD HH:MM` in local time.
 String formatDateTime(DateTime t) {
