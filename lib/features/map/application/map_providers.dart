@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mapsforge_flutter/mapsforge.dart';
 
 import '../../../core/models/geo_sample.dart';
 import '../../../core/services/map_download_service.dart';
@@ -34,11 +33,12 @@ final currentPositionProvider = StreamProvider<GeoSample>(
 );
 
 /// The map shown on the map screen: the first installed region, or the bundled
-/// demo map when nothing has been downloaded yet. Disposed automatically.
-final activeMapModelProvider = FutureProvider<MapModel>((ref) async {
+/// demo map when nothing has been downloaded yet. Includes the map's centre so
+/// the camera can start over the actual map. Disposed automatically.
+final activeMapModelProvider = FutureProvider<LoadedMap>((ref) async {
   final installed = await ref.watch(installedMapsProvider.future);
   final service = ref.watch(mapRenderServiceProvider);
-  final model = installed.isNotEmpty
+  final loaded = installed.isNotEmpty
       ? await service.createFromFile(installed.first.path)
       : await service.createFromBundledDemo();
   ref.onDispose(() {
@@ -47,10 +47,10 @@ final activeMapModelProvider = FutureProvider<MapModel>((ref) async {
     // resources are GC'd regardless; swallow so a model swap (e.g. after a
     // region download) doesn't crash the app.
     try {
-      model.dispose();
+      loaded.model.dispose();
     } catch (_) {}
   });
-  return model;
+  return loaded;
 });
 
 /// Progress/error state for in-flight region downloads, keyed by region id.

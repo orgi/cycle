@@ -38,10 +38,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   PolylineMarker? _trackLine;
   PolylineMarker? _routeLine;
   bool _initialPositionSet = false;
-  bool _centeredInitial = false;
+  LatLong? _centeredOn;
 
-  static const double _demoLat = 43.7399;
-  static const double _demoLon = 7.4262;
 
   @override
   void initState() {
@@ -129,12 +127,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
   /// Centre on the demo location once, after the map is ready — only while no
   /// real GPS fix has arrived. After that the map follows the position fixes
   /// and build() never moves it again.
-  void _ensureInitialCenter(MapModel model) {
-    if (_centeredInitial) return;
-    _centeredInitial = true;
+  void _ensureInitialCenter(MapModel model, LatLong mapCenter) {
+    // Once a GPS fix has positioned the camera, it owns it — don't yank back.
+    if (_initialPositionSet) return;
+    // Re-centre whenever a *different* map loads (e.g. after a download swaps
+    // the active map), not just once — otherwise the camera stays parked over
+    // the previous map's area and shows blank tiles.
+    if (_centeredOn?.latitude == mapCenter.latitude &&
+        _centeredOn?.longitude == mapCenter.longitude) {
+      return;
+    }
+    _centeredOn = mapCenter;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_initialPositionSet) {
-        model.setPosition(MapPosition(_demoLat, _demoLon, 16));
+        // Centre on the loaded map's own area (not a fixed demo location), so a
+        // downloaded region renders immediately even before a GPS fix. Zoom 12
+        // shows the map; a GPS fix then snaps to the rider's position.
+        model.setPosition(
+            MapPosition(mapCenter.latitude, mapCenter.longitude, 12));
       }
     });
   }
@@ -218,14 +228,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
       next.whenData((sample) {
         // Read the model fresh so early fixes aren't dropped against a stale
         // (still-loading) snapshot.
-        final model = ref.read(activeMapModelProvider).value;
+        final model = ref.read(activeMapModelProvider).value?.model;
         if (model != null) _onPosition(model, sample);
       });
     });
 
     // Draw / clear the followed route's guide line when it changes.
     ref.listen(followRouteProvider, (_, next) {
-      _onRouteChanged(ref.read(activeMapModelProvider).value, next);
+      _onRouteChanged(ref.read(activeMapModelProvider).value?.model, next);
     });
 
     // Move the ghost-rider marker as the race progresses.
@@ -273,8 +283,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         const Center(child: CircularProgressIndicator()),
                     error: (error, stack) =>
                         ErrorhelperWidget(error: error, stackTrace: stack),
-                    data: (model) {
-                      _ensureInitialCenter(model);
+                    data: (loaded) {
+                      final model = loaded.model;
+                      _ensureInitialCenter(model, loaded.center);
                       return MapsforgeView(
                         mapModel: model,
                         children: [

@@ -178,6 +178,21 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
         adb exec-out screencap -p > "screenshots/shot_12_download.png"; echo "   shot_12_download"
         echo ">> installed .map files on device:"
         adb shell "run-as $APP_ID find /data/data/$APP_ID -name *.map 2>/dev/null; find /sdcard/Android/data/$APP_ID -name *.map 2>/dev/null" | head
+        # Back to the home map and move GPS INTO Andorra — the downloaded region
+        # must now render (the bug was a camera parked over Monaco, outside it).
+        adb shell input keyevent KEYCODE_BACK; sleep 2
+        adb emu geo fix 1.601 42.546   # central Andorra (lon lat)
+        sleep 10
+        adb exec-out screencap -p > "screenshots/shot_13_andorra_map.png"; echo "   shot_13_andorra_map"
+        # The reported symptom is "black on reopen" with NO GPS. Disable
+        # location and relaunch: the map must still render, centred on the
+        # downloaded region bounding box (not the Monaco demo location).
+        adb shell settings put secure location_mode 0
+        adb shell am force-stop "$APP_ID"
+        adb shell am start -n "$APP_ID/.MainActivity" >/dev/null 2>&1
+        sleep 12
+        adb exec-out screencap -p > "screenshots/shot_14_reopen_nogps.png"; echo "   shot_14_reopen_nogps"
+        adb shell settings put secure location_mode 3   # restore for later runs
       else
         echo "   (could not locate Andorra row)"
       fi

@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
+// Only the zip *directory* reader is taken from `archive` (it parses central-
+// directory offsets correctly, incl. ZIP64); the actual decompression uses
+// dart:io's native streaming zlib — see _extractMapFromFile. `show` avoids a
+// name clash with dart:io's ZLibDecoder.
+import 'package:archive/archive.dart' show InputFileStream, ZipDecoder;
 import 'package:http/http.dart' as http;
 
 import '../../features/map/domain/map_region.dart';
@@ -39,12 +43,12 @@ String describeDownloadError(Object error) {
 /// Downloads an OpenAndroMaps region `.zip`, extracts the `.map` inside it and
 /// stores it via [MapStorageService].
 ///
-/// The download is **streamed to disk** (a `.zip.part` file), never held in
-/// memory — region zips run to several GB (Alps ≈ 2.9 GB), which would OOM the
-/// phone. It is also **resumable**: an interrupted download (e.g. the screen
-/// locked and the OS suspended the app) leaves the `.part` file in place, and
-/// the next attempt sends an HTTP `Range` request to continue where it left off
-/// rather than starting over. The OpenAndroMaps mirror supports range requests.
+/// Both the download *and* the unzip are fully **streamed to disk** with
+/// back-pressure — nothing is held in memory, so multi-GB regions (Alps ≈
+/// 2.9 GB compressed, ~3.7 GB extracted) don't OOM the phone. The download is
+/// also **resumable**: an interrupted attempt leaves a `.zip.part` file, and the
+/// next try sends an HTTP `Range` request to continue from there (the
+/// OpenAndroMaps mirror supports ranges) instead of starting over.
 class MapDownloadService {
   MapDownloadService(this._storage, {http.Client Function()? clientFactory})
       : _clientFactory = clientFactory ?? http.Client.new;
@@ -92,18 +96,20 @@ class MapDownloadService {
           mode: resuming ? FileMode.writeOnlyAppend : FileMode.writeOnly);
       var received = resuming ? existing : 0;
       try {
-        await for (final chunk in response.stream) {
-          sink.add(chunk);
+        // addStream applies back-pressure (pauses the network when the disk
+        // can't keep up) — a plain sink.add() loop would buffer GBs in RAM.
+        await sink.addStream(response.stream.map((chunk) {
           received += chunk.length;
           if (total > 0) onProgress?.call((received / total).clamp(0.0, 1.0));
-        }
+          return chunk;
+        }));
       } finally {
         await sink.close();
       }
 
       // Extract the `.map` from the completed zip, streaming from disk.
       final dest = await _storage.fileForRegion(region);
-      _extractMapFromFile(partFile.path, dest.path, region);
+      await _extractMapFromFile(partFile.path, dest.path);
       await partFile.delete();
       onProgress?.call(1.0);
     } finally {
@@ -128,21 +134,46 @@ class MapDownloadService {
     return region.sizeBytes;
   }
 
-  /// Streams the single `.map` entry out of the downloaded zip file to [mapPath]
-  /// without loading the whole archive into memory.
-  void _extractMapFromFile(String zipPath, String mapPath, MapRegion region) {
+  /// Streams the single `.map` entry out of the downloaded zip to [mapPath].
+  ///
+  /// We locate the entry via the zip's central directory (archive package) but
+  /// inflate its byte range with dart:io's native zlib, which is a true
+  /// streaming transformer — `addStream` then writes it to disk with
+  /// back-pressure. This keeps memory at a few buffers regardless of the map
+  /// size. (The archive package's own `writeContent` buffers the entire
+  /// decompressed output in RAM, which OOMs on large maps.)
+  Future<void> _extractMapFromFile(String zipPath, String mapPath) async {
+    final _MapEntry entry = await _locateMapEntry(zipPath);
+    final dataStart = await _entryDataStart(zipPath, entry.localHeaderOffset);
+    final compressed = File(zipPath)
+        .openRead(dataStart, dataStart + entry.compressedSize);
+
+    // Zip method 8 = raw DEFLATE; 0 = stored (copy as-is).
+    final Stream<List<int>> data = entry.compressionMethod == 8
+        ? ZLibDecoder(raw: true).bind(compressed)
+        : compressed;
+
+    final out = File(mapPath).openWrite();
+    try {
+      await out.addStream(data);
+    } finally {
+      await out.close();
+    }
+  }
+
+  /// Finds the `.map` entry's central-directory record (offset + size + method).
+  Future<_MapEntry> _locateMapEntry(String zipPath) async {
     final input = InputFileStream(zipPath);
     try {
-      final archive = ZipDecoder().decodeStream(input);
-      for (final file in archive) {
-        if (file.isFile && file.name.toLowerCase().endsWith('.map')) {
-          final output = OutputFileStream(mapPath);
-          try {
-            file.writeContent(output);
-          } finally {
-            output.closeSync();
-          }
-          return;
+      final decoder = ZipDecoder();
+      decoder.decodeStream(input); // parses the central directory (no inflate)
+      for (final h in decoder.directory.fileHeaders) {
+        if (h.filename.toLowerCase().endsWith('.map')) {
+          return _MapEntry(
+            localHeaderOffset: h.localHeaderOffset,
+            compressedSize: h.compressedSize,
+            compressionMethod: h.compressionMethod,
+          );
         }
       }
       throw MapDownloadException('The downloaded file is not a valid map');
@@ -150,4 +181,32 @@ class MapDownloadService {
       input.closeSync();
     }
   }
+
+  /// Reads a local file header to find where the entry's compressed data starts.
+  Future<int> _entryDataStart(String zipPath, int localHeaderOffset) async {
+    final raf = await File(zipPath).open();
+    try {
+      await raf.setPosition(localHeaderOffset);
+      final lh = await raf.read(30); // fixed-size local file header
+      if (lh.length < 30) {
+        throw MapDownloadException('The downloaded file is not a valid map');
+      }
+      final nameLen = lh[26] | (lh[27] << 8);
+      final extraLen = lh[28] | (lh[29] << 8);
+      return localHeaderOffset + 30 + nameLen + extraLen;
+    } finally {
+      await raf.close();
+    }
+  }
+}
+
+class _MapEntry {
+  _MapEntry({
+    required this.localHeaderOffset,
+    required this.compressedSize,
+    required this.compressionMethod,
+  });
+  final int localHeaderOffset;
+  final int compressedSize;
+  final int compressionMethod;
 }

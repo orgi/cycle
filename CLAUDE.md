@@ -116,10 +116,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
   live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
   progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
-  * Downloads are **streamed to a `.zip.part` file on disk** (never held in memory — region
-    zips reach ~2.9 GB) and **resumable** via HTTP `Range`: an interrupted download (screen
-    locked → OS suspends the app) resumes on retry instead of restarting; the `.map` is
-    stream-extracted from the zip. The screen is kept awake during a download.
+  * Downloads are **streamed to a `.zip.part` file on disk** with back-pressure
+    (`IOSink.addStream`, not a `sink.add` loop) — nothing is held in memory (region zips reach
+    ~2.9 GB; ~3.7 GB extracted). **Resumable** via HTTP `Range`: an interrupted download (screen
+    locked → OS suspends the app) resumes on retry instead of restarting. The `.map` is
+    **stream-inflated** out of the zip with dart:io's native zlib (the `archive` package's
+    `writeContent` buffers the whole decompressed output in RAM → OOM on big maps; we use
+    `archive` only to read the central directory, then `ZLibDecoder(raw:true).bind` + `addStream`
+    the entry's byte range to disk). `android:largeHeap` set for headroom. Screen kept awake
+    during a download.
   * **Storage:** new maps go to a removable **SD card** when present (app-specific external
     dir, no permission, removed on uninstall), else internal; installed maps are listed across
     all volumes. The Manage-maps screen shows where maps are stored.
@@ -181,6 +186,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 ## Known gotchas
 
+* **Map camera must start over the loaded map.** The home map's initial camera centres on the
+  active map's **bounding-box centre** (`MapRenderService` returns a `LoadedMap{model, center}`),
+  not a hard-coded location. A downloaded region map does NOT cover the Monaco demo coords, so
+  centring there showed only blank/unloaded tiles (black on a cold start with no GPS). Re-centre
+  whenever a *different* map loads (e.g. after a download swaps the active map), until a GPS fix
+  takes over. A blank/black downloaded map is almost always a camera-outside-coverage bug, not a
+  corrupt `.map` (the extractor is verified byte-identical to `unzip`).
 * **Debug-only permissions hide release bugs.** Flutter auto-adds `INTERNET` to the
   *debug/profile* manifests for tooling, so networking "works" on the emulator/debug build but
   fails instantly on a release build if `INTERNET` isn't in `src/main/AndroidManifest.xml`. It
