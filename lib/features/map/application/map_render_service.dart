@@ -30,16 +30,18 @@ class LoadedMap {
 class MapRenderService {
   const MapRenderService();
 
-  Future<LoadedMap> createFromFile(String filePath) async {
+  Future<LoadedMap> createFromFile(String filePath,
+      {String renderTheme = kDarkRenderTheme}) async {
     final datastore = await Mapfile.createFromFile(filename: filePath);
-    return _build(datastore);
+    return _build(datastore, renderTheme);
   }
 
-  Future<LoadedMap> createFromBundledDemo() async {
+  Future<LoadedMap> createFromBundledDemo(
+      {String renderTheme = kDarkRenderTheme}) async {
     final data = await rootBundle.load(kBundledDemoMapAsset);
     final datastore =
         await Mapfile.createFromContent(content: data.buffer.asUint8List());
-    return _build(datastore);
+    return _build(datastore, renderTheme);
   }
 
   /// Reads just the coverage box from the mapsforge `.map` header — a 16-byte
@@ -71,9 +73,9 @@ class MapRenderService {
     }
   }
 
-  Future<LoadedMap> _build(Mapfile datastore) async {
+  Future<LoadedMap> _build(Mapfile datastore, String renderTheme) async {
     final model = await MapModelHelper.createOfflineMapModel(
-      renderthemeFilename: kDarkRenderTheme,
+      renderthemeFilename: renderTheme,
       datastore: datastore,
       zoomlevelRange: kZoomRange,
     );

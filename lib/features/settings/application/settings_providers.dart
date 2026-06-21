@@ -37,4 +37,7 @@ class SettingsController extends Notifier<AppSettings> {
   /// [fileName] of the map to display, or null to auto-pick by location.
   Future<void> setSelectedMap(String? fileName) =>
       update(state.copyWith(selectedMapFileName: fileName));
+
+  Future<void> setColorScheme(AppColorScheme scheme) =>
+      update(state.copyWith(colorScheme: scheme));
 }

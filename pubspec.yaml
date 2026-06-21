@@ -87,6 +87,8 @@ flutter:
 
   assets:
     - assets/render_themes/dark.xml
+    - assets/render_themes/light.xml
+    - assets/render_themes/bw.xml
     - assets/maps/monaco.map
     - assets/routes/monaco_loop.gpx
 

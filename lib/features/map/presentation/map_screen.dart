@@ -7,6 +7,7 @@ import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../core/models/geo_sample.dart';
 import '../../../core/services/route_import_service.dart';
+import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -14,6 +15,7 @@ import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
 import '../../routing/domain/follow_route.dart';
 import '../../routing/domain/route_navigator.dart';
+import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../application/map_providers.dart';
@@ -40,6 +42,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   PolylineMarker? _routeLine;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
+
+  /// Overlay accent colours for the active colour scheme.
+  MapAccents get _accents =>
+      MapAccents.of(ref.read(settingsProvider).colorScheme);
 
 
   @override
@@ -118,8 +124,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _meMarker = CircleMarker(
       latLong: here,
       radius: 2.2,
-      fillColor: 0xFF00E5FF,
-      strokeColor: 0xFFFFFFFF,
+      fillColor: _accents.me,
+      strokeColor: _accents.meStroke,
       strokeWidth: 0.8,
     );
     _markers.addMarker(_meMarker!);
@@ -165,7 +171,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (_path.length >= 2) {
       _trackLine = PolylineMarker(
         path: List.of(_path),
-        strokeColor: 0xFFFF7A00, // orange track
+        strokeColor: _accents.track,
         strokeWidth: 1.2, // slightly thinner than an average road
       );
       _markers.addMarker(_trackLine!);
@@ -185,7 +191,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         path: [
           for (final p in route.points) LatLong(p.latitude, p.longitude),
         ],
-        strokeColor: 0xFF448AFF, // blue route guide
+        strokeColor: _accents.route,
         strokeWidth: 1.0, // slim guide line, thinner than the recorded track
         strokeDasharray: const [6, 4],
       );
@@ -211,8 +217,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _ghostMarker = CircleMarker(
         latLong: LatLong(ghost.latitude, ghost.longitude),
         radius: 2.6,
-        fillColor: 0x99FFFFFF, // translucent white ghost
-        strokeColor: 0xFFBDBDBD,
+        // translucent fill of the ghost accent so it shows on light & dark maps
+        fillColor: 0x99000000 | (_accents.ghost & 0x00FFFFFF),
+        strokeColor: _accents.ghost,
         strokeWidth: 0.8,
       );
       _markers.addMarker(_ghostMarker!);
@@ -224,6 +231,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Widget build(BuildContext context) {
     final mapModelAsync = ref.watch(activeMapModelProvider);
     final m = ref.watch(rideMetricsProvider);
+    final sensor = ref.watch(sensorSnapshotProvider).value;
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
     final ghost = ref.watch(ghostProvider);
@@ -250,6 +258,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     // Move the ghost-rider marker as the race progresses.
     ref.listen(ghostProvider, (_, next) => _onGhost(next));
+
+    // Recolour the overlays when the colour scheme changes (the map itself
+    // reloads with the new render theme via activeMapModelProvider).
+    ref.listen(settingsProvider.select((s) => s.colorScheme), (_, _) {
+      _rebuildTrackLine();
+      _onRouteChanged(
+          ref.read(activeMapModelProvider).value?.model,
+          ref.read(followRouteProvider));
+      _onGhost(ref.read(ghostProvider));
+      _markers.requestRepaint();
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -352,30 +371,65 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   bottom: 8,
                   left: 8,
                   right: 8,
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: _MapStat(
-                          label: 'DIST',
-                          value: formatDistance(m.distanceKm, units),
-                          unit: units.distanceLabel,
-                        ),
+                      // Live BLE sensor values — always shown ("—" with no data).
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MapStat(
+                              label: 'HR',
+                              value: sensor?.heartRate?.toString() ?? '—',
+                              unit: 'bpm',
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _MapStat(
+                              label: 'CAD',
+                              value:
+                                  sensor?.cadenceRpm?.round().toString() ?? '—',
+                              unit: 'rpm',
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _MapStat(
+                              label: 'PWR',
+                              value: sensor?.power?.toString() ?? '—',
+                              unit: 'W',
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _MapStat(
-                          label: 'AVG',
-                          value: formatSpeed(m.avgSpeedKmh, units),
-                          unit: speedUnit,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _MapStat(
-                          label: 'MAX',
-                          value: formatSpeed(m.maxSpeedKmh, units),
-                          unit: speedUnit,
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MapStat(
+                              label: 'DIST',
+                              value: formatDistance(m.distanceKm, units),
+                              unit: units.distanceLabel,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _MapStat(
+                              label: 'AVG',
+                              value: formatSpeed(m.avgSpeedKmh, units),
+                              unit: speedUnit,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _MapStat(
+                              label: 'MAX',
+                              value: formatSpeed(m.maxSpeedKmh, units),
+                              unit: speedUnit,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
+import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
@@ -47,17 +49,20 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-class CycleApp extends StatelessWidget {
+class CycleApp extends ConsumerWidget {
   const CycleApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = ref.watch(settingsProvider.select((s) => s.colorScheme));
+    final theme = buildAppTheme(scheme);
     return MaterialApp.router(
       title: 'Cycle',
       debugShowCheckedModeBanner: false,
-      theme: buildOledTheme(),
-      darkTheme: buildOledTheme(),
-      themeMode: ThemeMode.dark,
+      // `theme` always wins under ThemeMode.light; the scheme's ThemeData already
+      // carries the right brightness (light vs true-black).
+      theme: theme,
+      themeMode: ThemeMode.light,
       routerConfig: appRouter,
     );
   }

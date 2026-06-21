@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Black & white render theme for the Cycle bike computer.
+  True-black background (OLED battery saving) with a fully grayscale map: roads
+  brighten with importance, water/green are dark grays, no colour at all. No
+  external symbol/pattern assets.
+-->
+<rendertheme xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://mapsforge.org/renderTheme"
+    xsi:schemaLocation="http://mapsforge.org/renderTheme https://raw.githubusercontent.com/mapsforge/mapsforge/master/resources/renderTheme.xsd"
+    version="5" map-background="#000000" map-background-outside="#000000">
+
+    <!-- Water -->
+    <rule e="way" k="natural" v="sea|issea|water">
+        <area fill="#191919" />
+    </rule>
+    <rule e="way" k="landuse" v="reservoir|basin">
+        <area fill="#191919" />
+    </rule>
+    <rule e="way" k="waterway" v="riverbank|dock">
+        <area fill="#191919" />
+    </rule>
+    <rule e="way" k="waterway" v="river|canal">
+        <line stroke="#2E2E2E" stroke-width="1.2" />
+    </rule>
+    <rule e="way" k="waterway" v="stream|ditch" zoom-min="14">
+        <line stroke="#2E2E2E" stroke-width="0.6" />
+    </rule>
+
+    <!-- Green / natural areas (rendered as dark grays) -->
+    <rule e="way" k="natural" v="wood">
+        <area fill="#141414" />
+    </rule>
+    <rule e="way" k="landuse" v="forest|wood|grass|meadow|village_green">
+        <area fill="#141414" />
+    </rule>
+    <rule e="way" k="leisure" v="park|garden|pitch|recreation_ground" zoom-min="13">
+        <area fill="#1A1A1A" />
+    </rule>
+    <rule e="way" k="landuse" v="residential|commercial|industrial|retail" zoom-min="13">
+        <area fill="#0C0C0C" />
+    </rule>
+
+    <!-- Buildings -->
+    <rule e="way" k="building" v="*" zoom-min="15">
+        <area fill="#202020" stroke="#303030" stroke-width="0.2" />
+    </rule>
+
+    <!-- Railways -->
+    <rule e="way" k="railway" v="rail" zoom-min="13">
+        <line stroke="#666666" stroke-width="0.7" stroke-dasharray="6,3" />
+    </rule>
+
+    <!-- Roads, grayscale by importance, minor → major -->
+    <rule e="way" k="highway" v="service|living_street" zoom-min="15">
+        <line stroke="#555555" stroke-width="0.8" />
+    </rule>
+    <rule e="way" k="highway" v="residential|unclassified|road" zoom-min="13">
+        <line stroke="#777777" stroke-width="1.0" />
+    </rule>
+    <rule e="way" k="highway" v="tertiary|tertiary_link" zoom-min="12">
+        <line stroke="#969696" stroke-width="1.2" />
+    </rule>
+    <rule e="way" k="highway" v="secondary|secondary_link" zoom-min="11">
+        <line stroke="#B0B0B0" stroke-width="1.3" />
+    </rule>
+    <rule e="way" k="highway" v="primary|primary_link" zoom-min="9">
+        <line stroke="#C8C8C8" stroke-width="1.5" />
+    </rule>
+    <rule e="way" k="highway" v="trunk|trunk_link" zoom-min="8">
+        <line stroke="#DCDCDC" stroke-width="1.6" />
+    </rule>
+    <rule e="way" k="highway" v="motorway|motorway_link" zoom-min="6">
+        <line stroke="#F0F0F0" stroke-width="1.8" />
+    </rule>
+
+    <!-- Cycling infrastructure — emphasised (bright, dashed to distinguish) -->
+    <rule e="way" k="highway" v="cycleway" zoom-min="13">
+        <line stroke="#E8E8E8" stroke-width="1.1" stroke-dasharray="5,3" />
+    </rule>
+    <rule e="way" k="cycleway" v="track|lane|opposite_track|opposite_lane" zoom-min="14">
+        <line stroke="#C0C0C0" stroke-width="0.9" stroke-dasharray="4,2" />
+    </rule>
+    <rule e="way" k="highway" v="path|footway|track|bridleway" zoom-min="14">
+        <line stroke="#8A8A8A" stroke-width="0.7" stroke-dasharray="3,2" />
+    </rule>
+
+    <!-- Road name labels at high zoom -->
+    <rule e="way" k="highway" v="motorway|trunk|primary|secondary|tertiary|residential" zoom-min="16">
+        <caption k="name" font-style="bold" font-size="11" fill="#FFFFFF" stroke="#000000" stroke-width="2.0" />
+    </rule>
+
+    <!-- Place labels -->
+    <rule e="node" k="place" v="city|town" zoom-min="9">
+        <caption k="name" font-style="bold" font-size="13" fill="#FFFFFF" stroke="#000000" stroke-width="2.0" />
+    </rule>
+    <rule e="node" k="place" v="village|suburb" zoom-min="13">
+        <caption k="name" font-size="11" fill="#DDDDDD" stroke="#000000" stroke-width="2.0" />
+    </rule>
+</rendertheme>

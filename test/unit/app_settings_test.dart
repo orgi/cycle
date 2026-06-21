@@ -11,9 +11,17 @@ void main() {
       wheelCircumferenceMeters: 2.2,
       hardwareButtonsEnabled: false,
       selectedMapFileName: 'Bayern.map',
+      colorScheme: AppColorScheme.bw,
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
+    expect(back.colorScheme, AppColorScheme.bw);
+  });
+
+  test('colorScheme defaults to dark and tolerates an unknown value', () {
+    expect(const AppSettings().colorScheme, AppColorScheme.dark);
+    expect(AppSettings.fromJson({'color_scheme': 'nonsense'}).colorScheme,
+        AppColorScheme.dark);
   });
 
   test('selectedMapFileName defaults to null (auto) and copyWith can clear it',

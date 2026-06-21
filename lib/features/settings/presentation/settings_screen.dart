@@ -17,6 +17,24 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const _Header('Appearance'),
+          RadioGroup<AppColorScheme>(
+            groupValue: settings.colorScheme,
+            onChanged: (s) {
+              if (s != null) controller.setColorScheme(s);
+            },
+            child: Column(
+              children: [
+                for (final scheme in AppColorScheme.values)
+                  RadioListTile<AppColorScheme>(
+                    key: Key('scheme_${scheme.name}'),
+                    value: scheme,
+                    title: Text(scheme.label),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(),
           const _Header('Units'),
           RadioGroup<UnitSystem>(
             groupValue: settings.units,

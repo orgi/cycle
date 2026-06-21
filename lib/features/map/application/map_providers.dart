@@ -110,10 +110,12 @@ final chosenMapPathProvider = Provider<String?>((ref) {
 /// automatically.
 final activeMapModelProvider = FutureProvider<LoadedMap>((ref) async {
   final path = ref.watch(chosenMapPathProvider);
+  final renderTheme =
+      ref.watch(settingsProvider.select((s) => s.colorScheme)).renderThemeAsset;
   final service = ref.watch(mapRenderServiceProvider);
   final loaded = path != null
-      ? await service.createFromFile(path)
-      : await service.createFromBundledDemo();
+      ? await service.createFromFile(path, renderTheme: renderTheme)
+      : await service.createFromBundledDemo(renderTheme: renderTheme);
   ref.onDispose(() {
     // mapsforge_flutter 4.0.0 throws "Cannot remove from a fixed-length list"
     // while disposing an in-memory Mapfile (ReadbufferMemory.dispose). The

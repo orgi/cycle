@@ -8,6 +8,23 @@ enum UnitSystem {
   final String speedLabel;
 }
 
+/// App + map colour scheme. Each restyles the UI, the offline map render theme,
+/// and the track/route/location accent colours.
+enum AppColorScheme {
+  /// True-black OLED dark scheme (default).
+  dark('Dark', 'assets/render_themes/dark.xml'),
+
+  /// Light, non-dark scheme.
+  light('Light', 'assets/render_themes/light.xml'),
+
+  /// Black & white: dark background with a grayscale map.
+  bw('Black & white', 'assets/render_themes/bw.xml');
+
+  const AppColorScheme(this.label, this.renderThemeAsset);
+  final String label;
+  final String renderThemeAsset;
+}
+
 /// Sentinel so [AppSettings.copyWith] can set a nullable field back to null.
 const Object _unset = Object();
 
@@ -18,6 +35,7 @@ class AppSettings {
     this.wheelCircumferenceMeters = 2.105, // 700x25c default
     this.hardwareButtonsEnabled = true,
     this.selectedMapFileName,
+    this.colorScheme = AppColorScheme.dark,
   });
 
   /// Distance/speed units shown in the UI.
@@ -33,11 +51,15 @@ class AppSettings {
   /// the map covering the current location automatically.
   final String? selectedMapFileName;
 
+  /// App + map colour scheme.
+  final AppColorScheme colorScheme;
+
   AppSettings copyWith({
     UnitSystem? units,
     double? wheelCircumferenceMeters,
     bool? hardwareButtonsEnabled,
     Object? selectedMapFileName = _unset,
+    AppColorScheme? colorScheme,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -48,6 +70,7 @@ class AppSettings {
         selectedMapFileName: identical(selectedMapFileName, _unset)
             ? this.selectedMapFileName
             : selectedMapFileName as String?,
+        colorScheme: colorScheme ?? this.colorScheme,
       );
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +78,7 @@ class AppSettings {
         'wheel_circumference_m': wheelCircumferenceMeters,
         'hardware_buttons': hardwareButtonsEnabled,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
+        'color_scheme': colorScheme.name,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -66,6 +90,10 @@ class AppSettings {
             (json['wheel_circumference_m'] as num?)?.toDouble() ?? 2.105,
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
         selectedMapFileName: json['selected_map'] as String?,
+        colorScheme: AppColorScheme.values.firstWhere(
+          (s) => s.name == json['color_scheme'],
+          orElse: () => AppColorScheme.dark,
+        ),
       );
 
   @override
@@ -74,9 +102,10 @@ class AppSettings {
       other.units == units &&
       other.wheelCircumferenceMeters == wheelCircumferenceMeters &&
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
-      other.selectedMapFileName == selectedMapFileName;
+      other.selectedMapFileName == selectedMapFileName &&
+      other.colorScheme == colorScheme;
 
   @override
   int get hashCode => Object.hash(units, wheelCircumferenceMeters,
-      hardwareButtonsEnabled, selectedMapFileName);
+      hardwareButtonsEnabled, selectedMapFileName, colorScheme);
 }

@@ -34,7 +34,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Default is enabled; tapping disables it.
+    // Default is enabled; tapping disables it. Scroll it into view first
+    // (the Appearance section sits above it).
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('hardwareButtonsSwitch')), 200);
     await tester.tap(find.byKey(const Key('hardwareButtonsSwitch')));
     await tester.pumpAndSettle();
     expect((await store.load()).hardwareButtonsEnabled, isFalse);
