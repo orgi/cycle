@@ -20,6 +20,8 @@ void main() {
                   sizeBytes: 27 * 1024 * 1024,
                 ),
               ]),
+          mapStorageLocationProvider
+              .overrideWith((ref) async => 'Internal storage'),
         ],
         child: const MaterialApp(home: ManageMapsScreen()),
       ),
@@ -40,5 +42,9 @@ void main() {
 
     // Sizes are shown.
     expect(find.text('27 MB'), findsOneWidget); // Andorra
+
+    // Storage location is surfaced.
+    expect(find.byKey(const Key('storageLocationTile')), findsOneWidget);
+    expect(find.text('Maps are stored on: Internal storage'), findsOneWidget);
   });
 }

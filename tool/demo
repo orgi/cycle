@@ -50,6 +50,7 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     # the right): settings, maps, sensors, tracks, follow.
     MAP_X=$(( W - $(dp 24) ))        # rightmost app-bar action
     SETTINGS_X=$(( W - $(dp 24) ))   # settings (rightmost on the map screen)
+    MAPS_X=$(( W - $(dp 72) ))       # manage maps (layers, 2nd from right)
     TRACKS_X=$(( W - $(dp 168) ))    # Rides (history)
     FOLLOW_X=$(( W - $(dp 216) ))    # leftmost action (follow-route menu)
     BTN_X=$(( W / 2 )); BTN_Y=$(( H - $(dp 34) ))
@@ -152,6 +153,34 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
       # Settings screen (rightmost app-bar action).
       adb shell input tap "$SETTINGS_X" "$APPBAR_Y"; sleep 2
       adb exec-out screencap -p > "screenshots/shot_10_settings.png"; echo "   shot_10_settings"
+    ) 2>&1 || true
+
+    # Map manager: storage location, then a real OpenAndroMaps download
+    # (Andorra, ~27 MB) to exercise the streaming download + zip-extract end to
+    # end on a real file. Fault-isolated.
+    ( set +e
+      echo ">> manage maps + real download test"
+      adb shell am force-stop "$APP_ID"
+      adb shell am start -n "$APP_ID/.MainActivity" >/dev/null 2>&1
+      sleep 9
+      adb shell input tap "$MAPS_X" "$APPBAR_Y"; sleep 2
+      adb exec-out screencap -p > "screenshots/shot_11_manage_maps.png"; echo "   shot_11_manage_maps"
+      # Locate the Andorra row and tap its trailing download icon (far right).
+      adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+      AY="$( { adb shell cat /sdcard/ui.xml 2>/dev/null | tr ">" "\n" \
+        | grep "Andorra" | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
+        | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
+      if [ -n "$AY" ]; then
+        set -- $AY; CY=$(( ($2 + $4) / 2 ))
+        adb shell input tap $(( W - $(dp 28) )) "$CY"   # download icon
+        echo "   tapped download for Andorra at y=$CY"
+        for i in $(seq 1 12); do sleep 8; done          # up to ~96s
+        adb exec-out screencap -p > "screenshots/shot_12_download.png"; echo "   shot_12_download"
+        echo ">> installed .map files on device:"
+        adb shell "run-as $APP_ID find /data/data/$APP_ID -name *.map 2>/dev/null; find /sdcard/Android/data/$APP_ID -name *.map 2>/dev/null" | head
+      else
+        echo "   (could not locate Andorra row)"
+      fi
     ) 2>&1 || true
 
     echo ">> done"

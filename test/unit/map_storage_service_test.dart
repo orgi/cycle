@@ -56,4 +56,44 @@ void main() {
     final installed = await storage.listInstalled();
     expect(installed.map((m) => m.fileName), ['Region.map']);
   });
+
+  test('lists and deletes maps across multiple volumes (internal + SD)',
+      () async {
+    final internal = await Directory.systemTemp.createTemp('cycle_int');
+    final sd = await Directory.systemTemp.createTemp('cycle_sd');
+    addTearDown(() async {
+      if (await internal.exists()) await internal.delete(recursive: true);
+      if (await sd.exists()) await sd.delete(recursive: true);
+    });
+
+    final svc = MapStorageService(
+      rootResolver: () async => sd, // new downloads go to the "SD card"
+      scanRootsResolver: () async => [internal, sd],
+    );
+
+    await Directory('${internal.path}/maps').create(recursive: true);
+    await File('${internal.path}/maps/Aland.map').writeAsBytes([1, 2, 3]);
+    await Directory('${sd.path}/maps').create(recursive: true);
+    await File('${sd.path}/maps/Bland.map').writeAsBytes([4, 5, 6, 7]);
+
+    // Installed maps are found across both volumes.
+    final installed = await svc.listInstalled();
+    expect(installed.map((m) => m.fileName), ['Aland.map', 'Bland.map']);
+
+    // New downloads target the preferred (SD) write dir.
+    final dest = await svc.fileForRegion(region);
+    expect(dest.path, startsWith(sd.path));
+
+    // Deleting a region clears it from whichever volume holds it.
+    const aland = MapRegion(
+      id: 'Aland',
+      name: 'Aland',
+      group: 'Europe (countries)',
+      url: 'https://example.org/Aland.zip',
+      sizeBytes: 3,
+    );
+    await svc.delete(aland);
+    final after = await svc.listInstalled();
+    expect(after.map((m) => m.fileName), ['Bland.map']);
+  });
 }

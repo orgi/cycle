@@ -15,6 +15,7 @@ class ManageMapsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final installedAsync = ref.watch(installedMapsProvider);
     final downloads = ref.watch(mapDownloadControllerProvider);
+    final storageLocation = ref.watch(mapStorageLocationProvider);
 
     final installedFileNames = installedAsync.maybeWhen(
       data: (maps) => maps.map((m) => m.fileName).toSet(),
@@ -31,6 +32,19 @@ class ManageMapsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Manage maps')),
       body: ListView(
         children: [
+          ListTile(
+            key: const Key('storageLocationTile'),
+            leading: const Icon(Icons.sd_storage_outlined),
+            title: const Text('Storage'),
+            subtitle: Text(
+              storageLocation.maybeWhen(
+                data: (label) => 'Maps are stored on: $label',
+                orElse: () => 'Maps are stored on this device',
+              ),
+            ),
+            dense: true,
+          ),
+          const Divider(height: 1),
           for (final entry in groups.entries) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
@@ -104,8 +118,8 @@ class _RegionTile extends ConsumerWidget {
       );
     }
 
-    final subtitle = progress?.hasError ?? false
-        ? 'Download failed — tap to retry'
+    final subtitle = (progress?.hasError ?? false)
+        ? '${progress!.error} — tap to retry'
         : formatBytes(region.sizeBytes);
 
     return ListTile(

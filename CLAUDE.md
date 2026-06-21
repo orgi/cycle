@@ -97,6 +97,12 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * Caches live in gitignored `/.cache/` so they persist between runs.
 * **iOS cannot be built/tested on this Linux host** (needs macOS/Xcode). Keep all Dart
   code and `ios/` config cross-platform; build/test iOS later on a Mac or macOS CI.
+* **Release signing (stable key):** release builds are signed with a fixed key
+  (`android/app/cycle-release.jks` + `android/key.properties`, **both gitignored**) wired in
+  `android/app/build.gradle.kts`. This lets a release APK be updated in place (`adb install -r`)
+  **without uninstalling**, so downloaded maps + other app data survive updates. Back up the
+  keystore — losing it forces an uninstall to update again. The build falls back to the debug
+  key when the keystore is absent (so a fresh clone still builds).
 
 ## Milestone progress
 
@@ -110,6 +116,17 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
   live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
   progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
+  * Downloads are **streamed to a `.zip.part` file on disk** (never held in memory — region
+    zips reach ~2.9 GB) and **resumable** via HTTP `Range`: an interrupted download (screen
+    locked → OS suspends the app) resumes on retry instead of restarting; the `.map` is
+    stream-extracted from the zip. The screen is kept awake during a download.
+  * **Storage:** new maps go to a removable **SD card** when present (app-specific external
+    dir, no permission, removed on uninstall), else internal; installed maps are listed across
+    all volumes. The Manage-maps screen shows where maps are stored.
+  * **Errors** are classified to a short reason (no connection / not enough space / server
+    error (HTTP nnn) / …) shown in the row instead of a generic "Download failed".
+  * NOTE: `INTERNET` permission lives in the MAIN manifest (was only in debug/profile, so
+    release builds had no network) — see Known gotchas.
 * **M3 — BLE sensors:** done. Scan/pair screen + live HR/cadence/power on the dashboard;
   GPS+BLE speed fusion (BLE wheel speed preferred when fresh). GATT parsers, CSC calculator
   and fusion unit-tested; emulator GUI test uses a fake BLE backend (emulators have no BLE,
@@ -164,6 +181,11 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 ## Known gotchas
 
+* **Debug-only permissions hide release bugs.** Flutter auto-adds `INTERNET` to the
+  *debug/profile* manifests for tooling, so networking "works" on the emulator/debug build but
+  fails instantly on a release build if `INTERNET` isn't in `src/main/AndroidManifest.xml`. It
+  is now declared there. Verify networking on a **release** APK (`flutter build apk --release`,
+  `aapt dump permissions`), not just the debug build.
 * **Tests don't catch startup hangs.** Widget/integration tests bypass real app launch, so a
   green suite is NOT proof the app runs. After adding a plugin/package or touching startup,
   boot the emulator and screenshot the app. Two packages broke launch despite green tests and

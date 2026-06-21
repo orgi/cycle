@@ -18,6 +18,11 @@ final mapDownloadServiceProvider = Provider<MapDownloadService>(
 final mapRenderServiceProvider =
     Provider<MapRenderService>((ref) => const MapRenderService());
 
+/// Where new maps are stored ("SD card" / "Internal storage"), shown in the UI.
+final mapStorageLocationProvider = FutureProvider<String>(
+  (ref) => ref.watch(mapStorageServiceProvider).storageLocationLabel(),
+);
+
 /// Maps currently present on disk. Invalidated after a download or delete.
 final installedMapsProvider = FutureProvider<List<InstalledMap>>(
   (ref) => ref.watch(mapStorageServiceProvider).listInstalled(),
@@ -70,6 +75,11 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
   Future<void> download(MapRegion region) async {
     if (state.containsKey(region.id) && !state[region.id]!.hasError) return;
     _set(region.id, const MapDownloadProgress(progress: 0));
+    // Keep the screen on during a (potentially long, multi-GB) download so the
+    // OS doesn't suspend the app and drop the connection. An interrupted
+    // download still resumes from its .part file on retry.
+    final wake = ref.read(screenWakeServiceProvider);
+    await wake.enable();
     try {
       await ref.read(mapDownloadServiceProvider).download(
             region,
@@ -79,7 +89,12 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
       _remove(region.id);
       ref.invalidate(installedMapsProvider);
     } catch (e) {
-      _set(region.id, MapDownloadProgress(progress: 0, error: e.toString()));
+      // download() already normalises failures to a short reason.
+      final reason = e is MapDownloadException ? e.message : describeDownloadError(e);
+      _set(region.id, MapDownloadProgress(progress: 0, error: reason));
+    } finally {
+      // Don't release the wakelock if a ride is recording — it owns it too.
+      if (!ref.read(recordingProvider)) await wake.disable();
     }
   }
 
