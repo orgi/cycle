@@ -207,6 +207,20 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `adb input keyevent KEYCODE_VOLUME_UP/DOWN` starts/stops a recording **and the media volume
   stays unchanged** (proving interception), with the native `volume key -> up/down` log firing.
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
+* **Post-M7 polish.** Home screen also shows **HR/Cadence/Power** boxes (live BLE
+  `sensorSnapshotProvider`, always visible, "—" with no data). **Colour schemes**
+  (`AppColorScheme` Dark/Light/B&W, Settings → Appearance): each restyles the app
+  `ThemeData` (`buildAppTheme`), the offline map render theme (`dark.xml`/`light.xml`/
+  `bw.xml`, swapped via `activeMapModelProvider` reloading), and the overlay accents
+  (`MapAccents`). The app theme + accents switch live; the **map render theme** applies on the
+  next map (re)load (cold start, or as tiles redraw on pan) — already-rendered tiles stay in
+  mapsforge's cache, and force-purging them (`MemoryTileCache.purgeAllCaches`) ANRs the main
+  thread with a synchronous re-raster, so don't. **Direction arrows** on the recorded track +
+  followed route: rotated
+  `IconMarker(Icons.navigation)` glyphs (no image assets) oriented by `geo.bearingDegrees`,
+  spaced adaptively (~60 max). Marker rotation only works via `IconMarker` (icon-font glyph) —
+  the vendored `CaptionMarker`'s `rotation` arg is a no-op and the caption renderer ignores
+  theta, so text can't be rotated.
 
 ## Known gotchas
 

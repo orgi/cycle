@@ -153,6 +153,24 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
       # Settings screen (rightmost app-bar action).
       adb shell input tap "$SETTINGS_X" "$APPBAR_Y"; sleep 2
       adb exec-out screencap -p > "screenshots/shot_10_settings.png"; echo "   shot_10_settings"
+      # Colour schemes: on Settings now (Appearance section at top). Switch to
+      # Light then B&W, screenshotting the map each time, then restore Dark.
+      tap_text() {
+        adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+        b="$( { adb shell cat /sdcard/ui.xml 2>/dev/null | tr ">" "\n" \
+          | grep "$1" | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
+          | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
+        if [ -n "$b" ]; then set -- $b; adb shell input tap $(( ($1+$3)/2 )) $(( ($2+$4)/2 )); fi
+      }
+      relaunch() { adb shell am force-stop "$APP_ID"; adb shell am start -n "$APP_ID/.MainActivity" >/dev/null 2>&1; sleep 10; }
+      # Pick a scheme, then COLD-START so the map renders fresh in it (a live
+      # swap fights the mapsforge tile cache; the scheme is persisted).
+      tap_text "Light"; sleep 1; relaunch
+      adb exec-out screencap -p > "screenshots/shot_10a_scheme_light.png"; echo "   shot_10a_scheme_light"
+      adb shell input tap "$SETTINGS_X" "$APPBAR_Y"; sleep 2; tap_text "Black"; sleep 1; relaunch
+      adb exec-out screencap -p > "screenshots/shot_10b_scheme_bw.png"; echo "   shot_10b_scheme_bw"
+      # restore Dark for the rest of the demo
+      adb shell input tap "$SETTINGS_X" "$APPBAR_Y"; sleep 2; tap_text "Dark"; sleep 1; relaunch
     ) 2>&1 || true
 
     # Map manager: storage location, then a real OpenAndroMaps download
