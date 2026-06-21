@@ -133,9 +133,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     whose bbox contains the current GPS position** (most local detail when regions overlap, e.g.
     Bayern inside Alps), else the first installed map. `chosenMapPathProvider` feeds
     `activeMapModelProvider` a *stable* path so the map reloads only when the choice actually
-    changes (not every 1 Hz fix); `installedMapBoundsProvider` reads each map's bbox once
-    (`MapRenderService.boundsOf`). A `map_outlined` app-bar picker (`_MapPickerMenu`, shown only
-    with ≥2 maps installed) offers "Automatic (by location)" + each installed map.
+    changes (not every 1 Hz fix); `installedMapBoundsProvider` reads each map's bbox once via
+    `MapRenderService.boundsOf`, which reads the **16-byte bbox straight from the mapsforge
+    header** (offset 44, four big-endian int32 microdegrees) — it must NOT
+    `Mapfile.createFromFile` each map just for metadata: opening/indexing a multi-GB region in
+    an isolate for every installed map (on top of the display map) froze the app on a real
+    device with the Alps + Bayern maps. A `map_outlined` app-bar picker (`_MapPickerMenu`, shown
+    only with ≥2 maps installed) offers "Automatic (by location)" + each installed map.
   * Downloads are **streamed to a `.zip.part` file on disk** with back-pressure
     (`IOSink.addStream`, not a `sink.add` loop) — nothing is held in memory (region zips reach
     ~2.9 GB; ~3.7 GB extracted). **Resumable** via HTTP `Range`: an interrupted download (screen

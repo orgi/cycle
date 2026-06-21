@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:mapsforge_flutter/mapsforge.dart';
 import 'package:mapsforge_flutter_core/model.dart';
@@ -39,16 +42,32 @@ class MapRenderService {
     return _build(datastore);
   }
 
-  /// Reads just the coverage box of a `.map` file (opens it, then disposes the
-  /// isolate-backed datastore) — used to auto-pick the map covering a position.
+  /// Reads just the coverage box from the mapsforge `.map` header — a 16-byte
+  /// read at a fixed offset. Crucially it does NOT open/index the whole map: a
+  /// full `Mapfile.createFromFile` on a multi-GB region (Alps ≈ 3.7 GB) spins up
+  /// an isolate and parses the tile index, and doing that for every installed
+  /// map at startup (on top of the display map) froze the app. Used to auto-pick
+  /// the map covering a position.
   Future<BoundingBox> boundsOf(String filePath) async {
-    final datastore = await Mapfile.createFromFile(filename: filePath);
+    final raf = await File(filePath).open();
     try {
-      return await datastore.getBoundingBox();
+      // Header: magic(20) + headerSize(4) + version(4) + fileSize(8) + date(8),
+      // then the bounding box as 4 signed big-endian int32 microdegrees:
+      // minLat, minLon, maxLat, maxLon.
+      await raf.setPosition(20 + 4 + 4 + 8 + 8);
+      final bytes = await raf.read(16);
+      if (bytes.length < 16) {
+        throw const FormatException('map header too short for a bounding box');
+      }
+      final data = ByteData.sublistView(Uint8List.fromList(bytes));
+      return BoundingBox(
+        data.getInt32(0) / 1e6, // minLatitude
+        data.getInt32(4) / 1e6, // minLongitude
+        data.getInt32(8) / 1e6, // maxLatitude
+        data.getInt32(12) / 1e6, // maxLongitude
+      );
     } finally {
-      try {
-        datastore.dispose();
-      } catch (_) {}
+      await raf.close();
     }
   }
 
