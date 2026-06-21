@@ -23,4 +23,15 @@ double haversineMeters(
   return earthRadius * c;
 }
 
+/// Initial compass bearing in degrees (0 = north, 90 = east, clockwise) from
+/// point 1 to point 2. Used to orient direction arrows along a track/route.
+double bearingDegrees(double lat1, double lon1, double lat2, double lon2) {
+  final dLon = _toRadians(lon2 - lon1);
+  final y = math.sin(dLon) * math.cos(_toRadians(lat2));
+  final x = math.cos(_toRadians(lat1)) * math.sin(_toRadians(lat2)) -
+      math.sin(_toRadians(lat1)) * math.cos(_toRadians(lat2)) * math.cos(dLon);
+  final brng = math.atan2(y, x) * 180.0 / math.pi;
+  return (brng + 360.0) % 360.0;
+}
+
 double _toRadians(double degrees) => degrees * math.pi / 180.0;

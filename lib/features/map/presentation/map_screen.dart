@@ -40,6 +40,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   CircleMarker? _ghostMarker;
   PolylineMarker? _trackLine;
   PolylineMarker? _routeLine;
+  // Direction arrows along the recorded track and the followed route.
+  final List<IconMarker> _trackArrows = [];
+  final List<IconMarker> _routeArrows = [];
+  int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
 
@@ -176,6 +180,56 @@ class _MapScreenState extends ConsumerState<MapScreen>
       );
       _markers.addMarker(_trackLine!);
     }
+    _rebuildTrackArrows();
+  }
+
+  /// Direction arrows along the recorded track. Rebuilt as the track grows
+  /// (rate-limited) or when the colour scheme changes (`force`).
+  void _rebuildTrackArrows({bool force = false}) {
+    if (!force && (_path.length - _trackArrowsAtLen).abs() < 5) return;
+    _trackArrowsAtLen = _path.length;
+    for (final a in _trackArrows) {
+      _markers.removeMarker(a);
+    }
+    _trackArrows
+      ..clear()
+      ..addAll(_arrowsAlong(_path, _accents.track));
+    for (final a in _trackArrows) {
+      _markers.addMarker(a);
+    }
+  }
+
+  /// Builds evenly-spaced direction arrows along [pts]. The interval adapts to
+  /// the total length so the whole line is marked with at most ~60 arrows
+  /// (rotated [Icons.navigation] glyphs — no image assets needed).
+  List<IconMarker> _arrowsAlong(List<LatLong> pts, int color) {
+    final out = <IconMarker>[];
+    if (pts.length < 2) return out;
+    var total = 0.0;
+    for (var i = 1; i < pts.length; i++) {
+      total += haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
+          pts[i].latitude, pts[i].longitude);
+    }
+    final interval = total / 60.0 > 200.0 ? total / 60.0 : 200.0;
+    var acc = interval; // place the first arrow one interval in
+    for (var i = 1; i < pts.length; i++) {
+      final a = pts[i - 1];
+      final b = pts[i];
+      acc += haversineMeters(
+          a.latitude, a.longitude, b.latitude, b.longitude);
+      if (acc >= interval) {
+        acc = 0;
+        out.add(IconMarker(
+          latLong: b,
+          iconData: Icons.navigation,
+          size: 12,
+          bitmapColor: color,
+          rotation:
+              bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude),
+        ));
+      }
+    }
+    return out;
   }
 
   /// Draws (or clears) the route being followed as a dashed blue guide line. The
@@ -186,16 +240,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _markers.removeMarker(previous);
       _routeLine = null;
     }
+    for (final a in _routeArrows) {
+      _markers.removeMarker(a);
+    }
+    _routeArrows.clear();
     if (route != null) {
+      final pts = [
+        for (final p in route.points) LatLong(p.latitude, p.longitude),
+      ];
       _routeLine = PolylineMarker(
-        path: [
-          for (final p in route.points) LatLong(p.latitude, p.longitude),
-        ],
+        path: pts,
         strokeColor: _accents.route,
         strokeWidth: 1.0, // slim guide line, thinner than the recorded track
         strokeDasharray: const [6, 4],
       );
       _markers.addMarker(_routeLine!);
+      _routeArrows.addAll(_arrowsAlong(pts, _accents.route));
+      for (final a in _routeArrows) {
+        _markers.addMarker(a);
+      }
       // If we have no GPS fix yet, show the route by centring on its start.
       if (model != null && !_initialPositionSet) {
         final start = route.points.first;
@@ -263,6 +326,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // reloads with the new render theme via activeMapModelProvider).
     ref.listen(settingsProvider.select((s) => s.colorScheme), (_, _) {
       _rebuildTrackLine();
+      _rebuildTrackArrows(force: true);
       _onRouteChanged(
           ref.read(activeMapModelProvider).value?.model,
           ref.read(followRouteProvider));

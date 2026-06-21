@@ -23,4 +23,20 @@ void main() {
       expect(d, closeTo(100, 1));
     });
   });
+
+  group('bearingDegrees', () {
+    test('cardinal directions (0=N, 90=E, 180=S, 270=W)', () {
+      expect(bearingDegrees(0, 0, 1, 0), closeTo(0, 0.5)); // north
+      expect(bearingDegrees(0, 0, 0, 1), closeTo(90, 0.5)); // east
+      expect(bearingDegrees(1, 0, 0, 0), closeTo(180, 0.5)); // south
+      expect(bearingDegrees(0, 1, 0, 0), closeTo(270, 0.5)); // west
+    });
+
+    test('is always normalised to [0, 360)', () {
+      final b = bearingDegrees(52.5, 13.4, 52.4, 13.3); // south-west
+      expect(b, greaterThanOrEqualTo(0));
+      expect(b, lessThan(360));
+      expect(b, closeTo(213, 3));
+    });
+  });
 }
