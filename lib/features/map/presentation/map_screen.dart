@@ -97,6 +97,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   void _onPosition(MapModel model, GeoSample sample) {
+    final firstFix = !_initialPositionSet;
     _initialPositionSet = true;
     final here = LatLong(sample.latitude, sample.longitude);
 
@@ -121,7 +122,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
     _markers.addMarker(_meMarker!);
 
-    model.setPosition(MapPosition(sample.latitude, sample.longitude, 16));
+    // Follow the rider, but keep the zoom they chose. Only the first fix sets a
+    // riding zoom; later fixes use moveTo, which preserves the current zoom (and
+    // rotation) — otherwise a manual zoom snaps back on the next 1 Hz fix.
+    if (firstFix || model.lastPosition == null) {
+      model.setPosition(MapPosition(sample.latitude, sample.longitude, 16));
+    } else {
+      model.moveTo(sample.latitude, sample.longitude);
+    }
   }
 
   /// Centre on the demo location once, after the map is ready — only while no

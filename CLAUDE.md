@@ -113,9 +113,20 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   metric-only dashboard was removed. An editable/drag-resize dashboard was attempted but the
   only suitable package hangs on-device, so it's **deferred** (build from first-party widgets
   if revisited). `lib/features/map/presentation/map_screen.dart` is the home.
+  * **Map-follow camera:** the first GPS fix sets a riding zoom (16); later fixes use
+    `MapModel.moveTo` (re-centre, **keep the user's zoom/rotation**) — `setPosition` with a
+    fixed zoom on every 1 Hz fix snapped a manual zoom back. Before any GPS fix the camera sits
+    on the active map's bounding-box centre (see the camera gotcha), re-centring when a
+    different map loads.
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
   live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
   progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
+  * **Catalogue** (`lib/features/map/domain/map_catalog.dart`) is the **full** OpenAndroMaps
+    Europe + Germany listing (~80 regions: Alpine/multi-country regions, countries, and German
+    Bundesländer incl. Bayern), grouped greater-region-first then alphabetical. It is
+    **generated** from the live mirror by `tool/gen_map_catalog.py` (`tool/fl python3
+    tool/gen_map_catalog.py > …/map_catalog.dart`) — don't hand-edit names/URLs/sizes; re-run to
+    refresh. Add other continents by extending that script.
   * Downloads are **streamed to a `.zip.part` file on disk** with back-pressure
     (`IOSink.addStream`, not a `sink.add` loop) — nothing is held in memory (region zips reach
     ~2.9 GB; ~3.7 GB extracted). **Resumable** via HTTP `Range`: an interrupted download (screen

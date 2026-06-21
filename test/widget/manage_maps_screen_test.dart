@@ -11,13 +11,14 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          // Andorra already downloaded; everything else available. (Andorra is
-          // near the top of the list so it renders without scrolling.)
+          // Alps already downloaded; everything else available. Alps is the
+          // first catalogue entry, so it (and its neighbours) render without
+          // scrolling on the test surface.
           installedMapsProvider.overrideWith((ref) async => const [
                 InstalledMap(
-                  fileName: 'Andorra.map',
-                  path: '/tmp/maps/Andorra.map',
-                  sizeBytes: 27 * 1024 * 1024,
+                  fileName: 'Alps.map',
+                  path: '/tmp/maps/Alps.map',
+                  sizeBytes: 100 * 1024 * 1024,
                 ),
               ]),
           mapStorageLocationProvider
@@ -28,20 +29,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Group headers from the catalogue.
-    expect(find.text('ALPINE REGIONS'), findsOneWidget);
-    expect(find.text('EUROPE (COUNTRIES)'), findsOneWidget);
+    // First group header from the catalogue (greater regions first).
+    expect(find.text('REGIONS (MULTI-COUNTRY)'), findsOneWidget);
 
-    // Andorra is installed -> delete control, no download control.
-    expect(find.byKey(const Key('delete_Andorra')), findsOneWidget);
-    expect(find.byKey(const Key('download_Andorra')), findsNothing);
+    // Alps is installed -> delete control, no download control. The row shows
+    // the catalogue size (~2.9 GB).
+    expect(find.byKey(const Key('delete_Alps')), findsOneWidget);
+    expect(find.byKey(const Key('download_Alps')), findsNothing);
+    expect(find.text('2.7 GB'), findsOneWidget);
 
-    // Alps is not installed -> download control.
-    expect(find.byKey(const Key('download_Alps')), findsOneWidget);
-    expect(find.byKey(const Key('delete_Alps')), findsNothing);
-
-    // Sizes are shown.
-    expect(find.text('27 MB'), findsOneWidget); // Andorra
+    // Alps (East) is not installed -> download control, no delete.
+    expect(find.byKey(const Key('download_Alps-East')), findsOneWidget);
+    expect(find.byKey(const Key('delete_Alps-East')), findsNothing);
 
     // Storage location is surfaced.
     expect(find.byKey(const Key('storageLocationTile')), findsOneWidget);

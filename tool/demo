@@ -165,8 +165,16 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
       sleep 9
       adb shell input tap "$MAPS_X" "$APPBAR_Y"; sleep 2
       adb exec-out screencap -p > "screenshots/shot_11_manage_maps.png"; echo "   shot_11_manage_maps"
+      # The catalogue now has ~80 regions in groups (Regions / Countries /
+      # Germany). Andorra (small, ~27 MB) is in Countries, below the fold —
+      # scroll until it is on screen before locating its row.
+      for s in $(seq 1 8); do
+        adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+        if adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "Andorra"; then break; fi
+        adb shell input swipe $(( W / 2 )) $(( H * 3 / 4 )) $(( W / 2 )) $(( H / 4 )) 250
+        sleep 1
+      done
       # Locate the Andorra row and tap its trailing download icon (far right).
-      adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
       AY="$( { adb shell cat /sdcard/ui.xml 2>/dev/null | tr ">" "\n" \
         | grep "Andorra" | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
         | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
@@ -193,6 +201,16 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
         sleep 12
         adb exec-out screencap -p > "screenshots/shot_14_reopen_nogps.png"; echo "   shot_14_reopen_nogps"
         adb shell settings put secure location_mode 3   # restore for later runs
+        # Catalogue depth: open Manage maps and scroll to the Germany group to
+        # show the Bundesland sub-regions (e.g. Bayern / Bavaria) are listed.
+        adb shell input tap "$MAPS_X" "$APPBAR_Y"; sleep 2
+        for s in $(seq 1 10); do
+          adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+          if adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "Bayern"; then break; fi
+          adb shell input swipe $(( W / 2 )) $(( H * 3 / 4 )) $(( W / 2 )) $(( H / 4 )) 250
+          sleep 1
+        done
+        adb exec-out screencap -p > "screenshots/shot_15_germany.png"; echo "   shot_15_germany (Bayern listed)"
       else
         echo "   (could not locate Andorra row)"
       fi
