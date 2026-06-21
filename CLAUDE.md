@@ -127,6 +127,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     **generated** from the live mirror by `tool/gen_map_catalog.py` (`tool/fl python3
     tool/gen_map_catalog.py > …/map_catalog.dart`) — don't hand-edit names/URLs/sizes; re-run to
     refresh. Add other continents by extending that script.
+  * **Which map is displayed** (only one renders at a time — no multi-datastore in this
+    mapsforge port): `pickMapPath` (pure, unit-tested) chooses the user's manually picked map
+    (`AppSettings.selectedMapFileName`) if still installed, else the **smallest installed map
+    whose bbox contains the current GPS position** (most local detail when regions overlap, e.g.
+    Bayern inside Alps), else the first installed map. `chosenMapPathProvider` feeds
+    `activeMapModelProvider` a *stable* path so the map reloads only when the choice actually
+    changes (not every 1 Hz fix); `installedMapBoundsProvider` reads each map's bbox once
+    (`MapRenderService.boundsOf`). A `map_outlined` app-bar picker (`_MapPickerMenu`, shown only
+    with ≥2 maps installed) offers "Automatic (by location)" + each installed map.
   * Downloads are **streamed to a `.zip.part` file on disk** with back-pressure
     (`IOSink.addStream`, not a `sink.add` loop) — nothing is held in memory (region zips reach
     ~2.9 GB; ~3.7 GB extracted). **Resumable** via HTTP `Range`: an interrupted download (screen
@@ -197,6 +206,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 ## Known gotchas
 
+* **`MapModel.dispose()` disposes its registered marker datastores.** Swapping the active map
+  (manual/auto map selection, or a download replacing it) disposes the old `MapModel`, which
+  disposes every `MarkerDatastore` registered to it via `MarkerDatastoreOverlay`. The map
+  screen shares ONE datastore (track/location/route/ghost markers) across map swaps, so a naive
+  `DefaultMarkerDatastore` gets torn down on the first swap → next render throws "used after
+  disposed". The screen uses `_ScreenMarkerDatastore` (swallows the model's swap-time dispose;
+  the screen disposes it for real in its own `dispose()`).
 * **Map camera must start over the loaded map.** The home map's initial camera centres on the
   active map's **bounding-box centre** (`MapRenderService` returns a `LoadedMap{model, center}`),
   not a hard-coded location. A downloaded region map does NOT cover the Monaco demo coords, so

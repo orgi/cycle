@@ -211,6 +211,45 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
           sleep 1
         done
         adb exec-out screencap -p > "screenshots/shot_15_germany.png"; echo "   shot_15_germany (Bayern listed)"
+        # Install a SECOND small map (Malta, ~9 MB) so the map picker (shown only
+        # with >=2 maps) and auto-by-location can be exercised. Relaunch Manage
+        # maps (resets scroll; with 1 map the picker is hidden so MAPS_X is valid).
+        adb shell am force-stop "$APP_ID"
+        adb shell am start -n "$APP_ID/.MainActivity" >/dev/null 2>&1
+        sleep 9
+        adb shell input tap "$MAPS_X" "$APPBAR_Y"; sleep 2
+        for s in $(seq 1 10); do
+          adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+          if adb shell cat /sdcard/ui.xml 2>/dev/null | grep -q "Malta"; then break; fi
+          adb shell input swipe $(( W / 2 )) $(( H * 3 / 4 )) $(( W / 2 )) $(( H / 4 )) 250
+          sleep 1
+        done
+        MY="$( { adb shell cat /sdcard/ui.xml 2>/dev/null | tr ">" "\n" \
+          | grep "Malta" | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
+          | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
+        if [ -n "$MY" ]; then
+          set -- $MY; MCY=$(( ($2 + $4) / 2 ))
+          adb shell input tap $(( W - $(dp 28) )) "$MCY"
+          echo "   tapped download for Malta at y=$MCY"
+          for i in $(seq 1 8); do sleep 6; done   # ~48s for ~9 MB
+        fi
+        # Home with two maps -> picker visible; GPS in Malta -> auto-pick Malta.
+        adb shell input keyevent KEYCODE_BACK; sleep 2
+        adb emu geo fix 14.40 35.90   # Malta (lon lat)
+        sleep 12
+        adb exec-out screencap -p > "screenshots/shot_16_two_maps_malta.png"; echo "   shot_16_two_maps_malta (auto-selected)"
+        # Open the map picker (find it by its content-description).
+        adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+        PB="$( { adb shell cat /sdcard/ui.xml 2>/dev/null | tr ">" "\n" \
+          | grep "Displayed map" | grep -oE "bounds=\"\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]\"" \
+          | head -1 | grep -oE "[0-9]+" | tr "\n" " "; } || true)"
+        if [ -n "$PB" ]; then
+          set -- $PB
+          adb shell input tap $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 )); sleep 2
+          adb exec-out screencap -p > "screenshots/shot_17_map_picker.png"; echo "   shot_17_map_picker"
+        else
+          echo "   (map picker button not found)"
+        fi
       else
         echo "   (could not locate Andorra row)"
       fi

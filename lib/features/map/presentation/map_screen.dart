@@ -18,6 +18,7 @@ import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
+import '../domain/map_catalog.dart';
 
 /// The single main screen: a full-screen offline map (with the recorded track
 /// and current location) plus the live ride statistics as semi-transparent
@@ -31,7 +32,7 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen>
     with WidgetsBindingObserver {
-  final DefaultMarkerDatastore _markers = DefaultMarkerDatastore();
+  final _ScreenMarkerDatastore _markers = _ScreenMarkerDatastore();
   final List<LatLong> _path = [];
   CircleMarker? _meMarker;
   CircleMarker? _ghostMarker;
@@ -53,6 +54,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _markers.disposeForReal();
     super.dispose();
   }
 
@@ -254,6 +256,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         title: const Text('Cycle'),
         actions: [
           _FollowRouteMenu(active: route != null),
+          const _MapPickerMenu(),
           IconButton(
             key: const Key('openTracksButton'),
             icon: const Icon(Icons.history),
@@ -464,6 +467,75 @@ class _MapStat extends StatelessWidget {
 }
 
 /// App-bar menu to start/stop following a GPX route.
+/// A marker datastore owned by the map screen for its whole lifetime.
+///
+/// The displayed [MapModel] disposes every registered marker datastore when it
+/// is itself disposed — which happens each time the active map is swapped (the
+/// user or auto-select picks a different region, or a download replaces it).
+/// That would wrongly tear down the screen's shared markers (track, location,
+/// route, ghost) and crash the next render with "used after disposed". So this
+/// datastore swallows the model's swap-time disposal; the screen disposes it for
+/// real via [disposeForReal] from its own `dispose()`.
+class _ScreenMarkerDatastore extends DefaultMarkerDatastore {
+  bool _allowDispose = false;
+
+  @override
+  void dispose() {
+    if (_allowDispose && !disposed) super.dispose();
+  }
+
+  void disposeForReal() {
+    _allowDispose = true;
+    dispose();
+  }
+}
+
+/// Sentinel value for the "Automatic" entry of the map picker.
+const String _kAutoMap = '__auto__';
+
+/// App-bar menu to choose which installed map is displayed; only shown when
+/// more than one map is installed. "Automatic" picks the map whose coverage
+/// contains the current location.
+class _MapPickerMenu extends ConsumerWidget {
+  const _MapPickerMenu();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final installed = ref.watch(installedMapsProvider).value ?? const [];
+    if (installed.length < 2) return const SizedBox.shrink();
+    final selected =
+        ref.watch(settingsProvider.select((s) => s.selectedMapFileName));
+    return PopupMenuButton<String>(
+      key: const Key('mapPickerButton'),
+      icon: const Icon(Icons.map_outlined),
+      tooltip: 'Displayed map',
+      onSelected: (v) => ref
+          .read(settingsProvider.notifier)
+          .setSelectedMap(v == _kAutoMap ? null : v),
+      itemBuilder: (_) => [
+        CheckedPopupMenuItem<String>(
+          value: _kAutoMap,
+          checked: selected == null,
+          child: const Text('Automatic (by location)'),
+        ),
+        const PopupMenuDivider(),
+        ...installed.map((m) => CheckedPopupMenuItem<String>(
+              value: m.fileName,
+              checked: selected == m.fileName,
+              child: Text(_mapName(m.fileName)),
+            )),
+      ],
+    );
+  }
+
+  static String _mapName(String fileName) {
+    for (final region in kMapCatalog) {
+      if (region.fileName == fileName) return region.name;
+    }
+    return fileName.replaceAll('.map', '');
+  }
+}
+
 class _FollowRouteMenu extends ConsumerWidget {
   const _FollowRouteMenu({required this.active});
 

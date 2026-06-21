@@ -10,9 +10,26 @@ void main() {
       units: UnitSystem.imperial,
       wheelCircumferenceMeters: 2.2,
       hardwareButtonsEnabled: false,
+      selectedMapFileName: 'Bayern.map',
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
+  });
+
+  test('selectedMapFileName defaults to null (auto) and copyWith can clear it',
+      () {
+    const auto = AppSettings();
+    expect(auto.selectedMapFileName, isNull);
+    expect(auto.toJson().containsKey('selected_map'), isFalse);
+
+    final pinned = auto.copyWith(selectedMapFileName: 'Alps.map');
+    expect(pinned.selectedMapFileName, 'Alps.map');
+    // An unrelated copyWith preserves the selection.
+    expect(pinned.copyWith(units: UnitSystem.imperial).selectedMapFileName,
+        'Alps.map');
+    // Explicit null resets to automatic.
+    expect(pinned.copyWith(selectedMapFileName: null).selectedMapFileName,
+        isNull);
   });
 
   test('AppSettings.fromJson tolerates missing/garbage fields', () {

@@ -39,6 +39,19 @@ class MapRenderService {
     return _build(datastore);
   }
 
+  /// Reads just the coverage box of a `.map` file (opens it, then disposes the
+  /// isolate-backed datastore) — used to auto-pick the map covering a position.
+  Future<BoundingBox> boundsOf(String filePath) async {
+    final datastore = await Mapfile.createFromFile(filename: filePath);
+    try {
+      return await datastore.getBoundingBox();
+    } finally {
+      try {
+        datastore.dispose();
+      } catch (_) {}
+    }
+  }
+
   Future<LoadedMap> _build(Mapfile datastore) async {
     final model = await MapModelHelper.createOfflineMapModel(
       renderthemeFilename: kDarkRenderTheme,
