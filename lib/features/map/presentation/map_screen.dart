@@ -361,9 +361,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.all(8),
-            child: StartStopButton(),
+          // Keep the Start/Stop button clear of the system navigation bar
+          // (3-button / gesture) so it is always tappable.
+          const SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: StartStopButton(),
+            ),
           ),
         ],
       ),

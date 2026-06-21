@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Network: map-region downloads (OpenAndroMaps) + ride uploads (Strava/
+         Komoot). Without this a release build's HTTP calls fail instantly;
+         debug/profile builds get it auto-added for tooling, which hid the bug. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Live GPS tracking. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
