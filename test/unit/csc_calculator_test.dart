@@ -29,6 +29,25 @@ void main() {
     expect(r.cadenceRpm, closeTo(60, 0.001));
   });
 
+  test('a brief gap with no new crank rev holds (null), not 0 flicker', () {
+    final calc = CscCalculator();
+    calc.update(const CscMeasurement(
+        cumulativeCrankRevs: 10, lastCrankEventTime: 1024));
+    calc.update(const CscMeasurement(
+        cumulativeCrankRevs: 11, lastCrankEventTime: 2048)); // 60 rpm
+    // Notification with no new crank revolution → hold (null), not 0.
+    final r1 = calc.update(const CscMeasurement(
+        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
+    expect(r1.cadenceRpm, isNull);
+    final r2 = calc.update(const CscMeasurement(
+        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
+    expect(r2.cadenceRpm, isNull);
+    // Sustained gap → cadence finally drops to 0 (rider stopped pedalling).
+    final r3 = calc.update(const CscMeasurement(
+        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
+    expect(r3.cadenceRpm, 0);
+  });
+
   test('coasting (no new wheel revs) reports zero speed', () {
     final calc = CscCalculator();
     calc.update(const CscMeasurement(

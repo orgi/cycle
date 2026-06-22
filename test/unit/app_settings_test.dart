@@ -10,12 +10,14 @@ void main() {
       units: UnitSystem.imperial,
       wheelCircumferenceMeters: 2.2,
       hardwareButtonsEnabled: false,
+      showStartStopButton: true,
       selectedMapFileName: 'Bayern.map',
       colorScheme: AppColorScheme.bw,
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
     expect(back.colorScheme, AppColorScheme.bw);
+    expect(back.showStartStopButton, isTrue);
   });
 
   test('colorScheme defaults to dark and tolerates an unknown value', () {

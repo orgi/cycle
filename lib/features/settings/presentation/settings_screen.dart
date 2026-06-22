@@ -78,6 +78,15 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.hardwareButtonsEnabled,
             onChanged: controller.setHardwareButtons,
           ),
+          SwitchListTile(
+            key: const Key('showStartStopSwitch'),
+            title: const Text('Show Start/Stop button'),
+            subtitle: const Text(
+                'Off by default — use the volume keys. Always shown when the '
+                'volume keys are disabled.'),
+            value: settings.showStartStopButton,
+            onChanged: controller.setShowStartStopButton,
+          ),
           const Divider(),
           const _Header('Accounts'),
           ListTile(

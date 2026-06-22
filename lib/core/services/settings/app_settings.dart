@@ -34,6 +34,7 @@ class AppSettings {
     this.units = UnitSystem.metric,
     this.wheelCircumferenceMeters = 2.105, // 700x25c default
     this.hardwareButtonsEnabled = true,
+    this.showStartStopButton = false,
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
   });
@@ -47,6 +48,11 @@ class AppSettings {
   /// When true, the phone's volume keys start/stop recording (Android).
   final bool hardwareButtonsEnabled;
 
+  /// When true, show the on-screen Start/Stop button. Off by default — recording
+  /// is started/stopped with the volume keys. It is shown regardless when the
+  /// volume keys are disabled (e.g. iOS), so there's always a way to start.
+  final bool showStartStopButton;
+
   /// Which installed map to display (its `<id>.map` filename), or null to pick
   /// the map covering the current location automatically.
   final String? selectedMapFileName;
@@ -58,6 +64,7 @@ class AppSettings {
     UnitSystem? units,
     double? wheelCircumferenceMeters,
     bool? hardwareButtonsEnabled,
+    bool? showStartStopButton,
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
   }) =>
@@ -67,6 +74,7 @@ class AppSettings {
             wheelCircumferenceMeters ?? this.wheelCircumferenceMeters,
         hardwareButtonsEnabled:
             hardwareButtonsEnabled ?? this.hardwareButtonsEnabled,
+        showStartStopButton: showStartStopButton ?? this.showStartStopButton,
         selectedMapFileName: identical(selectedMapFileName, _unset)
             ? this.selectedMapFileName
             : selectedMapFileName as String?,
@@ -77,6 +85,7 @@ class AppSettings {
         'units': units.name,
         'wheel_circumference_m': wheelCircumferenceMeters,
         'hardware_buttons': hardwareButtonsEnabled,
+        'show_start_stop_button': showStartStopButton,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
       };
@@ -89,6 +98,7 @@ class AppSettings {
         wheelCircumferenceMeters:
             (json['wheel_circumference_m'] as num?)?.toDouble() ?? 2.105,
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
+        showStartStopButton: json['show_start_stop_button'] as bool? ?? false,
         selectedMapFileName: json['selected_map'] as String?,
         colorScheme: AppColorScheme.values.firstWhere(
           (s) => s.name == json['color_scheme'],
@@ -102,10 +112,11 @@ class AppSettings {
       other.units == units &&
       other.wheelCircumferenceMeters == wheelCircumferenceMeters &&
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
+      other.showStartStopButton == showStartStopButton &&
       other.selectedMapFileName == selectedMapFileName &&
       other.colorScheme == colorScheme;
 
   @override
   int get hashCode => Object.hash(units, wheelCircumferenceMeters,
-      hardwareButtonsEnabled, selectedMapFileName, colorScheme);
+      hardwareButtonsEnabled, showStartStopButton, selectedMapFileName, colorScheme);
 }

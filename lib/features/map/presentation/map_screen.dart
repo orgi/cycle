@@ -317,8 +317,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
     final ghost = ref.watch(ghostProvider);
-    final units = ref.watch(settingsProvider).units;
+    final settings = ref.watch(settingsProvider);
+    final units = settings.units;
     final speedUnit = units.speedLabel;
+    // Hidden by default (volume keys start/stop); shown on request, and always
+    // when the volume keys are off so there is a way to start.
+    final showStartStop =
+        settings.showStartStopButton || !settings.hardwareButtonsEnabled;
     // Keep the volume-key control + wheel-size sync alive while the home screen
     // is mounted.
     ref.watch(hardwareButtonControllerProvider);
@@ -529,7 +534,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
           // Keep the Start/Stop button clear of the system navigation bar
           // (3-button / gesture) so it is always tappable.
-          const SafeArea(
+          if (showStartStop)
+            const SafeArea(
             top: false,
             child: Padding(
               padding: EdgeInsets.all(8),

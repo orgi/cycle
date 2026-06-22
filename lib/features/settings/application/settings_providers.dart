@@ -34,6 +34,9 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setHardwareButtons(bool enabled) =>
       update(state.copyWith(hardwareButtonsEnabled: enabled));
 
+  Future<void> setShowStartStopButton(bool show) =>
+      update(state.copyWith(showStartStopButton: show));
+
   /// [fileName] of the map to display, or null to auto-pick by location.
   Future<void> setSelectedMap(String? fileName) =>
       update(state.copyWith(selectedMapFileName: fileName));
