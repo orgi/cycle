@@ -16,6 +16,9 @@ class Tracks extends Table {
   IntColumn get durationSeconds => integer().withDefault(const Constant(0))();
   RealColumn get avgSpeedMps => real().withDefault(const Constant(0))();
   RealColumn get maxSpeedMps => real().withDefault(const Constant(0))();
+  // Battery level (%) at start/stop, for the drain stat.
+  IntColumn get batteryStartPercent => integer().nullable()();
+  IntColumn get batteryEndPercent => integer().nullable()();
 }
 
 /// A single sample within a ride (position + optional sensor values).
@@ -38,10 +41,16 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(tracks, tracks.batteryStartPercent);
+            await m.addColumn(tracks, tracks.batteryEndPercent);
+          }
+        },
         beforeOpen: (_) async {
           // Required for the trackPoints → tracks ON DELETE CASCADE to fire.
           await customStatement('PRAGMA foreign_keys = ON');
@@ -53,9 +62,14 @@ class AppDatabase extends _$AppDatabase {
         return NativeDatabase.createInBackground(File('${dir.path}/cycle.sqlite'));
       });
 
-  Future<int> createTrack(DateTime startedAt, {String name = 'Ride'}) =>
+  Future<int> createTrack(DateTime startedAt,
+          {String name = 'Ride', int? batteryStartPercent}) =>
       into(tracks).insert(
-        TracksCompanion.insert(startedAt: startedAt, name: Value(name)),
+        TracksCompanion.insert(
+          startedAt: startedAt,
+          name: Value(name),
+          batteryStartPercent: Value(batteryStartPercent),
+        ),
       );
 
   Future<void> addPoint(TrackPointsCompanion point) =>
@@ -68,6 +82,7 @@ class AppDatabase extends _$AppDatabase {
     required int durationSeconds,
     required double avgSpeedMps,
     required double maxSpeedMps,
+    int? batteryEndPercent,
   }) =>
       (update(tracks)..where((t) => t.id.equals(trackId))).write(
         TracksCompanion(
@@ -76,6 +91,7 @@ class AppDatabase extends _$AppDatabase {
           durationSeconds: Value(durationSeconds),
           avgSpeedMps: Value(avgSpeedMps),
           maxSpeedMps: Value(maxSpeedMps),
+          batteryEndPercent: Value(batteryEndPercent),
         ),
       );
 

@@ -81,7 +81,9 @@ class _GenericGestureDetectorState extends State<GenericGestureDetector> {
     _handlers.add(DoubleTapHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
     _handlers.add(DragNdropHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
     _handlers.add(MoveHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
-    _handlers.add(RotationHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
+    // PATCH (cycle): rotation gesture disabled — the bike computer keeps the map
+    // north-up. Re-add RotationHandler to restore two-finger rotation.
+    // _handlers.add(RotationHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
     _handlers.add(ScaleHandler(longPressDuration: widget.longPressDuration, mapModel: widget.mapModel));
   }
 

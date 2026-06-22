@@ -85,6 +85,18 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        MethodChannel(messenger, "cycle/battery").setMethodCallHandler { call, result ->
+            if (call.method == "getLevel") {
+                val bm = getSystemService(android.content.Context.BATTERY_SERVICE)
+                    as android.os.BatteryManager
+                val level = bm.getIntProperty(
+                    android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                result.success(if (level in 0..100) level else null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
         handleIntent(intent)
     }
 

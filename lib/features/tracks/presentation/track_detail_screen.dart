@@ -174,6 +174,14 @@ class _Body extends StatelessWidget {
       tiles.add(MetricTile(
           label: 'Avg power', value: avgPwr.round().toString(), unit: 'W'));
     }
+    final bStart = track.batteryStartPercent;
+    final bEnd = track.batteryEndPercent;
+    if (bStart != null && bEnd != null) {
+      tiles.add(MetricTile(
+          label: 'Battery used',
+          value: (bStart - bEnd).toDouble().toStringAsFixed(1),
+          unit: '%'));
+    }
 
     return ListView(
       padding: const EdgeInsets.all(12),

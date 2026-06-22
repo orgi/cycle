@@ -37,6 +37,7 @@ class AppSettings {
     this.showStartStopButton = false,
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
+    this.mapZoom = 16,
   });
 
   /// Distance/speed units shown in the UI.
@@ -60,6 +61,9 @@ class AppSettings {
   /// App + map colour scheme.
   final AppColorScheme colorScheme;
 
+  /// Last map zoom level, restored on the next launch.
+  final int mapZoom;
+
   AppSettings copyWith({
     UnitSystem? units,
     double? wheelCircumferenceMeters,
@@ -67,6 +71,7 @@ class AppSettings {
     bool? showStartStopButton,
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
+    int? mapZoom,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -79,6 +84,7 @@ class AppSettings {
             ? this.selectedMapFileName
             : selectedMapFileName as String?,
         colorScheme: colorScheme ?? this.colorScheme,
+        mapZoom: mapZoom ?? this.mapZoom,
       );
 
   Map<String, dynamic> toJson() => {
@@ -88,6 +94,7 @@ class AppSettings {
         'show_start_stop_button': showStartStopButton,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
+        'map_zoom': mapZoom,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -104,6 +111,7 @@ class AppSettings {
           (s) => s.name == json['color_scheme'],
           orElse: () => AppColorScheme.dark,
         ),
+        mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
       );
 
   @override
@@ -114,9 +122,10 @@ class AppSettings {
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
       other.showStartStopButton == showStartStopButton &&
       other.selectedMapFileName == selectedMapFileName &&
-      other.colorScheme == colorScheme;
+      other.colorScheme == colorScheme &&
+      other.mapZoom == mapZoom;
 
   @override
   int get hashCode => Object.hash(units, wheelCircumferenceMeters,
-      hardwareButtonsEnabled, showStartStopButton, selectedMapFileName, colorScheme);
+      hardwareButtonsEnabled, showStartStopButton, selectedMapFileName, colorScheme, mapZoom);
 }

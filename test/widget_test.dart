@@ -1,4 +1,5 @@
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/services/battery_service.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/dashboard/presentation/widgets/start_stop_button.dart';
@@ -26,6 +27,7 @@ void main() {
           appDatabaseProvider.overrideWithValue(db),
           recordingForegroundServiceProvider
               .overrideWithValue(const NoopRecordingForegroundService()),
+          batteryServiceProvider.overrideWithValue(NoopBatteryService()),
         ],
         child: const MaterialApp(
           home: Scaffold(body: Center(child: StartStopButton())),

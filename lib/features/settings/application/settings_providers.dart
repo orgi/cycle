@@ -43,4 +43,10 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> setColorScheme(AppColorScheme scheme) =>
       update(state.copyWith(colorScheme: scheme));
+
+  /// Persists the current map zoom (restored on next launch). No-op if unchanged.
+  Future<void> setMapZoom(int zoom) async {
+    if (zoom == state.mapZoom) return;
+    await update(state.copyWith(mapZoom: zoom));
+  }
 }

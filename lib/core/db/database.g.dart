@@ -101,6 +101,27 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _batteryStartPercentMeta =
+      const VerificationMeta('batteryStartPercent');
+  @override
+  late final GeneratedColumn<int> batteryStartPercent = GeneratedColumn<int>(
+    'battery_start_percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _batteryEndPercentMeta = const VerificationMeta(
+    'batteryEndPercent',
+  );
+  @override
+  late final GeneratedColumn<int> batteryEndPercent = GeneratedColumn<int>(
+    'battery_end_percent',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -111,6 +132,8 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     durationSeconds,
     avgSpeedMps,
     maxSpeedMps,
+    batteryStartPercent,
+    batteryEndPercent,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -183,6 +206,24 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         ),
       );
     }
+    if (data.containsKey('battery_start_percent')) {
+      context.handle(
+        _batteryStartPercentMeta,
+        batteryStartPercent.isAcceptableOrUnknown(
+          data['battery_start_percent']!,
+          _batteryStartPercentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('battery_end_percent')) {
+      context.handle(
+        _batteryEndPercentMeta,
+        batteryEndPercent.isAcceptableOrUnknown(
+          data['battery_end_percent']!,
+          _batteryEndPercentMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -224,6 +265,14 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         DriftSqlType.double,
         data['${effectivePrefix}max_speed_mps'],
       )!,
+      batteryStartPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}battery_start_percent'],
+      ),
+      batteryEndPercent: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}battery_end_percent'],
+      ),
     );
   }
 
@@ -242,6 +291,8 @@ class Track extends DataClass implements Insertable<Track> {
   final int durationSeconds;
   final double avgSpeedMps;
   final double maxSpeedMps;
+  final int? batteryStartPercent;
+  final int? batteryEndPercent;
   const Track({
     required this.id,
     required this.name,
@@ -251,6 +302,8 @@ class Track extends DataClass implements Insertable<Track> {
     required this.durationSeconds,
     required this.avgSpeedMps,
     required this.maxSpeedMps,
+    this.batteryStartPercent,
+    this.batteryEndPercent,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -265,6 +318,12 @@ class Track extends DataClass implements Insertable<Track> {
     map['duration_seconds'] = Variable<int>(durationSeconds);
     map['avg_speed_mps'] = Variable<double>(avgSpeedMps);
     map['max_speed_mps'] = Variable<double>(maxSpeedMps);
+    if (!nullToAbsent || batteryStartPercent != null) {
+      map['battery_start_percent'] = Variable<int>(batteryStartPercent);
+    }
+    if (!nullToAbsent || batteryEndPercent != null) {
+      map['battery_end_percent'] = Variable<int>(batteryEndPercent);
+    }
     return map;
   }
 
@@ -280,6 +339,12 @@ class Track extends DataClass implements Insertable<Track> {
       durationSeconds: Value(durationSeconds),
       avgSpeedMps: Value(avgSpeedMps),
       maxSpeedMps: Value(maxSpeedMps),
+      batteryStartPercent: batteryStartPercent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(batteryStartPercent),
+      batteryEndPercent: batteryEndPercent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(batteryEndPercent),
     );
   }
 
@@ -297,6 +362,10 @@ class Track extends DataClass implements Insertable<Track> {
       durationSeconds: serializer.fromJson<int>(json['durationSeconds']),
       avgSpeedMps: serializer.fromJson<double>(json['avgSpeedMps']),
       maxSpeedMps: serializer.fromJson<double>(json['maxSpeedMps']),
+      batteryStartPercent: serializer.fromJson<int?>(
+        json['batteryStartPercent'],
+      ),
+      batteryEndPercent: serializer.fromJson<int?>(json['batteryEndPercent']),
     );
   }
   @override
@@ -311,6 +380,8 @@ class Track extends DataClass implements Insertable<Track> {
       'durationSeconds': serializer.toJson<int>(durationSeconds),
       'avgSpeedMps': serializer.toJson<double>(avgSpeedMps),
       'maxSpeedMps': serializer.toJson<double>(maxSpeedMps),
+      'batteryStartPercent': serializer.toJson<int?>(batteryStartPercent),
+      'batteryEndPercent': serializer.toJson<int?>(batteryEndPercent),
     };
   }
 
@@ -323,6 +394,8 @@ class Track extends DataClass implements Insertable<Track> {
     int? durationSeconds,
     double? avgSpeedMps,
     double? maxSpeedMps,
+    Value<int?> batteryStartPercent = const Value.absent(),
+    Value<int?> batteryEndPercent = const Value.absent(),
   }) => Track(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -332,6 +405,12 @@ class Track extends DataClass implements Insertable<Track> {
     durationSeconds: durationSeconds ?? this.durationSeconds,
     avgSpeedMps: avgSpeedMps ?? this.avgSpeedMps,
     maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
+    batteryStartPercent: batteryStartPercent.present
+        ? batteryStartPercent.value
+        : this.batteryStartPercent,
+    batteryEndPercent: batteryEndPercent.present
+        ? batteryEndPercent.value
+        : this.batteryEndPercent,
   );
   Track copyWithCompanion(TracksCompanion data) {
     return Track(
@@ -351,6 +430,12 @@ class Track extends DataClass implements Insertable<Track> {
       maxSpeedMps: data.maxSpeedMps.present
           ? data.maxSpeedMps.value
           : this.maxSpeedMps,
+      batteryStartPercent: data.batteryStartPercent.present
+          ? data.batteryStartPercent.value
+          : this.batteryStartPercent,
+      batteryEndPercent: data.batteryEndPercent.present
+          ? data.batteryEndPercent.value
+          : this.batteryEndPercent,
     );
   }
 
@@ -364,7 +449,9 @@ class Track extends DataClass implements Insertable<Track> {
           ..write('distanceMeters: $distanceMeters, ')
           ..write('durationSeconds: $durationSeconds, ')
           ..write('avgSpeedMps: $avgSpeedMps, ')
-          ..write('maxSpeedMps: $maxSpeedMps')
+          ..write('maxSpeedMps: $maxSpeedMps, ')
+          ..write('batteryStartPercent: $batteryStartPercent, ')
+          ..write('batteryEndPercent: $batteryEndPercent')
           ..write(')'))
         .toString();
   }
@@ -379,6 +466,8 @@ class Track extends DataClass implements Insertable<Track> {
     durationSeconds,
     avgSpeedMps,
     maxSpeedMps,
+    batteryStartPercent,
+    batteryEndPercent,
   );
   @override
   bool operator ==(Object other) =>
@@ -391,7 +480,9 @@ class Track extends DataClass implements Insertable<Track> {
           other.distanceMeters == this.distanceMeters &&
           other.durationSeconds == this.durationSeconds &&
           other.avgSpeedMps == this.avgSpeedMps &&
-          other.maxSpeedMps == this.maxSpeedMps);
+          other.maxSpeedMps == this.maxSpeedMps &&
+          other.batteryStartPercent == this.batteryStartPercent &&
+          other.batteryEndPercent == this.batteryEndPercent);
 }
 
 class TracksCompanion extends UpdateCompanion<Track> {
@@ -403,6 +494,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
   final Value<int> durationSeconds;
   final Value<double> avgSpeedMps;
   final Value<double> maxSpeedMps;
+  final Value<int?> batteryStartPercent;
+  final Value<int?> batteryEndPercent;
   const TracksCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -412,6 +505,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.durationSeconds = const Value.absent(),
     this.avgSpeedMps = const Value.absent(),
     this.maxSpeedMps = const Value.absent(),
+    this.batteryStartPercent = const Value.absent(),
+    this.batteryEndPercent = const Value.absent(),
   });
   TracksCompanion.insert({
     this.id = const Value.absent(),
@@ -422,6 +517,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.durationSeconds = const Value.absent(),
     this.avgSpeedMps = const Value.absent(),
     this.maxSpeedMps = const Value.absent(),
+    this.batteryStartPercent = const Value.absent(),
+    this.batteryEndPercent = const Value.absent(),
   }) : startedAt = Value(startedAt);
   static Insertable<Track> custom({
     Expression<int>? id,
@@ -432,6 +529,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Expression<int>? durationSeconds,
     Expression<double>? avgSpeedMps,
     Expression<double>? maxSpeedMps,
+    Expression<int>? batteryStartPercent,
+    Expression<int>? batteryEndPercent,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -442,6 +541,9 @@ class TracksCompanion extends UpdateCompanion<Track> {
       if (durationSeconds != null) 'duration_seconds': durationSeconds,
       if (avgSpeedMps != null) 'avg_speed_mps': avgSpeedMps,
       if (maxSpeedMps != null) 'max_speed_mps': maxSpeedMps,
+      if (batteryStartPercent != null)
+        'battery_start_percent': batteryStartPercent,
+      if (batteryEndPercent != null) 'battery_end_percent': batteryEndPercent,
     });
   }
 
@@ -454,6 +556,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Value<int>? durationSeconds,
     Value<double>? avgSpeedMps,
     Value<double>? maxSpeedMps,
+    Value<int?>? batteryStartPercent,
+    Value<int?>? batteryEndPercent,
   }) {
     return TracksCompanion(
       id: id ?? this.id,
@@ -464,6 +568,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
       durationSeconds: durationSeconds ?? this.durationSeconds,
       avgSpeedMps: avgSpeedMps ?? this.avgSpeedMps,
       maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
+      batteryStartPercent: batteryStartPercent ?? this.batteryStartPercent,
+      batteryEndPercent: batteryEndPercent ?? this.batteryEndPercent,
     );
   }
 
@@ -494,6 +600,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
     if (maxSpeedMps.present) {
       map['max_speed_mps'] = Variable<double>(maxSpeedMps.value);
     }
+    if (batteryStartPercent.present) {
+      map['battery_start_percent'] = Variable<int>(batteryStartPercent.value);
+    }
+    if (batteryEndPercent.present) {
+      map['battery_end_percent'] = Variable<int>(batteryEndPercent.value);
+    }
     return map;
   }
 
@@ -507,7 +619,9 @@ class TracksCompanion extends UpdateCompanion<Track> {
           ..write('distanceMeters: $distanceMeters, ')
           ..write('durationSeconds: $durationSeconds, ')
           ..write('avgSpeedMps: $avgSpeedMps, ')
-          ..write('maxSpeedMps: $maxSpeedMps')
+          ..write('maxSpeedMps: $maxSpeedMps, ')
+          ..write('batteryStartPercent: $batteryStartPercent, ')
+          ..write('batteryEndPercent: $batteryEndPercent')
           ..write(')'))
         .toString();
   }
@@ -1149,6 +1263,8 @@ typedef $$TracksTableCreateCompanionBuilder =
       Value<int> durationSeconds,
       Value<double> avgSpeedMps,
       Value<double> maxSpeedMps,
+      Value<int?> batteryStartPercent,
+      Value<int?> batteryEndPercent,
     });
 typedef $$TracksTableUpdateCompanionBuilder =
     TracksCompanion Function({
@@ -1160,6 +1276,8 @@ typedef $$TracksTableUpdateCompanionBuilder =
       Value<int> durationSeconds,
       Value<double> avgSpeedMps,
       Value<double> maxSpeedMps,
+      Value<int?> batteryStartPercent,
+      Value<int?> batteryEndPercent,
     });
 
 final class $$TracksTableReferences
@@ -1231,6 +1349,16 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<double> get maxSpeedMps => $composableBuilder(
     column: $table.maxSpeedMps,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get batteryStartPercent => $composableBuilder(
+    column: $table.batteryStartPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get batteryEndPercent => $composableBuilder(
+    column: $table.batteryEndPercent,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1308,6 +1436,16 @@ class $$TracksTableOrderingComposer
     column: $table.maxSpeedMps,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get batteryStartPercent => $composableBuilder(
+    column: $table.batteryStartPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get batteryEndPercent => $composableBuilder(
+    column: $table.batteryEndPercent,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TracksTableAnnotationComposer
@@ -1348,6 +1486,16 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<double> get maxSpeedMps => $composableBuilder(
     column: $table.maxSpeedMps,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get batteryStartPercent => $composableBuilder(
+    column: $table.batteryStartPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get batteryEndPercent => $composableBuilder(
+    column: $table.batteryEndPercent,
     builder: (column) => column,
   );
 
@@ -1413,6 +1561,8 @@ class $$TracksTableTableManager
                 Value<int> durationSeconds = const Value.absent(),
                 Value<double> avgSpeedMps = const Value.absent(),
                 Value<double> maxSpeedMps = const Value.absent(),
+                Value<int?> batteryStartPercent = const Value.absent(),
+                Value<int?> batteryEndPercent = const Value.absent(),
               }) => TracksCompanion(
                 id: id,
                 name: name,
@@ -1422,6 +1572,8 @@ class $$TracksTableTableManager
                 durationSeconds: durationSeconds,
                 avgSpeedMps: avgSpeedMps,
                 maxSpeedMps: maxSpeedMps,
+                batteryStartPercent: batteryStartPercent,
+                batteryEndPercent: batteryEndPercent,
               ),
           createCompanionCallback:
               ({
@@ -1433,6 +1585,8 @@ class $$TracksTableTableManager
                 Value<int> durationSeconds = const Value.absent(),
                 Value<double> avgSpeedMps = const Value.absent(),
                 Value<double> maxSpeedMps = const Value.absent(),
+                Value<int?> batteryStartPercent = const Value.absent(),
+                Value<int?> batteryEndPercent = const Value.absent(),
               }) => TracksCompanion.insert(
                 id: id,
                 name: name,
@@ -1442,6 +1596,8 @@ class $$TracksTableTableManager
                 durationSeconds: durationSeconds,
                 avgSpeedMps: avgSpeedMps,
                 maxSpeedMps: maxSpeedMps,
+                batteryStartPercent: batteryStartPercent,
+                batteryEndPercent: batteryEndPercent,
               ),
           withReferenceMapper: (p0) => p0
               .map(

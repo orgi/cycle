@@ -13,11 +13,13 @@ void main() {
       showStartStopButton: true,
       selectedMapFileName: 'Bayern.map',
       colorScheme: AppColorScheme.bw,
+      mapZoom: 14,
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
     expect(back.colorScheme, AppColorScheme.bw);
     expect(back.showStartStopButton, isTrue);
+    expect(back.mapZoom, 14);
   });
 
   test('colorScheme defaults to dark and tolerates an unknown value', () {

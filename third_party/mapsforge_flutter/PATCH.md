@@ -36,6 +36,12 @@ center produces a zero/stale shift. Two paths kept the old center:
 
 Search for `PATCH (cycle)` in that file for the exact diffs.
 
+## Patch 2 — disable map rotation
+
+`src/gesture/generic_gesture_detector.dart`: `_createDefaultHandler()` no longer
+adds the `RotationHandler`, so the map is fixed north-up (a bike computer keeps
+the map oriented). Re-add that one line to restore two-finger rotation.
+
 ## Removing this
 
 Delete the `dependency_overrides: mapsforge_flutter` block in the root `pubspec.yaml`

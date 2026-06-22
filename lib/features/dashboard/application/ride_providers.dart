@@ -9,6 +9,7 @@ import '../../../core/models/geo_sample.dart';
 import '../../../core/models/ride_metrics.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
+import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
@@ -23,6 +24,10 @@ final locationServiceProvider = Provider<LocationService>(
 final screenWakeServiceProvider = Provider<ScreenWakeService>(
   (ref) => const WakelockScreenWakeService(),
 );
+
+/// Battery level source for the ride drain stat. No-op in tests.
+final batteryServiceProvider =
+    Provider<BatteryService>((ref) => NativeBatteryService());
 
 /// Local track database. Overridden with an in-memory db in tests.
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -56,7 +61,10 @@ class RecordingController extends Notifier<bool> {
     if (state) return;
     await ref.read(screenWakeServiceProvider).enable();
     ref.read(rideControllerProvider.notifier).reset();
-    _trackId = await ref.read(appDatabaseProvider).createTrack(DateTime.now());
+    final battery = await ref.read(batteryServiceProvider).level();
+    _trackId = await ref
+        .read(appDatabaseProvider)
+        .createTrack(DateTime.now(), batteryStartPercent: battery);
     await ref.read(recordingForegroundServiceProvider).start();
     state = true;
   }
@@ -68,6 +76,7 @@ class RecordingController extends Notifier<bool> {
     _trackId = null;
     if (id != null) {
       final m = ref.read(rideControllerProvider);
+      final battery = await ref.read(batteryServiceProvider).level();
       await ref.read(appDatabaseProvider).finalizeTrack(
             id,
             endedAt: DateTime.now(),
@@ -75,6 +84,7 @@ class RecordingController extends Notifier<bool> {
             durationSeconds: m.elapsed.inSeconds,
             avgSpeedMps: m.avgSpeedMps,
             maxSpeedMps: m.maxSpeedMps,
+            batteryEndPercent: battery,
           );
     }
     await ref.read(recordingForegroundServiceProvider).stop();

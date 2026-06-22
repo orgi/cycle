@@ -232,7 +232,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
     colour bucket) + legend; the map pinch-zooms natively and the elevation chart is wrapped in
-    an `InteractiveViewer`. Stats include distance/time/avg/max + ascent + avg HR/cadence/power.
+    an `InteractiveViewer`. Stats include distance/time/avg/max + ascent + avg HR/cadence/power
+    + **battery used** (`tracks.batteryStart/EndPercent`, schema v2; read via the native
+    `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
+    only). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
+    as the initial/first-fix zoom). The recorded track + followed route render as a **dashed
+    line with chevron arrowheads** (`Icons.keyboard_arrow_up` `IconMarker`s). Map **rotation is
+    disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).
 
 ## Known gotchas
 

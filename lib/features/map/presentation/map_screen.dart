@@ -72,6 +72,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // A GPX may have been opened/shared while we were backgrounded.
     if (state == AppLifecycleState.resumed) _checkIncomingGpx();
+    // Remember the current zoom when leaving the foreground.
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      final z = ref.read(activeMapModelProvider).value?.model.lastPosition?.zoomlevel;
+      if (z != null) ref.read(settingsProvider.notifier).setMapZoom(z);
+    }
   }
 
   /// Follows a GPX the app was opened with ("Open with Cycle" / "Share to
@@ -139,10 +145,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _markers.addMarker(_meMarker!);
 
     // Follow the rider, but keep the zoom they chose. Only the first fix sets a
-    // riding zoom; later fixes use moveTo, which preserves the current zoom (and
-    // rotation) — otherwise a manual zoom snaps back on the next 1 Hz fix.
+    // zoom (the remembered one); later fixes use moveTo, which preserves the
+    // current zoom — otherwise a manual zoom snaps back on the next 1 Hz fix.
     if (firstFix || model.lastPosition == null) {
-      model.setPosition(MapPosition(sample.latitude, sample.longitude, 16));
+      final zoom = ref.read(settingsProvider).mapZoom;
+      model.setPosition(MapPosition(sample.latitude, sample.longitude, zoom));
     } else {
       model.moveTo(sample.latitude, sample.longitude);
     }
@@ -165,10 +172,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_initialPositionSet) {
         // Centre on the loaded map's own area (not a fixed demo location), so a
-        // downloaded region renders immediately even before a GPS fix. Zoom 12
-        // shows the map; a GPS fix then snaps to the rider's position.
-        model.setPosition(
-            MapPosition(mapCenter.latitude, mapCenter.longitude, 12));
+        // downloaded region renders immediately even before a GPS fix, at the
+        // remembered zoom; a GPS fix then snaps to the rider's position.
+        model.setPosition(MapPosition(mapCenter.latitude, mapCenter.longitude,
+            ref.read(settingsProvider).mapZoom));
       }
     });
   }
@@ -195,7 +202,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _trackLine = PolylineMarker(
         path: List.of(_path),
         strokeColor: _accents.track,
-        strokeWidth: 1.2, // slightly thinner than an average road
+        strokeWidth: 1.4,
+        strokeDasharray: const [5, 4], // dashed, with arrowheads punctuating it
       );
       _markers.addMarker(_trackLine!);
     }
@@ -240,8 +248,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
         acc = 0;
         out.add(IconMarker(
           latLong: b,
-          iconData: Icons.navigation,
-          size: 12,
+          // A chevron arrowhead that sits inline with the dashed line, pointing
+          // in the direction of travel.
+          iconData: Icons.keyboard_arrow_up,
+          size: 18,
           bitmapColor: color,
           rotation:
               bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude),
