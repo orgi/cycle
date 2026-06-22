@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/services/settings/app_settings.dart';
 import '../application/settings_providers.dart';
@@ -76,6 +77,16 @@ class SettingsScreen extends ConsumerWidget {
                 '(Android only; not available on iOS).'),
             value: settings.hardwareButtonsEnabled,
             onChanged: controller.setHardwareButtons,
+          ),
+          const Divider(),
+          const _Header('Accounts'),
+          ListTile(
+            key: const Key('uploadAccountsTile'),
+            leading: const Icon(Icons.cloud_upload_outlined),
+            title: const Text('Upload accounts'),
+            subtitle: const Text('Connect Strava and Komoot for ride upload'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/upload-accounts'),
           ),
         ],
       ),

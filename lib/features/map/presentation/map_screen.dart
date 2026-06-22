@@ -113,13 +113,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _initialPositionSet = true;
     final here = LatLong(sample.latitude, sample.longitude);
 
-    final last = _path.isNotEmpty ? _path.last : null;
-    if (last == null ||
-        haversineMeters(last.latitude, last.longitude, here.latitude,
-                here.longitude) >
-            2) {
-      _path.add(here);
-      _rebuildTrackLine();
+    // Only grow the recorded track while a ride is being recorded — otherwise
+    // the map would draw a line just from idling/moving with the app open.
+    if (ref.read(recordingProvider)) {
+      final last = _path.isNotEmpty ? _path.last : null;
+      if (last == null ||
+          haversineMeters(last.latitude, last.longitude, here.latitude,
+                  here.longitude) >
+              2) {
+        _path.add(here);
+        _rebuildTrackLine();
+      }
     }
 
     final previous = _meMarker;
@@ -167,6 +171,21 @@ class _MapScreenState extends ConsumerState<MapScreen>
             MapPosition(mapCenter.latitude, mapCenter.longitude, 12));
       }
     });
+  }
+
+  /// Wipes the recorded track from the map (on a recording start/stop).
+  void _clearTrack() {
+    _path.clear();
+    if (_trackLine != null) {
+      _markers.removeMarker(_trackLine!);
+      _trackLine = null;
+    }
+    for (final a in _trackArrows) {
+      _markers.removeMarker(a);
+    }
+    _trackArrows.clear();
+    _trackArrowsAtLen = 0;
+    _markers.requestRepaint();
   }
 
   void _rebuildTrackLine() {
@@ -304,6 +323,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // is mounted.
     ref.watch(hardwareButtonControllerProvider);
     ref.watch(sensorSettingsSyncProvider);
+    // Reconnect previously-paired BLE sensors on launch.
+    ref.watch(sensorConnectionProvider);
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -321,6 +342,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     // Move the ghost-rider marker as the race progresses.
     ref.listen(ghostProvider, (_, next) => _onGhost(next));
+
+    // Start fresh on each recording start, and clear the line when it stops.
+    ref.listen(recordingProvider, (prev, next) {
+      if (prev != next) _clearTrack();
+    });
 
     // Recolour the overlays when the colour scheme changes (the map itself
     // reloads with the new render theme via activeMapModelProvider).
@@ -547,8 +573,8 @@ class _MapStat extends StatelessWidget {
           Text(
             label,
             maxLines: 1,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: Colors.white54, letterSpacing: 1.1),
+            style: theme.textTheme.labelMedium
+                ?.copyWith(color: Colors.white60, letterSpacing: 1.1),
           ),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -560,8 +586,8 @@ class _MapStat extends StatelessWidget {
                 Text(
                   value,
                   style: (emphasized
-                          ? theme.textTheme.headlineSmall
-                          : theme.textTheme.titleLarge)
+                          ? theme.textTheme.headlineMedium
+                          : theme.textTheme.headlineSmall)
                       ?.copyWith(
                     color:
                         emphasized ? theme.colorScheme.primary : Colors.white,

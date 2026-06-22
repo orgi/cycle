@@ -54,7 +54,7 @@ class SensorsScreen extends ConsumerWidget {
                 subtitle: Text(_kindsLabel(sensor.kinds)),
                 trailing: TextButton(
                   onPressed: () => ref
-                      .read(sensorServiceProvider)
+                      .read(sensorConnectionProvider.notifier)
                       .disconnect(sensor.id),
                   child: const Text('Disconnect'),
                 ),
@@ -75,8 +75,9 @@ class SensorsScreen extends ConsumerWidget {
                 title: Text(sensor.name),
                 subtitle: Text(_kindsLabel(sensor.kinds)),
                 trailing: TextButton(
-                  onPressed: () =>
-                      ref.read(sensorServiceProvider).connect(sensor.id),
+                  onPressed: () => ref
+                      .read(sensorConnectionProvider.notifier)
+                      .connect(sensor.id),
                   child: const Text('Connect'),
                 ),
               ),
