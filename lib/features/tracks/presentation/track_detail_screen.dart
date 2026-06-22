@@ -177,10 +177,16 @@ class _Body extends StatelessWidget {
     final bStart = track.batteryStartPercent;
     final bEnd = track.batteryEndPercent;
     if (bStart != null && bEnd != null) {
+      final drain = (bStart - bEnd).toDouble();
       tiles.add(MetricTile(
-          label: 'Battery used',
-          value: (bStart - bEnd).toDouble().toStringAsFixed(1),
-          unit: '%'));
+          label: 'Battery used', value: drain.toStringAsFixed(1), unit: '%'));
+      final hours = track.durationSeconds / 3600.0;
+      if (hours > 0) {
+        tiles.add(MetricTile(
+            label: 'Battery rate',
+            value: (drain / hours).toStringAsFixed(1),
+            unit: '%/h'));
+      }
     }
 
     return ListView(
