@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/app_version.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../application/settings_providers.dart';
 
@@ -96,6 +97,14 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text('Connect Strava and Komoot for ride upload'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/upload-accounts'),
+          ),
+          const Divider(),
+          const _Header('About'),
+          const ListTile(
+            key: Key('appVersionTile'),
+            leading: Icon(Icons.info_outline),
+            title: Text('Cycle'),
+            subtitle: Text('Version $kAppVersion (build $kAppBuild)'),
           ),
         ],
       ),

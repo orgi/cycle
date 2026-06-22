@@ -289,6 +289,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   the `cycle/incoming_gpx` MethodChannel instead. Re-enable deep linking only if you add real
   URL routes (and then exclude the file/content intents).
 
+## Versioning
+
+[Semantic versioning](https://semver.org) (currently **0.x** = pre-1.0, active dev). The single
+source of truth is `version:` in `pubspec.yaml` (`X.Y.Z+build`, where `+build` = Android
+`versionCode` — bump it every release). On each release: update `pubspec.yaml`, move the
+`CHANGELOG.md` `[Unreleased]` items into a new dated `[X.Y.Z]` section, and run
+`tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
+Settings → About; never hand-edit it). Keep `CHANGELOG.md` in [Keep a Changelog] form.
+
 ## Updating this file
 
 This file shall be kept up-to-date automatically. Update the tech stack and milestone
