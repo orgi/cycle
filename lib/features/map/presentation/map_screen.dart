@@ -473,7 +473,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ),
                   ),
                 Positioned(
-                  bottom: 8,
+                  // Clear the Android nav bar when there's no Start/Stop button
+                  // (with its SafeArea) below to push the stats up.
+                  bottom: 8 +
+                      (showStartStop
+                          ? 0.0
+                          : MediaQuery.of(context).viewPadding.bottom),
                   left: 8,
                   right: 8,
                   child: Column(

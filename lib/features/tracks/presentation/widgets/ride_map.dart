@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapsforge_flutter/mapsforge.dart';
 import 'package:mapsforge_flutter/marker.dart';
+import 'package:mapsforge_flutter/overlay.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../../core/db/database.dart';
@@ -147,6 +148,8 @@ class _RideMapState extends ConsumerState<RideMap> {
                     datastore: _markers,
                     zoomlevelRange: kZoomRange,
                   ),
+                  // +/- zoom buttons (pinch can be eaten by the scroll view).
+                  ZoomOverlay(mapModel: loaded.model),
                 ],
               );
             },

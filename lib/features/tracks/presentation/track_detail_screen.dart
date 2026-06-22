@@ -127,14 +127,34 @@ class TrackDetailScreen extends ConsumerWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends StatefulWidget {
   const _Body({required this.track, required this.points});
 
   final Track track;
   final List<TrackPoint> points;
 
   @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  // Active pointer count. When >= 2 (a pinch), the page scroll is disabled so
+  // the gesture reaches the map / elevation chart to zoom them.
+  int _pointers = 0;
+
+  void _update(int delta) {
+    final next = (_pointers + delta).clamp(0, 10);
+    if ((next >= 2) != (_pointers >= 2)) {
+      setState(() => _pointers = next);
+    } else {
+      _pointers = next;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final track = widget.track;
+    final points = widget.points;
     final tiles = <Widget>[
       MetricTile(
           label: 'Distance',
@@ -189,9 +209,14 @@ class _Body extends StatelessWidget {
       }
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
+    return Listener(
+      onPointerDown: (_) => _update(1),
+      onPointerUp: (_) => _update(-1),
+      onPointerCancel: (_) => _update(-1),
+      child: ListView(
+        physics: _pointers >= 2 ? const NeverScrollableScrollPhysics() : null,
+        padding: const EdgeInsets.all(12),
+        children: [
         Text(formatDateTime(track.startedAt),
             style: const TextStyle(color: Colors.white54)),
         const SizedBox(height: 12),
@@ -235,16 +260,17 @@ class _Body extends StatelessWidget {
             ),
           ),
         ],
-      ],
+        ],
+      ),
     );
   }
 
-  bool get _hasElevation => points.any((p) => p.altitude != null);
+  bool get _hasElevation => widget.points.any((p) => p.altitude != null);
 
   double get _ascentMeters {
     var gain = 0.0;
     double? prev;
-    for (final p in points) {
+    for (final p in widget.points) {
       final a = p.altitude;
       if (a == null) continue;
       if (prev != null && a > prev) gain += a - prev;
@@ -256,7 +282,7 @@ class _Body extends StatelessWidget {
   double? _avg(num? Function(TrackPoint) select) {
     var sum = 0.0;
     var n = 0;
-    for (final p in points) {
+    for (final p in widget.points) {
       final v = select(p);
       if (v != null) {
         sum += v;
