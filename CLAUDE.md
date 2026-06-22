@@ -221,6 +221,18 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   spaced adaptively (~60 max). Marker rotation only works via `IconMarker` (icon-font glyph) —
   the vendored `CaptionMarker`'s `rotation` arg is a no-op and the caption renderer ignores
   theta, so text can't be rotated.
+  * The recorded track only accumulates **while recording** (cleared on start/stop). BLE
+    sensors **auto-reconnect** on launch (`paired_sensors_store` + `SensorConnectionController`,
+    read at startup from the home screen). CSC **cadence** holds through brief gaps (a 1 Hz
+    notification with no new crank rev returns null → consumer keeps the last value; only drops
+    to 0 after a few empty intervals) to stop the 0-flicker. The on-screen **Start/Stop button
+    is hidden by default** (volume keys; `showStartStopButton` setting, and always shown when
+    volume keys are off). Recording keeps the screen on (wakelock enabled in `RecordingController.start`).
+  * **Ride detail** (`track_detail_screen`) shows the ride on the **real offline map**
+    (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
+    **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
+    colour bucket) + legend; the map pinch-zooms natively and the elevation chart is wrapped in
+    an `InteractiveViewer`. Stats include distance/time/avg/max + ascent + avg HR/cadence/power.
 
 ## Known gotchas
 
