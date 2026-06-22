@@ -13,7 +13,8 @@ import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
 import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
-import 'widgets/route_preview.dart';
+import 'widgets/ride_map.dart';
+import 'widgets/speed_color.dart';
 
 class TrackDetailScreen extends ConsumerWidget {
   const TrackDetailScreen({super.key, required this.trackId});
@@ -134,74 +135,153 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tiles = <Widget>[
+      MetricTile(
+          label: 'Distance',
+          value: formatDistanceKm(track.distanceMeters / 1000),
+          unit: 'km'),
+      MetricTile(
+          label: 'Time',
+          value: formatDuration(Duration(seconds: track.durationSeconds)),
+          unit: 'h:m:s'),
+      MetricTile(
+          label: 'Avg',
+          value: formatSpeedKmh(track.avgSpeedMps * 3.6),
+          unit: 'km/h'),
+      MetricTile(
+          label: 'Max',
+          value: formatSpeedKmh(track.maxSpeedMps * 3.6),
+          unit: 'km/h'),
+    ];
+    if (_hasElevation) {
+      tiles.add(MetricTile(
+          label: 'Ascent', value: _ascentMeters.round().toString(), unit: 'm'));
+    }
+    final avgHr = _avg((p) => p.heartRate);
+    if (avgHr != null) {
+      tiles.add(MetricTile(
+          label: 'Avg HR', value: avgHr.round().toString(), unit: 'bpm'));
+    }
+    final avgCad = _avg((p) => p.cadenceRpm);
+    if (avgCad != null) {
+      tiles.add(MetricTile(
+          label: 'Avg cadence',
+          value: avgCad.round().toString(),
+          unit: 'rpm'));
+    }
+    final avgPwr = _avg((p) => p.power);
+    if (avgPwr != null) {
+      tiles.add(MetricTile(
+          label: 'Avg power', value: avgPwr.round().toString(), unit: 'W'));
+    }
+
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
         Text(formatDateTime(track.startedAt),
             style: const TextStyle(color: Colors.white54)),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 110,
-          child: Row(
-            children: [
-              Expanded(
-                child: MetricTile(
-                  label: 'Distance',
-                  value: formatDistanceKm(track.distanceMeters / 1000),
-                  unit: 'km',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: MetricTile(
-                  label: 'Time',
-                  value: formatDuration(Duration(seconds: track.durationSeconds)),
-                  unit: 'h:m:s',
-                ),
-              ),
-            ],
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          SizedBox(
+            height: 100,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tiles[i]),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: i + 1 < tiles.length
+                        ? tiles[i + 1]
+                        : const SizedBox.shrink()),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+        ],
         const SizedBox(height: 8),
-        SizedBox(
-          height: 110,
-          child: Row(
-            children: [
-              Expanded(
-                child: MetricTile(
-                  label: 'Avg',
-                  value: formatSpeedKmh(track.avgSpeedMps * 3.6),
-                  unit: 'km/h',
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: MetricTile(
-                  label: 'Max',
-                  value: formatSpeedKmh(track.maxSpeedMps * 3.6),
-                  unit: 'km/h',
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        const Text('ROUTE',
+        const Text('MAP — track coloured by speed (pinch to zoom)',
             style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
         const SizedBox(height: 8),
-        SizedBox(height: 220, child: RoutePreview(points: points)),
+        SizedBox(height: 300, child: RideMap(points: points)),
+        const SizedBox(height: 8),
+        const _SpeedLegend(),
         if (_hasElevation) ...[
           const SizedBox(height: 16),
-          const Text('ELEVATION',
+          const Text('ELEVATION (pinch to zoom)',
               style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
           const SizedBox(height: 8),
-          SizedBox(height: 140, child: _ElevationChart(points: points)),
+          SizedBox(
+            height: 150,
+            child: InteractiveViewer(
+              panEnabled: true,
+              scaleEnabled: true,
+              minScale: 1,
+              maxScale: 8,
+              child: _ElevationChart(points: points),
+            ),
+          ),
         ],
       ],
     );
   }
 
   bool get _hasElevation => points.any((p) => p.altitude != null);
+
+  double get _ascentMeters {
+    var gain = 0.0;
+    double? prev;
+    for (final p in points) {
+      final a = p.altitude;
+      if (a == null) continue;
+      if (prev != null && a > prev) gain += a - prev;
+      prev = a;
+    }
+    return gain;
+  }
+
+  double? _avg(num? Function(TrackPoint) select) {
+    var sum = 0.0;
+    var n = 0;
+    for (final p in points) {
+      final v = select(p);
+      if (v != null) {
+        sum += v;
+        n++;
+      }
+    }
+    return n == 0 ? null : sum / n;
+  }
+}
+
+/// Red (slow, ≤10 km/h) → violet (fast, ≥60 km/h) gradient key for the track.
+class _SpeedLegend extends StatelessWidget {
+  const _SpeedLegend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Text('10', style: TextStyle(color: Colors.white54, fontSize: 11)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Container(
+            height: 8,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              gradient: LinearGradient(
+                colors: [
+                  for (var i = 0; i <= 10; i++) Color(speedColorArgb(10 + i * 5)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        const Text('60+ km/h',
+            style: TextStyle(color: Colors.white54, fontSize: 11)),
+      ],
+    );
+  }
 }
 
 class _ElevationChart extends StatelessWidget {
@@ -235,7 +315,7 @@ class _ElevationChart extends StatelessWidget {
         titlesData: const FlTitlesData(show: false),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
-        lineTouchData: const LineTouchData(enabled: false),
+        lineTouchData: const LineTouchData(enabled: true),
       ),
     );
   }

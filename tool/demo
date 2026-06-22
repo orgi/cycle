@@ -81,7 +81,9 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     # Home is the combined map + stats screen.
     cap shot_1_home
     echo ">> follow demo route"; load_demo_route; cap shot_1a_route
-    echo ">> start recording"; adb shell input tap "$BTN_X" "$BTN_Y"; sleep 2
+    # Start recording with the volume key (the on-screen button is hidden by
+    # default now).
+    echo ">> start recording"; adb shell input keyevent KEYCODE_VOLUME_UP; sleep 2
     # ~10 m between route points; 1.1 s each ≈ 33 km/h (realistic).
     for i in $(seq 1 7); do next_fix; sleep 1.1; done
     cap shot_1b_start   # early — does the map follow from the start?
@@ -91,9 +93,14 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     cap shot_3_riding_more
 
     echo ">> stop + rides"
-    adb shell input tap "$BTN_X" "$BTN_Y"; sleep 2   # stop
+    adb shell input keyevent KEYCODE_VOLUME_DOWN; sleep 2   # stop
     adb shell input tap "$TRACKS_X" "$APPBAR_Y"; sleep 3
     cap shot_4_rides
+    # Open the first ride: detail screen with the offline map (track coloured by
+    # speed), all stats, the speed legend and the elevation profile.
+    adb shell input tap $(( W / 2 )) $(( $(dp 130) )); sleep 6
+    cap shot_4a_ride_detail
+    adb shell input keyevent KEYCODE_BACK; sleep 2
 
     # Rides app bar -> "Upload accounts" (cloud icon, the only action = rightmost).
     echo ">> upload accounts settings"

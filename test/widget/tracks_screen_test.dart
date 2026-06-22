@@ -3,7 +3,7 @@ import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/tracks/application/track_providers.dart';
 import 'package:cycle/features/tracks/presentation/track_detail_screen.dart';
 import 'package:cycle/features/tracks/presentation/tracks_screen.dart';
-import 'package:cycle/features/tracks/presentation/widgets/route_preview.dart';
+import 'package:cycle/features/tracks/presentation/widgets/ride_map.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +80,10 @@ void main() {
           appDatabaseProvider.overrideWithValue(db),
           trackProvider(id).overrideWith((ref) => track),
           trackPointsProvider(id).overrideWith((ref) => points),
+          // The real offline map can't load in a host widget test; error fast
+          // so RideMap shows its placeholder instead of spawning an isolate.
+          rideMapProvider.overrideWith((ref) async =>
+              throw StateError('no offline map in widget test')),
         ],
         child: MaterialApp(home: TrackDetailScreen(trackId: id)),
       ),
@@ -88,8 +92,8 @@ void main() {
 
     expect(find.text('12.00'), findsOneWidget); // distance km
     expect(find.text('0:30:00'), findsOneWidget); // duration
-    expect(find.text('ROUTE'), findsOneWidget);
-    expect(find.byType(RoutePreview), findsOneWidget);
-    expect(find.text('ELEVATION'), findsOneWidget);
+    expect(find.textContaining('MAP'), findsOneWidget);
+    expect(find.byType(RideMap), findsOneWidget);
+    expect(find.textContaining('ELEVATION'), findsOneWidget);
   });
 }
