@@ -10,8 +10,13 @@ class TileHelper {
   /// Calculates all tiles needed to display the map on the available view area. Leave a margin so that we do not need to refetch everything for tiny position changes.
   static TileDimension calculateTiles({required MapPosition mapViewPosition, required MapSize screensize}) {
     Mappoint center = mapViewPosition.getCenter();
-    double halfWidth = screensize.width / 2;
-    double halfHeight = screensize.height / 2;
+    // PATCH (cycle): account for the pinch scale. The rendered tiles are scaled
+    // by mapPosition.scale in the view, so when scaled out (scale < 1) the screen
+    // shows screensize/scale world-pixels — without dividing here, the rendered
+    // tiles cover only screensize and the margins go blank, worse the further out.
+    final double scale = mapViewPosition.scale <= 0 ? 1.0 : mapViewPosition.scale;
+    double halfWidth = screensize.width / 2 / scale;
+    double halfHeight = screensize.height / 2 / scale;
     // In case of rotation use the max side for both width and height
     halfWidth = max(halfWidth, halfHeight);
     halfHeight = halfWidth;

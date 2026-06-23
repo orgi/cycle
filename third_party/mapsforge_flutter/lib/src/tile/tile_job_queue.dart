@@ -49,13 +49,20 @@ class TileJobQueue {
           _currentJob?.tileSet.mapPosition.longitude == position.longitude &&
           _currentJob?.tileSet.mapPosition.zoomlevel == position.zoomlevel &&
           _currentJob?.tileSet.mapPosition.indoorLevel == position.indoorLevel) {
-        // do not recalculate for rotation or scaling
-        TileSet tileSet = TileSet(center: _currentJob!.tileSet.center, mapPosition: position);
-        tileSet.images.addEntries(_currentJob!.tileSet.images.entries);
-        _CurrentJob myJob = _CurrentJob(_currentJob!.tileDimension, tileSet);
-        _currentJob = myJob;
-        _emitTileSetBatched(_currentJob!.tileSet);
-        return;
+        // Only the scale (pinch) or rotation changed. Re-emit the existing tiles
+        // WITHOUT re-rendering — but only while the (scale-aware) tiles needed
+        // still fit what we already rendered. PATCH (cycle): otherwise pinching
+        // out kept re-emitting the smaller tileset and the margins went blank.
+        TileDimension scaledDim = TileHelper.calculateTiles(mapViewPosition: position, screensize: _size!);
+        if (_currentJob!.tileDimension.contains(scaledDim)) {
+          TileSet tileSet = TileSet(center: _currentJob!.tileSet.center, mapPosition: position);
+          tileSet.images.addEntries(_currentJob!.tileSet.images.entries);
+          _CurrentJob myJob = _CurrentJob(_currentJob!.tileDimension, tileSet);
+          _currentJob = myJob;
+          _emitTileSetBatched(_currentJob!.tileSet);
+          return;
+        }
+        // scaled out beyond what we rendered → fall through and render more.
       }
       TileDimension tileDimension = TileHelper.calculateTiles(mapViewPosition: position, screensize: _size!);
       if (_currentJob?.tileDimension.contains(tileDimension) ?? false) {

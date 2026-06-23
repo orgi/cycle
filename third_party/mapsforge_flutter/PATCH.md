@@ -42,6 +42,18 @@ Search for `PATCH (cycle)` in that file for the exact diffs.
 adds the `RotationHandler`, so the map is fixed north-up (a bike computer keeps
 the map oriented). Re-add that one line to restore two-finger rotation.
 
+## Patch 3 — scale-aware tile coverage (pinch-zoom-out gaps)
+
+`src/util/tile_helper.dart` + `src/tile/tile_job_queue.dart`: tiles are scaled by
+`mapPosition.scale` in the view, but `calculateTiles` sized them to the raw
+`screensize` at the integer zoom — so pinching out (scale < 1, same integer zoom)
+left the rendered tiles too small to cover the enlarged view, blanking the
+margins progressively (roads/ways "disappearing" the further you zoom out).
+`calculateTiles` now divides the half-extents by `scale`; the tile-job-queue's
+"scale/rotation only" shortcut re-emits the existing tiles only while the
+scale-aware tile dimension is still `contains()`-ed by what was rendered, else it
+re-renders. `scale == 1` (every non-pinch state) is unchanged.
+
 ## Removing this
 
 Delete the `dependency_overrides: mapsforge_flutter` block in the root `pubspec.yaml`
