@@ -36,6 +36,17 @@ class _RideMapState extends ConsumerState<RideMap> {
     final pts = widget.points;
     if (pts.length < 2) return;
 
+    // Continuous base line under the coloured segments. It's a single marker, so
+    // it re-initialises atomically on zoom and is always drawn full — the speed
+    // segments (which re-init one-by-one) overlay it, so the track never shows
+    // gaps even while they catch up. Added first → drawn first (Sets keep
+    // insertion order), so it stays underneath.
+    _markers.addMarker(PolylineMarker(
+      path: [for (final p in pts) LatLong(p.latitude, p.longitude)],
+      strokeColor: 0xFF9E9E9E,
+      strokeWidth: 2.2,
+    ));
+
     // Track as speed-coloured segments (merge consecutive same-colour points).
     var run = <LatLong>[LatLong(pts[0].latitude, pts[0].longitude)];
     var runBucket = _bucket(_kmh(pts, 0));
