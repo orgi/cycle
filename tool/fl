@@ -8,8 +8,10 @@
 #   tool/fl flutter analyze
 #   tool/fl bash -lc '...'
 #
-# Caches (pub, gradle, android) live under the repo in gitignored dirs so they
-# persist between invocations and keep the host clean.
+# Caches (pub, gradle, android SDK + NDK) live under the repo in gitignored dirs
+# so they persist between these throwaway (`--rm`) containers and keep the host
+# clean. Without GRADLE_USER_HOME the base image points Gradle at a path inside
+# the ephemeral container, so every build re-downloads deps + the NDK.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,8 +26,11 @@ fi
 exec docker run --rm \
   "${DOCKER_ARGS[@]}" \
   -v "${REPO}:/work" \
+  -v "${REPO}/.cache/ndk:/opt/android-sdk-linux/ndk" \
   -w /work \
   -e PUB_CACHE=/work/.cache/pub \
   -e HOME=/work/.cache/home \
+  -e GRADLE_USER_HOME=/work/.cache/gradle \
+  -e ANDROID_USER_HOME=/work/.cache/android \
   "${IMAGE}" \
   "$@"

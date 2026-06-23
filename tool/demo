@@ -10,8 +10,9 @@ DOCKER_ARGS=()
 mkdir -p "${REPO}/screenshots" "${REPO}/videos"
 
 exec docker run --rm "${DOCKER_ARGS[@]}" \
-  -v "${REPO}:/work" -w /work \
+  -v "${REPO}:/work" -v "${REPO}/.cache/ndk:/opt/android-sdk-linux/ndk" -w /work \
   -e PUB_CACHE=/work/.cache/pub -e HOME=/work/.cache/home \
+  -e GRADLE_USER_HOME=/work/.cache/gradle -e ANDROID_USER_HOME=/work/.cache/android \
   "${IMAGE}" bash -lc '
     set -euo pipefail
     APP_ID=com.cycleapp.cycle
