@@ -12,13 +12,13 @@ double speedInUnits(double kmh, UnitSystem units) =>
 double distanceInUnits(double km, UnitSystem units) =>
     units == UnitSystem.imperial ? km / _kmPerMile : km;
 
-String formatSpeedKmh(double kmh) => kmh.toStringAsFixed(1);
+String formatSpeedKmh(double kmh) => kmh.toStringAsFixed(2);
 
 String formatDistanceKm(double km) => km.toStringAsFixed(2);
 
 /// Formats a km/h speed in the user's units (value only; unit label separate).
 String formatSpeed(double kmh, UnitSystem units) =>
-    speedInUnits(kmh, units).toStringAsFixed(1);
+    speedInUnits(kmh, units).toStringAsFixed(2);
 
 /// Formats a km distance in the user's units (value only; unit label separate).
 String formatDistance(double km, UnitSystem units) =>

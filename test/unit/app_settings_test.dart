@@ -73,9 +73,9 @@ void main() {
     });
 
     test('formatSpeed/formatDistance render the converted value', () {
-      expect(formatSpeed(32.18688, UnitSystem.imperial), '20.0');
+      expect(formatSpeed(32.18688, UnitSystem.imperial), '20.00');
       expect(formatDistance(16.09344, UnitSystem.imperial), '10.00');
-      expect(formatSpeed(30, UnitSystem.metric), '30.0');
+      expect(formatSpeed(30, UnitSystem.metric), '30.00');
     });
   });
 }

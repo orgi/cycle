@@ -2,9 +2,9 @@ import 'package:cycle/core/utils/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('formatSpeedKmh keeps one decimal', () {
-    expect(formatSpeedKmh(25.345), '25.3');
-    expect(formatSpeedKmh(0), '0.0');
+  test('formatSpeedKmh keeps two decimals', () {
+    expect(formatSpeedKmh(25.348), '25.35');
+    expect(formatSpeedKmh(0), '0.00');
   });
 
   test('formatDistanceKm keeps two decimals', () {
