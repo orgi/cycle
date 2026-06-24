@@ -8,6 +8,17 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ride track no longer shows gaps** — the speed-coloured track is drawn as
+  many small polyline markers; the map's marker datastore re-initialises them in
+  one sequential loop, and a single failing marker (e.g. a zero-length segment
+  where the bike was stopped and GPS points coincide) aborted the loop, leaving
+  every later segment unpainted so the gray base line showed through. Now
+  coincident points are de-duplicated (no zero-length segments), the number of
+  colour runs is capped, and the renderer skips a bad marker instead of aborting
+  the batch (vendored patch 4).
+
 ### Changed
 
 - **Map render themes** — roads now stay visible ~2 zoom levels further out when

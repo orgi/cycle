@@ -12,6 +12,7 @@ import '../../../../core/utils/geo.dart';
 import '../../../map/application/map_render_service.dart';
 import '../../application/track_providers.dart';
 import 'speed_color.dart';
+import 'track_segments.dart';
 
 /// The ride drawn on the real offline map: the track is split into segments
 /// coloured by speed (red slow → violet fast), with start/finish dots. The map
@@ -33,58 +34,62 @@ class _RideMapState extends ConsumerState<RideMap> {
   void _buildMarkers() {
     if (_built) return;
     _built = true;
-    final pts = widget.points;
+    final raw = widget.points;
+    if (raw.length < 2) return;
+
+    // De-duplicate coincident points (a stationary bike emits identical GPS
+    // fixes). That keeps every drawn segment ≥ 2 distinct points, so none is
+    // zero-length — a zero-length segment can make the marker renderer throw,
+    // which aborts the re-init of all the following segments (then the gray
+    // base shows through). Build parallel point/speed lists.
+    final pts = <LatLong>[];
+    final kmh = <double>[];
+    for (var i = 0; i < raw.length; i++) {
+      final ll = LatLong(raw[i].latitude, raw[i].longitude);
+      if (pts.isNotEmpty &&
+          (ll.latitude - pts.last.latitude).abs() < 1e-7 &&
+          (ll.longitude - pts.last.longitude).abs() < 1e-7) {
+        continue;
+      }
+      pts.add(ll);
+      kmh.add(_kmh(raw, i));
+    }
     if (pts.length < 2) return;
 
     // Continuous base line under the coloured segments. It's a single marker, so
     // it re-initialises atomically on zoom and is always drawn full — the speed
-    // segments (which re-init one-by-one) overlay it, so the track never shows
-    // gaps even while they catch up. Added first → drawn first (Sets keep
-    // insertion order), so it stays underneath.
+    // segments overlay it. Added first → drawn first (Sets keep insertion
+    // order), so it stays underneath.
     _markers.addMarker(PolylineMarker(
-      path: [for (final p in pts) LatLong(p.latitude, p.longitude)],
+      path: List.of(pts),
       strokeColor: 0xFF9E9E9E,
       strokeWidth: 2.2,
     ));
 
-    // Track as speed-coloured segments (merge consecutive same-colour points).
-    var run = <LatLong>[LatLong(pts[0].latitude, pts[0].longitude)];
-    var runBucket = _bucket(_kmh(pts, 0));
-    for (var i = 1; i < pts.length; i++) {
-      final ll = LatLong(pts[i].latitude, pts[i].longitude);
-      final b = _bucket(_kmh(pts, i));
-      run.add(ll);
-      if (b != runBucket) {
-        _addSegment(run, runBucket);
-        run = [ll];
-        runBucket = b;
-      }
+    // Track as speed-coloured runs — capped in number so the marker datastore
+    // can re-initialise them all between view updates (see track_segments.dart).
+    for (final r in buildTrackRuns(kmh)) {
+      _markers.addMarker(PolylineMarker(
+        path: pts.sublist(r.start, r.end + 1),
+        strokeColor: speedColorArgb(r.kmh),
+        strokeWidth: 2.2,
+      ));
     }
-    _addSegment(run, runBucket);
 
     // Start (green) and finish (red) markers.
     _markers.addMarker(CircleMarker(
-      latLong: LatLong(pts.first.latitude, pts.first.longitude),
+      latLong: pts.first,
       radius: 3.5,
       fillColor: 0xFF2ECC71,
       strokeColor: 0xFFFFFFFF,
       strokeWidth: 1,
     ));
     _markers.addMarker(CircleMarker(
-      latLong: LatLong(pts.last.latitude, pts.last.longitude),
+      latLong: pts.last,
       radius: 3.5,
       fillColor: 0xFFE74C3C,
       strokeColor: 0xFFFFFFFF,
       strokeWidth: 1,
-    ));
-  }
-
-  void _addSegment(List<LatLong> path, int bucket) {
-    if (path.length < 2) return;
-    _markers.addMarker(PolylineMarker(
-      path: List.of(path),
-      strokeColor: speedColorArgb(_bucketKmh(bucket)),
-      strokeWidth: 2.2,
     ));
   }
 
@@ -99,14 +104,6 @@ class _RideMapState extends ConsumerState<RideMap> {
     final dt = pts[i].time.difference(pts[i - 1].time).inMilliseconds / 1000.0;
     return dt > 0 ? d / dt * 3.6 : 0;
   }
-
-  static const int _buckets = 14;
-  int _bucket(double kmh) {
-    final t = ((kmh - 10) / (60 - 10)).clamp(0.0, 1.0);
-    return (t * _buckets).round();
-  }
-
-  double _bucketKmh(int bucket) => 10 + bucket / _buckets * 50;
 
   void _centerOnTrack(MapModel model, Size size) {
     if (_centered || widget.points.length < 2) return;

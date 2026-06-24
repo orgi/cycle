@@ -54,6 +54,18 @@ margins progressively (roads/ways "disappearing" the further you zoom out).
 scale-aware tile dimension is still `contains()`-ed by what was rendered, else it
 re-renders. `scale == 1` (every non-pinch state) is unchanged.
 
+## Patch 4 — one bad marker must not abort the re-init batch
+
+`src/marker/default_marker_datastore.dart`: `_reinitMarkers()` re-initialises the
+markers in a single sequential `await` loop via `reinitOneMarker()`. If
+`marker.changeZoomlevel()` threw for one marker (e.g. a degenerate zero-length
+polyline), the exception propagated and aborted the loop, so every marker *after*
+the bad one was left uninitialised and unpainted. Our ride track is drawn as a
+gray base line plus many speed-coloured polyline segments; one bad segment made
+all following segments disappear (the gray base showing through). `reinitOneMarker`
+now wraps `changeZoomlevel` in try/catch and skips a marker that fails, so the
+rest of the batch still paints.
+
 ## Removing this
 
 Delete the `dependency_overrides: mapsforge_flutter` block in the root `pubspec.yaml`

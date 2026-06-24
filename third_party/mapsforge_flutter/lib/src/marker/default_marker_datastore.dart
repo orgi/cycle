@@ -51,7 +51,16 @@ class DefaultMarkerDatastore<T> extends MarkerDatastore<T> {
   }
 
   Future<void> reinitOneMarker(_CurrentMarkers<T> currentMarkers, Marker<T> marker) async {
-    await marker.changeZoomlevel(currentMarkers.zoomlevel, currentMarkers.projection);
+    // PATCH (cycle): a single marker failing to (re)initialise must not abort
+    // the batch loop in _reinitMarkers — the await there propagated the throw,
+    // so every marker *after* the bad one (e.g. a degenerate zero-length
+    // polyline) was left unpainted. A speed-coloured track is many polyline
+    // markers; one bad one made the rest of the track vanish. Skip the bad one.
+    try {
+      await marker.changeZoomlevel(currentMarkers.zoomlevel, currentMarkers.projection);
+    } catch (_) {
+      return;
+    }
     currentMarkers._initializedMarkers.add(marker);
     currentMarkers._cachedMarkers.add(marker);
   }
