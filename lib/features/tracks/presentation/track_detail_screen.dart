@@ -68,7 +68,10 @@ class TrackDetailScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final file = await ref.read(gpxExportServiceProvider).exportToFile(trackId);
-      messenger.showSnackBar(SnackBar(content: Text('Saved ${file.path}')));
+      messenger.showSnackBar(SnackBar(
+        content: Text('Saved ${file.path}'),
+        duration: const Duration(seconds: 10),
+      ));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }

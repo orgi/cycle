@@ -9,6 +9,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **GPX export is now findable** — exported rides went to private internal
+  storage (invisible to file managers); they now write to the app's external
+  files dir under `exports/` (the same accessible root as the route-import
+  `routes/` folder), and the "Saved …" path shows for 10 s.
 
 - **Ride track no longer shows gaps** — the speed-coloured track is drawn as
   many small polyline markers; the map's marker datastore re-initialises them in
