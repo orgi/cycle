@@ -8,6 +8,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Changed
+
+- **Map render themes** — roads now stay visible ~2 zoom levels further out when
+  zooming out (lowered the `zoom-min` thresholds per road class), and paths,
+  tracks and cycle lanes render as solid lines instead of dashed (railways stay
+  dashed). Fixes roads appearing to fragment/disappear as you zoom out. Applies
+  to all three schemes (Dark/Light/B&W).
+
 ## [0.1.0] - 2026-06-22
 
 First tracked version. A phone-based bike computer (Android, iOS-ready) with an
