@@ -1,5 +1,6 @@
 import 'package:cycle/core/metrics/ride_metrics_accumulator.dart';
 import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/models/ride_metrics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 GeoSample sampleAt(
@@ -66,5 +67,44 @@ void main() {
     expect(m.distanceMeters, 0);
     expect(m.elapsed, Duration.zero);
     expect(m.maxSpeedMps, 3);
+  });
+
+  // Rolling-window speed fallback for poor-accuracy fixes (e.g. under trees).
+  GeoSample acc(DateTime t, double lon, double speed, double accuracy) =>
+      GeoSample(
+          latitude: 0,
+          longitude: lon,
+          time: t,
+          speedMps: speed,
+          accuracyMeters: accuracy);
+  const step = 0.00008983; // ~10 m east at the equator per 1 s ⇒ 10 m/s
+
+  test('poor accuracy: uses the position-window speed when the chip reads low',
+      () {
+    final a = RideMetricsAccumulator();
+    late RideMetrics m;
+    for (var i = 0; i <= 6; i++) {
+      // chip insists 2 m/s, but we are really moving ~10 m/s, accuracy 30 m.
+      m = a.add(acc(t0.add(Duration(seconds: i)), step * i, 2, 30));
+    }
+    expect(m.currentSpeedMps, greaterThan(8));
+  });
+
+  test('good accuracy: keeps the chip speed (window not applied)', () {
+    final a = RideMetricsAccumulator();
+    late RideMetrics m;
+    for (var i = 0; i <= 6; i++) {
+      m = a.add(acc(t0.add(Duration(seconds: i)), step * i, 2, 5));
+    }
+    expect(m.currentSpeedMps, closeTo(2, 0.5));
+  });
+
+  test('poor accuracy but stationary: no phantom speed', () {
+    final a = RideMetricsAccumulator();
+    late RideMetrics m;
+    for (var i = 0; i <= 6; i++) {
+      m = a.add(acc(t0.add(Duration(seconds: i)), 0, 0, 30));
+    }
+    expect(m.currentSpeedMps, 0);
   });
 }

@@ -25,6 +25,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   the batch (vendored patch 4).
 
 ### Changed
+- **Live speed holds up under tree cover** — the GPS chip's reported speed
+  regresses toward zero when the signal is weak (under canopy), so the
+  speedometer read low while the distance-based average stayed correct. When a
+  fix is inaccurate the live speed now falls back to the speed implied by actual
+  movement over the last few seconds (a position window), so it no longer
+  under-reports while you're moving; an accurate fix still uses the responsive
+  chip value. A BLE wheel-speed sensor (with the wheel circumference set) remains
+  the most accurate source and is still preferred when connected.
 
 - **Map render themes** — roads now stay visible ~2 zoom levels further out when
   zooming out (lowered the `zoom-min` thresholds per road class), and paths,
