@@ -66,9 +66,15 @@ class _RideMapState extends ConsumerState<RideMap> {
       strokeWidth: 2.2,
     ));
 
-    // Track as speed-coloured runs — capped in number so the marker datastore
-    // can re-initialise them all between view updates (see track_segments.dart).
-    for (final r in buildTrackRuns(kmh)) {
+    // Track as speed-coloured runs. Runs too short to render at the fitted zoom
+    // are merged by length so the whole track stays coloured (see
+    // track_segments.dart) — distance per step drives that.
+    final segMeters = <double>[
+      for (var i = 0; i + 1 < pts.length; i++)
+        haversineMeters(pts[i].latitude, pts[i].longitude,
+            pts[i + 1].latitude, pts[i + 1].longitude),
+    ];
+    for (final r in buildTrackRuns(kmh, segMeters)) {
       _markers.addMarker(PolylineMarker(
         path: pts.sublist(r.start, r.end + 1),
         strokeColor: speedColorArgb(r.kmh),

@@ -14,13 +14,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   files dir under `exports/` (the same accessible root as the route-import
   `routes/` folder), and the "Saved …" path shows for 10 s.
 
-- **Ride track no longer shows gaps** — the speed-coloured track is drawn as
-  many small polyline markers; the map's marker datastore re-initialises them in
-  one sequential loop, and a single failing marker (e.g. a zero-length segment
-  where the bike was stopped and GPS points coincide) aborted the loop, leaving
-  every later segment unpainted so the gray base line showed through. Now
-  coincident points are de-duplicated (no zero-length segments), the number of
-  colour runs is capped, and the renderer skips a bad marker instead of aborting
+- **Ride track no longer shows gray gaps when zoomed out** — the speed-coloured
+  track is drawn as separate coloured segments over a gray base line. Noisy GPS
+  speed split it into many very short segments; when the whole ride is fitted on
+  screen those were only a few pixels long and didn't render, so the gray base
+  showed through (they "appeared" only when you zoomed in). Segments are now
+  merged by **length** so each is long enough to render at the fitted zoom (which
+  also bounds their count and de-noises the colouring). Coincident points are
+  also de-duplicated, and the renderer skips a failed marker instead of aborting
   the batch (vendored patch 4).
 
 ### Changed
