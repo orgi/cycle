@@ -41,6 +41,17 @@
         <area fill="#0E0E0E" />
     </rule>
 
+    <!-- Contour lines (OpenAndroMaps `contour_ext`). Drawn under roads. -->
+    <rule e="way" k="contour_ext" v="elevation_major" zoom-min="12">
+        <line stroke="#8A7049" stroke-width="0.9" />
+    </rule>
+    <rule e="way" k="contour_ext" v="elevation_medium" zoom-min="13">
+        <line stroke="#6E5A3D" stroke-width="0.6" />
+    </rule>
+    <rule e="way" k="contour_ext" v="elevation_minor" zoom-min="14">
+        <line stroke="#5C4A33" stroke-width="0.4" />
+    </rule>
+
     <!-- Buildings -->
     <rule e="way" k="building" v="*" zoom-min="15">
         <area fill="#1C1C1C" stroke="#2C2C2C" stroke-width="0.2" />
@@ -85,6 +96,15 @@
         <line stroke="#7A8A5A" stroke-width="0.7" />
     </rule>
 
+    <!-- Signed cycle routes (OpenAndroMaps bakes the network onto the way),
+         drawn on top to highlight the route. -->
+    <rule e="way" k="network" v="ncn|icn" zoom-min="11">
+        <line stroke="#C060D0" stroke-width="1.6" />
+    </rule>
+    <rule e="way" k="network" v="lcn|rcn" zoom-min="12">
+        <line stroke="#8E50A0" stroke-width="1.2" />
+    </rule>
+
     <!-- Road name labels at high zoom -->
     <rule e="way" k="highway" v="motorway|trunk|primary|secondary|tertiary|residential" zoom-min="16">
         <caption k="name" font-style="bold" font-size="11" fill="#FFFFFF" stroke="#000000" stroke-width="2.0" />
@@ -96,5 +116,16 @@
     </rule>
     <rule e="node" k="place" v="village|suburb" zoom-min="13">
         <caption k="name" font-size="11" fill="#DDDDDD" stroke="#000000" stroke-width="2.0" />
+    </rule>
+
+    <!-- Mountain features (useful for cyclists: passes, peaks, saddles) -->
+    <rule e="node" k="mountain_pass" v="yes" zoom-min="12">
+        <caption k="name" font-style="bold" font-size="11" fill="#E0C9A0" stroke="#000000" stroke-width="2.0" />
+    </rule>
+    <rule e="node" k="natural" v="peak|volcano" zoom-min="14">
+        <caption k="name" font-size="10" fill="#D8C090" stroke="#000000" stroke-width="2.0" />
+    </rule>
+    <rule e="node" k="natural" v="saddle" zoom-min="15">
+        <caption k="name" font-size="10" fill="#C0B080" stroke="#000000" stroke-width="2.0" />
     </rule>
 </rendertheme>

@@ -8,6 +8,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Added
+- **Richer offline map (terrain + cycle routes)** — the OpenAndroMaps data you
+  already download contains contour lines, signed cycle-route networks and
+  mountain features; the render themes now draw them (no new assets, no
+  re-download): contour lines (minor/medium/major, revealed as you zoom in),
+  signed cycle routes (local→international, highlighted on the road), and named
+  peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
+
 ### Fixed
 - **GPX export is now findable** — exported rides went to private internal
   storage (invisible to file managers); they now write to the app's external
