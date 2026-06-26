@@ -663,7 +663,7 @@ packages:
     source: hosted
     version: "4.0.0"
   mapsforge_flutter_renderer:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: mapsforge_flutter_renderer
       sha256: "51e35eb51ea3d53a1820df2dfa511d322f61a4256f7cd346ee35c18ba89c97dd"
