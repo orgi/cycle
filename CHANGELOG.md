@@ -17,6 +17,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **Location now appears on startup instead of the map staying stuck** — the
+  raw GPS provider we use for accuracy needs sky view, so indoors / on a cold
+  start it could take forever (or never) to lock, leaving no location dot and
+  the map on its default centre. Startup now seeds the map with the last known
+  position immediately, and if raw GPS can't get a fix after a few tries it
+  falls back to the assisted (fused, wifi/cell) provider so a location still
+  comes through; any GPS success switches back.
 - **GPX export is now findable** — exported rides went to private internal
   storage (invisible to file managers); they now write to the app's external
   files dir under `exports/` (the same accessible root as the route-import

@@ -39,23 +39,55 @@ class GeolocatorLocationService implements LocationService {
   Stream<GeoSample> positions() => _shared ??= _poll().asBroadcastStream();
 
   Stream<GeoSample> _poll() async* {
+    // Seed immediately with the last known position so the map centres and the
+    // location dot appear at once — even before a fresh fix. Without this the
+    // raw GPS provider (below) can take a long time to lock, or never lock
+    // indoors/under cover, leaving the map stuck on its default centre.
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) yield _toSample(last);
+    } catch (_) {}
+
     // geolocator 14's getPositionStream binds a foreground service that, on
     // Android 14 (incl. the emulator), often connects but never starts
     // requestLocationUpdates — yielding no fixes and no error. Polling the
     // one-shot getCurrentPosition at ~1 Hz uses a different, reliable code path
     // and is exactly the cadence a bike computer needs.
+    //
+    // We prefer the raw GPS provider (accurate, unsmoothed), but it needs sky
+    // view. If it can't get a fix for a few tries, fall back to the fused
+    // provider (wifi/cell-assisted) for one try so a location still arrives
+    // indoors / on a cold start; any success resets us to GPS.
+    var gpsFailures = 0;
     while (true) {
+      final useFused = gpsFailures >= 4;
       try {
         final position = await Geolocator.getCurrentPosition(
-          locationSettings: _settings(),
+          locationSettings: useFused ? _fusedSettings() : _settings(),
         );
         yield _toSample(position);
+        gpsFailures = 0;
       } catch (e) {
         // Transient (e.g. no fix within timeLimit); retry on the next tick.
         if (kDebugMode) debugPrint('[cycle] getCurrentPosition: $e');
+        if (!useFused) gpsFailures++;
       }
       await Future<void>.delayed(const Duration(seconds: 1));
     }
+  }
+
+  /// Fused/assisted provider (wifi/cell), used only as a fallback when the raw
+  /// GPS provider can't get a fix — so a location still comes through indoors.
+  LocationSettings _fusedSettings() {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+        forceLocationManager: false,
+        timeLimit: const Duration(seconds: 8),
+      );
+    }
+    return _settings();
   }
 
   /// Platform-specific location settings. On Android we force the raw
