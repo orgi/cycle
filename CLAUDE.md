@@ -39,6 +39,8 @@ The actual phones available for manual testing will be
 * A Galaxy A33 5G
 * Possibly a Galaxy A3 2017
 
+When installing the app using adb, NEVER uninstall the existing app to avoid data loss.
+
 ## Tech stack & architecture
 
 * **Framework:** Flutter (Dart), single codebase for Android + iOS.
