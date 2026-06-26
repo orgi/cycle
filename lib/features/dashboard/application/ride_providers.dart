@@ -7,6 +7,7 @@ import '../../../core/db/database.dart';
 import '../../../core/metrics/ride_metrics_accumulator.dart';
 import '../../../core/models/geo_sample.dart';
 import '../../../core/models/ride_metrics.dart';
+import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/services/battery_service.dart';
@@ -142,6 +143,18 @@ class RideController extends Notifier<RideMetrics> {
         );
     // Fold BLE wheel speed into the displayed speed as it arrives.
     ref.listen(sensorSnapshotProvider, (_, next) => next.whenData(_onSnapshot));
+    // When the wheel-speed sensor drops, forget its speed so the display falls
+    // straight back to GPS instead of holding the last (now stale) BLE value.
+    ref.listen(connectedSensorsProvider, (_, next) {
+      next.whenData((sensors) {
+        final hasSpeed = sensors.any(
+            (s) => s.connected && s.kinds.contains(SensorKind.speedCadence));
+        if (!hasSpeed) {
+          _fusion.clearBle();
+          state = state.copyWith(currentSpeedMps: _fusedSpeed(DateTime.now()));
+        }
+      });
+    });
     ref.onDispose(() => _subscription?.cancel());
     return const RideMetrics.zero();
   }

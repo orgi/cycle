@@ -21,6 +21,13 @@ class SpeedFusion {
 
   void updateGps(double metersPerSecond) => _gpsSpeed = metersPerSecond;
 
+  /// Forget the BLE speed (e.g. the wheel sensor disconnected) so [fused] falls
+  /// straight back to GPS instead of waiting for the freshness window to lapse.
+  void clearBle() {
+    _bleSpeed = null;
+    _bleAt = null;
+  }
+
   void reset() {
     _bleSpeed = null;
     _bleAt = null;

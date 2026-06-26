@@ -74,7 +74,7 @@ class FakeSensorService implements SensorService {
   Future<void> stopScan() async {}
 
   @override
-  Future<void> connect(String deviceId) async {
+  Future<void> connect(String deviceId, {bool autoConnect = false}) async {
     final d = discoverable.firstWhere((s) => s.id == deviceId);
     _connected
       ..removeWhere((c) => c.id == deviceId)

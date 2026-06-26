@@ -17,6 +17,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **BLE sensors auto-reconnect reliably** — reconnect is now persistent
+  (`autoConnect`): a paired sensor that was on standby at launch, or that drops
+  out and comes back in range, re-links by itself instead of only getting one
+  attempt at startup. Disconnects are also detected cleanly.
+- **Losing the wheel-speed sensor falls back to GPS** — the speed display now
+  forgets the BLE speed the moment that sensor disconnects, instead of holding
+  the last value.
 - **BLE wheel speed no longer flickers to 0** — a CSC notification with no new
   wheel revolution (low/steady speed, coasting, or hand-spinning) reported 0
   immediately, so the speed flickered (and the fusion briefly fell back to GPS).

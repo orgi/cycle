@@ -34,7 +34,9 @@ class SensorConnectionController extends Notifier<Set<String>> {
       } catch (_) {}
       for (final id in ids) {
         try {
-          await service.connect(id);
+          // Persistent reconnect: the OS re-links whenever the sensor wakes,
+          // so a sensor that was on standby at launch still connects later.
+          await service.connect(id, autoConnect: true);
         } catch (_) {}
       }
     });

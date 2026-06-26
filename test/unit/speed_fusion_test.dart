@@ -30,4 +30,14 @@ void main() {
     expect(f.fused(later), 5);
     expect(f.isUsingBle(later), isFalse);
   });
+
+  test('clearBle falls back to GPS immediately (sensor disconnected)', () {
+    final f = SpeedFusion()
+      ..updateGps(5)
+      ..updateBle(8, t0);
+    expect(f.fused(t0), 8); // BLE fresh
+    f.clearBle();
+    expect(f.fused(t0), 5); // dropped → GPS, no waiting for freshness
+    expect(f.isUsingBle(t0), isFalse);
+  });
 }

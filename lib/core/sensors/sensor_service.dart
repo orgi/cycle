@@ -83,7 +83,11 @@ abstract class SensorService {
 
   Future<void> stopScan();
 
-  Future<void> connect(String deviceId);
+  /// Connects to [deviceId]. With [autoConnect] the connection is persistent —
+  /// the OS re-establishes it whenever the sensor reappears (used for
+  /// auto-reconnect of already-paired sensors); without it, a one-shot connect
+  /// (used for pairing from a scan).
+  Future<void> connect(String deviceId, {bool autoConnect = false});
   Future<void> disconnect(String deviceId);
 
   /// Sets the wheel circumference (metres) used to derive speed from a CSC
