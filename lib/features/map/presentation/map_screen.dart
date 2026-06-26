@@ -422,6 +422,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       final model = loaded.model;
                       _ensureInitialCenter(model, loaded.center);
                       return MapsforgeView(
+                        // Keyed on the model so swapping the active map (e.g. a
+                        // GPS fix selects a more-local map) recreates the view
+                        // instead of updating it — mapsforge's TileView throws
+                        // "MapModel cannot be changed" if its model is swapped
+                        // in place, which blanked the map.
+                        key: ObjectKey(model),
                         mapModel: model,
                         children: [
                           MarkerDatastoreOverlay(

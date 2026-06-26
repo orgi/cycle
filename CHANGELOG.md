@@ -17,6 +17,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **Map no longer blanks when the active map switches** — swapping the displayed
+  map (e.g. once a position picks a more-local map) updated mapsforge's render
+  model in place, which it rejects ("MapModel cannot be changed"), throwing during
+  build and leaving the map blank. The map view is now keyed to the model so it
+  recreates cleanly on a swap. This is the intermittent "map stuck / no location"
+  on startup.
 - **Location now appears on startup instead of the map staying stuck** — the
   raw GPS provider we use for accuracy needs sky view, so indoors / on a cold
   start it could take forever (or never) to lock, leaving no location dot and
