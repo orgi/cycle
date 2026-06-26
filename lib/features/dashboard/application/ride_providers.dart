@@ -151,7 +151,9 @@ class RideController extends Notifier<RideMetrics> {
             (s) => s.connected && s.kinds.contains(SensorKind.speedCadence));
         if (!hasSpeed) {
           _fusion.clearBle();
-          state = state.copyWith(currentSpeedMps: _fusedSpeed(DateTime.now()));
+          state = state.copyWith(
+              currentSpeedMps: _fusedSpeed(DateTime.now()),
+              speedFromSensor: false);
         }
       });
     });
@@ -168,13 +170,20 @@ class RideController extends Notifier<RideMetrics> {
           ? sample.speedMps!
           : 0.0;
       _fusion.updateGps(gps);
-      state = RideMetrics.zero().copyWith(currentSpeedMps: _fusion.fused(DateTime.now()));
+      final now = DateTime.now();
+      state = RideMetrics.zero().copyWith(
+          currentSpeedMps: _fusion.fused(now),
+          speedFromSensor: _fusion.isUsingBle(now));
       return;
     }
     final metrics = _accumulator.add(sample);
     _fusion.updateGps(metrics.currentSpeedMps);
-    final fused = _fusedSpeed(DateTime.now());
-    state = metrics.copyWith(currentSpeedMps: fused, maxSpeedMps: _maxSpeedMps);
+    final now = DateTime.now();
+    final fused = _fusedSpeed(now);
+    state = metrics.copyWith(
+        currentSpeedMps: fused,
+        maxSpeedMps: _maxSpeedMps,
+        speedFromSensor: _fusion.isUsingBle(now));
     unawaited(ref
         .read(recordingProvider.notifier)
         .recordPoint(sample, _latestSnapshot, fused));
@@ -184,16 +193,19 @@ class RideController extends Notifier<RideMetrics> {
     _latestSnapshot = snapshot;
     final wheelSpeed = snapshot.wheelSpeedMps;
     if (wheelSpeed == null) return;
-    _fusion.updateBle(wheelSpeed, DateTime.now());
+    final now = DateTime.now();
+    _fusion.updateBle(wheelSpeed, now);
     // When idle, show live speed only; while recording, also track the max.
     if (!ref.read(recordingProvider)) {
-      state = RideMetrics.zero()
-          .copyWith(currentSpeedMps: _fusion.fused(DateTime.now()));
+      state = RideMetrics.zero().copyWith(
+          currentSpeedMps: _fusion.fused(now),
+          speedFromSensor: _fusion.isUsingBle(now));
       return;
     }
     state = state.copyWith(
-      currentSpeedMps: _fusedSpeed(DateTime.now()),
+      currentSpeedMps: _fusedSpeed(now),
       maxSpeedMps: _maxSpeedMps,
+      speedFromSensor: _fusion.isUsingBle(now),
     );
   }
 

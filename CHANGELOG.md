@@ -9,6 +9,9 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Speed shows its source by colour** — the live SPEED value reads **green**
+  when it comes from the BLE wheel sensor (accurate) and the normal accent when
+  it's GPS, so you can tell at a glance which source is driving it.
 - **Richer offline map (terrain + cycle routes)** — the OpenAndroMaps data you
   already download contains contour lines, signed cycle-route networks and
   mountain features; the render themes now draw them (no new assets, no

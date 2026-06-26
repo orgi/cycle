@@ -6,6 +6,7 @@ class RideMetrics {
     required this.avgSpeedMps,
     required this.maxSpeedMps,
     required this.elapsed,
+    this.speedFromSensor = false,
   });
 
   const RideMetrics.zero()
@@ -13,7 +14,8 @@ class RideMetrics {
         currentSpeedMps = 0,
         avgSpeedMps = 0,
         maxSpeedMps = 0,
-        elapsed = Duration.zero;
+        elapsed = Duration.zero,
+        speedFromSensor = false;
 
   final double distanceMeters;
   final double currentSpeedMps;
@@ -21,12 +23,17 @@ class RideMetrics {
   final double maxSpeedMps;
   final Duration elapsed;
 
+  /// Whether [currentSpeedMps] currently comes from a BLE speed sensor (true) or
+  /// GPS (false) — used to colour the live speed by source.
+  final bool speedFromSensor;
+
   RideMetrics copyWith({
     double? distanceMeters,
     double? currentSpeedMps,
     double? avgSpeedMps,
     double? maxSpeedMps,
     Duration? elapsed,
+    bool? speedFromSensor,
   }) =>
       RideMetrics(
         distanceMeters: distanceMeters ?? this.distanceMeters,
@@ -34,6 +41,7 @@ class RideMetrics {
         avgSpeedMps: avgSpeedMps ?? this.avgSpeedMps,
         maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
         elapsed: elapsed ?? this.elapsed,
+        speedFromSensor: speedFromSensor ?? this.speedFromSensor,
       );
 
   double get distanceKm => distanceMeters / 1000.0;
@@ -48,7 +56,8 @@ class RideMetrics {
       other.currentSpeedMps == currentSpeedMps &&
       other.avgSpeedMps == avgSpeedMps &&
       other.maxSpeedMps == maxSpeedMps &&
-      other.elapsed == elapsed;
+      other.elapsed == elapsed &&
+      other.speedFromSensor == speedFromSensor;
 
   @override
   int get hashCode => Object.hash(
@@ -57,5 +66,6 @@ class RideMetrics {
         avgSpeedMps,
         maxSpeedMps,
         elapsed,
+        speedFromSensor,
       );
 }

@@ -454,6 +454,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           value: formatSpeed(m.currentSpeedKmh, units),
                           unit: speedUnit,
                           emphasized: true,
+                          // Green when the speed comes from the BLE wheel sensor
+                          // (accurate); default accent when it's GPS.
+                          valueColor:
+                              m.speedFromSensor ? const Color(0xFF4CD964) : null,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -577,12 +581,17 @@ class _MapStat extends StatelessWidget {
     required this.value,
     required this.unit,
     this.emphasized = false,
+    this.valueColor,
   });
 
   final String label;
   final String value;
   final String unit;
   final bool emphasized;
+
+  /// Overrides the value colour (e.g. to show the speed source). Falls back to
+  /// the emphasized/normal default.
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -616,8 +625,8 @@ class _MapStat extends StatelessWidget {
                           ? theme.textTheme.headlineMedium
                           : theme.textTheme.headlineSmall)
                       ?.copyWith(
-                    color:
-                        emphasized ? theme.colorScheme.primary : Colors.white,
+                    color: valueColor ??
+                        (emphasized ? theme.colorScheme.primary : Colors.white),
                     fontWeight: FontWeight.w600,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
