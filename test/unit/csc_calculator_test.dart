@@ -48,13 +48,21 @@ void main() {
     expect(r3.cadenceRpm, 0);
   });
 
-  test('coasting (no new wheel revs) reports zero speed', () {
+  test('a brief gap with no new wheel rev holds (null), not 0 flicker', () {
     final calc = CscCalculator();
     calc.update(const CscMeasurement(
         cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    final r = calc.update(const CscMeasurement(
+    // Notifications with no new wheel revolution → hold (null), not 0.
+    final r1 = calc.update(const CscMeasurement(
         cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    expect(r.speedMetersPerSecond, 0);
+    expect(r1.speedMetersPerSecond, isNull);
+    final r2 = calc.update(const CscMeasurement(
+        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
+    expect(r2.speedMetersPerSecond, isNull);
+    // Sustained gap → speed finally drops to 0 (wheel stopped).
+    final r3 = calc.update(const CscMeasurement(
+        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
+    expect(r3.speedMetersPerSecond, 0);
   });
 
   test('handles 16-bit event-time rollover', () {

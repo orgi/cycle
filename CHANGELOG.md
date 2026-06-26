@@ -17,6 +17,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **BLE wheel speed no longer flickers to 0** — a CSC notification with no new
+  wheel revolution (low/steady speed, coasting, or hand-spinning) reported 0
+  immediately, so the speed flickered (and the fusion briefly fell back to GPS).
+  It now holds the last speed through brief gaps like cadence, dropping to 0 only
+  once the wheel has clearly stopped.
 - **Map no longer blanks when the active map switches** — swapping the displayed
   map (e.g. once a position picks a more-local map) updated mapsforge's render
   model in place, which it rejects ("MapModel cannot be changed"), throwing during

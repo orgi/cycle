@@ -20,11 +20,13 @@ class CscCalculator {
   int? _prevCrankRevs;
   int? _prevCrankTime;
   int _crankZeroStreak = 0;
+  int _wheelZeroStreak = 0;
 
-  /// Empty intervals (no new crank revolution) tolerated before cadence drops
-  /// to 0. A CSC notification at ~1 Hz often lands between crank events at
-  /// normal cadence, so reporting 0 immediately makes the value flicker.
+  /// Empty intervals (no new crank/wheel revolution) tolerated before cadence/
+  /// speed drops to 0. A CSC notification at ~1 Hz often lands between events at
+  /// normal cadence/speed, so reporting 0 immediately makes the value flicker.
   static const int _crankZeroDropThreshold = 3;
+  static const int _wheelZeroDropThreshold = 3;
 
   CscResult update(CscMeasurement m) {
     double? speed;
@@ -35,9 +37,14 @@ class CscCalculator {
         final revDelta = _wrap(m.cumulativeWheelRevs! - _prevWheelRevs!, _uint32);
         final dt = _timeDeltaSeconds(_prevWheelTime!, m.lastWheelEventTime!);
         if (revDelta == 0) {
-          speed = 0; // no wheel event since last sample → not moving
+          // Hold (null → consumer keeps the last value) through brief gaps —
+          // a notification between wheel events at low/steady speed otherwise
+          // flickers to 0; only drop to 0 once the wheel has clearly stopped.
+          _wheelZeroStreak++;
+          speed = _wheelZeroStreak >= _wheelZeroDropThreshold ? 0.0 : null;
         } else if (dt > 0) {
           speed = revDelta * wheelCircumferenceMeters / dt;
+          _wheelZeroStreak = 0;
         }
       }
       _prevWheelRevs = m.cumulativeWheelRevs;
@@ -71,6 +78,7 @@ class CscCalculator {
     _prevCrankRevs = null;
     _prevCrankTime = null;
     _crankZeroStreak = 0;
+    _wheelZeroStreak = 0;
   }
 
   int _wrap(int delta, int modulus) => delta < 0 ? delta + modulus : delta;
