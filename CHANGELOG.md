@@ -9,6 +9,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Free-look on the map** — panning the map now pauses GPS auto-follow so you
+  can scout alternative routes without it snapping back to your location on the
+  next fix; a **recenter** button appears while paused — tap it to recentre and
+  resume following.
 - **Speed shows its source by colour** — the live SPEED value reads **green**
   when it comes from the BLE wheel sensor (accurate) and the normal accent when
   it's GPS, so you can tell at a glance which source is driving it.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -46,6 +48,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
   int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
+  // Follow mode: the map re-centres on each GPS fix. Panning the map turns it
+  // off (so you can scout routes) until you tap the recenter button.
+  bool _follow = true;
+  LatLong? _lastFix;
+  StreamSubscription<Object>? _manualMoveSub;
+  MapModel? _manualMoveModel;
 
   /// Overlay accent colours for the active colour scheme.
   MapAccents get _accents =>
@@ -64,6 +72,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _manualMoveSub?.cancel();
     _markers.disposeForReal();
     super.dispose();
   }
@@ -147,12 +156,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // Follow the rider, but keep the zoom they chose. Only the first fix sets a
     // zoom (the remembered one); later fixes use moveTo, which preserves the
     // current zoom — otherwise a manual zoom snaps back on the next 1 Hz fix.
+    _lastFix = here;
     if (firstFix || model.lastPosition == null) {
       final zoom = ref.read(settingsProvider).mapZoom;
       model.setPosition(MapPosition(sample.latitude, sample.longitude, zoom));
-    } else {
+    } else if (_follow) {
       model.moveTo(sample.latitude, sample.longitude);
     }
+  }
+
+  /// Subscribe to the map's manual-move (pan/zoom gesture) events so panning
+  /// pauses follow. Re-subscribes when the active map model is swapped.
+  void _watchManualMove(MapModel model) {
+    if (identical(_manualMoveModel, model)) return;
+    _manualMoveSub?.cancel();
+    _manualMoveModel = model;
+    _manualMoveSub = model.manualMoveStream.listen((_) {
+      if (_follow && mounted) setState(() => _follow = false);
+    });
+  }
+
+  /// Recenter on the last GPS fix and resume following.
+  void _recenter() {
+    final model = ref.read(activeMapModelProvider).value?.model;
+    final fix = _lastFix;
+    if (model != null && fix != null) {
+      model.moveTo(fix.latitude, fix.longitude);
+    }
+    setState(() => _follow = true);
   }
 
   /// Centre on the demo location once, after the map is ready — only while no
@@ -421,6 +452,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     data: (loaded) {
                       final model = loaded.model;
                       _ensureInitialCenter(model, loaded.center);
+                      _watchManualMove(model);
                       return MapsforgeView(
                         // Keyed on the model so swapping the active map (e.g. a
                         // GPS fix selects a more-local map) recreates the view
@@ -554,6 +586,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
                 ),
+                // Recenter button: shown once you've panned away (follow paused).
+                // Tap to recentre on your location and resume following.
+                if (!_follow)
+                  Positioned(
+                    top: 96,
+                    right: 14,
+                    child: FloatingActionButton.small(
+                      heroTag: 'recenter',
+                      tooltip: 'Recenter & follow',
+                      onPressed: _recenter,
+                      child: const Icon(Icons.my_location),
+                    ),
+                  ),
               ],
             ),
           ),
