@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:mapsforge_flutter/mapsforge.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 import 'package:mapsforge_flutter_mapfile/mapfile.dart';
+import 'package:mapsforge_flutter_renderer/cache.dart';
 
 /// Bundled minimal dark render theme (no external symbol assets).
 const String kDarkRenderTheme = 'assets/render_themes/dark.xml';
@@ -73,7 +74,25 @@ class MapRenderService {
     }
   }
 
+  // The bundled Elements (OpenAndroMaps) theme references its symbols as
+  // `src="file:ele_res_svg/x.png"`. Register a loader for that `file:` prefix
+  // that reads from the app's bundled assets (the cache strips the prefix, the
+  // loader prepends the asset path). Registered once, before any render.
+  static bool _symbolLoaderRegistered = false;
+  static void _ensureSymbolLoader() {
+    if (_symbolLoaderRegistered) return;
+    _symbolLoaderRegistered = true;
+    SymbolCacheMgr().addLoader(
+      'file:',
+      ImageBundleLoader(
+        bundle: rootBundle,
+        pathPrefix: 'assets/render_themes/elements/',
+      ),
+    );
+  }
+
   Future<LoadedMap> _build(Mapfile datastore, String renderTheme) async {
+    _ensureSymbolLoader();
     final model = await MapModelHelper.createOfflineMapModel(
       renderthemeFilename: renderTheme,
       datastore: datastore,

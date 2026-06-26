@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="580" version="1.0">
+ <metadata id="metadata32"/>
+ <path id="path4157" d="m133 359l322 0 0 131-322 0z" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" fill="none" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <path id="path4159" d="m261 171l-57 0 0 56 57 1 0 111 61 0 0-111 57-1 0-56-57 0 0-63-61 0z" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" fill="none" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <path d="m133 359l322 0 0 131-322 0z" id="rect4204" fill="#734a08" isolation="auto" color-rendering="auto" solid-opacity="1" mix-blend-mode="normal" color-interpolation-filters="linearRGB" shape-rendering="auto" fill-rule="evenodd" image-rendering="auto" color-interpolation="sRGB" color="#000000" solid-color="#000000"/>
+ <path d="m133 379l0 93 322 0 0-93-322 0m87 35l38 0 0 19.5-38 0 0-19.5m-79 .1l39 0 0 19.3-39 0 0-19.3m156 .4l39 0 0 19-39 0 0-19m78 0l36.6 0 0 19-36.6 0 0-19" id="path4147" opacity=".8" fill="#ffffff" isolation="auto" color-rendering="auto" solid-opacity="1" mix-blend-mode="normal" color-interpolation-filters="linearRGB" shape-rendering="auto" fill-rule="evenodd" image-rendering="auto" color-interpolation="sRGB" color="#000000" solid-color="#000000"/>
+ <path d="m261 171l-57 0 0 56 57 1 0 111 61 0 0-111 57-1 0-56-57 0 0-63-61 0z" id="path24" fill="#734a08"/>
+</svg>

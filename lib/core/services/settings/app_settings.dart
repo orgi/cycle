@@ -18,7 +18,11 @@ enum AppColorScheme {
   light('Light', 'assets/render_themes/light.xml'),
 
   /// Black & white: dark background with a grayscale map.
-  bw('Black & white', 'assets/render_themes/bw.xml');
+  bw('Black & white', 'assets/render_themes/bw.xml'),
+
+  /// Detailed OpenAndroMaps "Elements" theme (contours, POIs, cycle routes,
+  /// symbols). Richer but busier and heavier than the minimal themes.
+  elements('Detailed (Elements)', 'assets/render_themes/elements/Elements.xml');
 
   const AppColorScheme(this.label, this.renderThemeAsset);
   final String label;

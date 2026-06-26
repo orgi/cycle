@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="580" version="1.0">
+ <metadata id="metadata7"/>
+ <g id="layer1" transform="matrix(.93540166 0 0 .93540166 18.733518 -423.11485)">
+  <circle transform="matrix(0.9469422,0,0,0.9469422,84.37827,472.86841)" id="path4149" cx="217" cy="306" r="289" opacity=".8" color-interpolation-filters="linearRGB" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="72" color-interpolation="sRGB" fill="none" stroke-linejoin="round" stroke="#ffffff" shape-rendering="auto"/>
+  <circle r="273" cy="762" cx="290" id="path3267" fill="#39ac39"/>
+  <path id="path3805" d="m305 540c-96 1-158 84-147 139 15.4 9.5 23 11.5 46 0 0-47 26.3-69.8 58-80 37.9-13 109-18.8 115 34.5 11.5 104-69 265-80 288-46 34.5-88 1.8-88-32.7-34.5-11.5-42-21-46-23 0 127 115 150 169 90 26.8-32.7 96-194 92-333-7.7-55.7-30-75-103-80-4.9-.4-9.7-.5-14.4-.5m-59 146c-87 189 10.9-22.3-76 167 10.9 11 21.7 22.3 43.5 22.3 43.5-100 32.6-78 76-167C279 685 268 685 246 685" fill="#ffffff"/>
+ </g>
+</svg>

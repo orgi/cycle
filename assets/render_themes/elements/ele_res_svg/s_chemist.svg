@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="580" version="1.1">
+ <metadata id="metadata7"/>
+ <path d="M230 62C212 64.8 217 86 230 86L254 86 254 134 230 134C212 137 217 158 230 158L350 158C368 155 363 134 350 134L326 134 326 86 350 86C368 83 363 62 350 62L230 62zM206 182C186 182 170 198 170 218L170 482C170 502 186 518 206 518L374 518C394 518 410 502 410 482L410 218C410 198 394 182 374 182L206 182z" id="path4149" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" fill="none" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <path d="m230 62c-17.7 2.8-12.9 23.6 0 24l24 0 0 48-24 0c-17.7 2.8-12.9 23.6 0 24l120 0c17.7-2.8 12.9-23.6 0-24l-24 0 0-48 24 0c17.7-2.8 12.9-23.6 0-24z" id="rect2998" fill="#ac39ac"/>
+ <path d="m206 182l168 0c19.9 0 36 16 36 36l0 264c0 19.9-16 36-36 36l-168 0c-19.9 0-36-16-36-36l0-264c0-19.9 16-36 36-36" id="rect2998-1-0-9" fill="#ac39ac"/>
+ <path d="m170 278l0 24 120 0 0 24-120 0 0 24 120 0 0 24-120 0 0 24 144 0 0-120-144 0" id="rect3877" opacity=".8" fill="#ffffff"/>
+</svg>

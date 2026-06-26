@@ -47,6 +47,7 @@ dependencies:
   http: ^1.6.0
   mapsforge_flutter_mapfile: ^4.0.0
   mapsforge_flutter_core: ^4.0.0
+  mapsforge_flutter_renderer: ^4.0.0 # symbol cache loader for bundled themes
   geolocator_android: ^5.0.2
   geolocator_apple: ^2.3.13
   flutter_blue_plus: ^2.3.8
@@ -92,6 +93,8 @@ flutter:
     - assets/render_themes/dark.xml
     - assets/render_themes/light.xml
     - assets/render_themes/bw.xml
+    - assets/render_themes/elements/Elements.xml
+    - assets/render_themes/elements/ele_res_svg/
     - assets/maps/monaco.map
     - assets/routes/monaco_loop.gpx
 

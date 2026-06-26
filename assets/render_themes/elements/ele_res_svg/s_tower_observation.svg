@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="580" height="580">
+ <metadata id="metadata2975"/>
+ <defs id="defs4">
+  <clipPath id="clipoutline2">
+   <path d="m55.8 12l.8.2c8.8-2.9 28.7 8.6 24.3 19-1.1 1.6-.9 4.5.4 6.3L56 62c-1.4-1.4-4.5-1.4-5.9 0L9.5 102c-3.7 3.6-.8 6.6.8 8.3l7.4 7.4c1.6 1.6 5.9 3.8 8.9.6L65 77c1.3-1.4 1.4-4.5 0-5.9 0 0 0 0 0 0L90 46c2.6 2.4 5.1 2.6 7.5 1.9 4.5-1.3 7.1 3.2 9.8 6.5l-1.2 1.2c-1.8 1.8-1.7 4.9.4 7 2 2 5.2 2.2 7 .4l8.1-8.1c1.8-1.8 1.7-4.9-.4-7-1.8-1.9-4.5-2.1-6.4-.8-5.6-6.3-2.7-7.2-10-15.4L91 17.9C81 8.1 68 8.1 55.8 12" id="outline2"/>
+  </clipPath>
+ </defs>
+ <path d="m194 511l-6.6 29.6-42-.1 73-328-41.9-.4L176 93 298 37.9 421 93 421 212l-41.9.4 73 328-42 .1-6.6-29.5L298 384 194 511zm17-77l64-78-37-44.9-27 123zm138-167l-11.8-53.8-77 0-11.8 53.8 50 62 50-61zm9.8 44.5l-37 44.9 64 78-27-123zM222 110l0 60L375 170 375 110 222 110z" id="path4152" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" fill="none" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <path id="path2285" d="m194 511l-6.6 29.6-42-.1 73-328-41.9-.4L176 93 298 37.9 421 93 421 212l-41.9.4 73 328-42 .1-6.6-29.5L298 384 194 511m17-77l64-78-37-44.9-27 123m138-167l-11.8-53.8-77 0-11.8 53.8 50 62 50-61m9.8 44.5l-37 44.9 64 78-27-123M222 110l0 60L375 170 375 110 222 110"/>
+</svg>

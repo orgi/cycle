@@ -10,6 +10,7 @@ import 'services/settings/app_settings.dart';
 ThemeData buildAppTheme(AppColorScheme scheme) {
   switch (scheme) {
     case AppColorScheme.light:
+    case AppColorScheme.elements: // light detailed map → light app chrome
       return _light();
     case AppColorScheme.bw:
       return _oled(const Color(0xFFE0E0E0));
@@ -124,6 +125,7 @@ class MapAccents {
   static MapAccents of(AppColorScheme scheme) {
     switch (scheme) {
       case AppColorScheme.light:
+      case AppColorScheme.elements: // Elements is a light map
         return _light;
       case AppColorScheme.bw:
         return _bw;
