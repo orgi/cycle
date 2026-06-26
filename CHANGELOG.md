@@ -24,11 +24,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 - **Losing the wheel-speed sensor falls back to GPS** — the speed display now
   forgets the BLE speed the moment that sensor disconnects, instead of holding
   the last value.
-- **BLE wheel speed no longer flickers to 0** — a CSC notification with no new
-  wheel revolution (low/steady speed, coasting, or hand-spinning) reported 0
-  immediately, so the speed flickered (and the fusion briefly fell back to GPS).
-  It now holds the last speed through brief gaps like cadence, dropping to 0 only
-  once the wheel has clearly stopped.
+- **BLE speed/cadence no longer flicker to 0 (even at steady speed)** — a CSC
+  sensor can notify *faster* than the wheel/crank turns, so several notifications
+  in a row carry no new revolution even while riding; the value dropped to 0. The
+  hold is now based on the **time since the last real revolution** (not a count of
+  empty notifications), so speed/cadence hold steady while moving and only fall to
+  0 once the wheel/crank has actually been stopped for a few seconds.
 - **Map no longer blanks when the active map switches** — swapping the displayed
   map (e.g. once a position picks a more-local map) updated mapsforge's render
   model in place, which it rejects ("MapModel cannot be changed"), throwing during

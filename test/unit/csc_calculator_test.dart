@@ -29,40 +29,54 @@ void main() {
     expect(r.cadenceRpm, closeTo(60, 0.001));
   });
 
-  test('a brief gap with no new crank rev holds (null), not 0 flicker', () {
+  final t = DateTime(2026, 1, 1, 12);
+
+  test('no-rev notifications hold while moving recently, drop to 0 once stopped',
+      () {
     final calc = CscCalculator();
-    calc.update(const CscMeasurement(
-        cumulativeCrankRevs: 10, lastCrankEventTime: 1024));
-    calc.update(const CscMeasurement(
-        cumulativeCrankRevs: 11, lastCrankEventTime: 2048)); // 60 rpm
-    // Notification with no new crank revolution → hold (null), not 0.
-    final r1 = calc.update(const CscMeasurement(
-        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
-    expect(r1.cadenceRpm, isNull);
-    final r2 = calc.update(const CscMeasurement(
-        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
-    expect(r2.cadenceRpm, isNull);
-    // Sustained gap → cadence finally drops to 0 (rider stopped pedalling).
-    final r3 = calc.update(const CscMeasurement(
-        cumulativeCrankRevs: 11, lastCrankEventTime: 2048));
-    expect(r3.cadenceRpm, 0);
+    calc.update(
+        const CscMeasurement(cumulativeCrankRevs: 10, lastCrankEventTime: 1024),
+        now: t);
+    calc.update(
+        const CscMeasurement(cumulativeCrankRevs: 11, lastCrankEventTime: 2048),
+        now: t.add(const Duration(seconds: 1))); // a real rev (60 rpm)
+    // No new rev, but the crank moved <3 s ago → hold (null), not 0 — even for
+    // several notifications in a row (the bug: this used to flicker to 0).
+    for (var i = 2; i <= 5; i++) {
+      final r = calc.update(
+          const CscMeasurement(
+              cumulativeCrankRevs: 11, lastCrankEventTime: 2048),
+          now: t.add(Duration(milliseconds: 1000 + i * 300)));
+      expect(r.cadenceRpm, isNull, reason: 'still moving at notification $i');
+    }
+    // >3 s since the last rev → clearly stopped → 0.
+    final stopped = calc.update(
+        const CscMeasurement(cumulativeCrankRevs: 11, lastCrankEventTime: 2048),
+        now: t.add(const Duration(seconds: 5)));
+    expect(stopped.cadenceRpm, 0);
   });
 
-  test('a brief gap with no new wheel rev holds (null), not 0 flicker', () {
-    final calc = CscCalculator();
-    calc.update(const CscMeasurement(
-        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    // Notifications with no new wheel revolution → hold (null), not 0.
-    final r1 = calc.update(const CscMeasurement(
-        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    expect(r1.speedMetersPerSecond, isNull);
-    final r2 = calc.update(const CscMeasurement(
-        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    expect(r2.speedMetersPerSecond, isNull);
-    // Sustained gap → speed finally drops to 0 (wheel stopped).
-    final r3 = calc.update(const CscMeasurement(
-        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
-    expect(r3.speedMetersPerSecond, 0);
+  test('wheel speed holds at steady speed (faster notifications than revs)', () {
+    final calc = CscCalculator(wheelCircumferenceMeters: 2.0);
+    calc.update(
+        const CscMeasurement(cumulativeWheelRevs: 100, lastWheelEventTime: 0),
+        now: t);
+    calc.update(
+        const CscMeasurement(cumulativeWheelRevs: 101, lastWheelEventTime: 1024),
+        now: t.add(const Duration(seconds: 1))); // a real wheel event
+    // Four no-rev notifications within 3 s of the last event → all hold, none 0.
+    for (var i = 1; i <= 4; i++) {
+      final r = calc.update(
+          const CscMeasurement(
+              cumulativeWheelRevs: 101, lastWheelEventTime: 1024),
+          now: t.add(Duration(milliseconds: 1000 + i * 250)));
+      expect(r.speedMetersPerSecond, isNull);
+    }
+    // Truly stopped (>3 s) → 0.
+    final stopped = calc.update(
+        const CscMeasurement(cumulativeWheelRevs: 101, lastWheelEventTime: 1024),
+        now: t.add(const Duration(seconds: 6)));
+    expect(stopped.speedMetersPerSecond, 0);
   });
 
   test('handles 16-bit event-time rollover', () {

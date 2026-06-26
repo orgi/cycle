@@ -4,8 +4,16 @@ import 'sensor_data.dart';
 ///
 /// CSC reports *cumulative* revolution counters plus the "last event time" of
 /// the most recent revolution (in 1/1024 s units). Speed/cadence come from the
-/// deltas between two measurements, handling counter/timer rollover and
-/// coasting (no new revolutions → zero).
+/// deltas between two measurements, handling counter/timer rollover.
+///
+/// A notification can arrive with no new revolution since the last one — even at
+/// a steady riding speed, because some sensors notify *faster* than the wheel
+/// turns. Reporting 0 in that case makes the value flicker to zero. So when
+/// there's no new revolution we **hold** (return null → the consumer keeps the
+/// last value) as long as the wheel/crank actually moved within the last few
+/// seconds (wall-clock), and only report 0 once it has clearly stopped. The
+/// previous version counted empty *notifications*, which broke when the
+/// notification rate exceeded the revolution rate.
 class CscCalculator {
   CscCalculator({this.wheelCircumferenceMeters = 2.105});
 
@@ -15,20 +23,20 @@ class CscCalculator {
   static const int _uint16 = 0x10000;
   static const int _uint32 = 0x100000000;
 
+  /// How long after the last real revolution we keep holding the last value
+  /// before declaring the wheel/crank stopped (speed/cadence → 0).
+  static const Duration _moveHold = Duration(seconds: 3);
+
   int? _prevWheelRevs;
   int? _prevWheelTime;
   int? _prevCrankRevs;
   int? _prevCrankTime;
-  int _crankZeroStreak = 0;
-  int _wheelZeroStreak = 0;
+  DateTime? _lastWheelMoveAt;
+  DateTime? _lastCrankMoveAt;
 
-  /// Empty intervals (no new crank/wheel revolution) tolerated before cadence/
-  /// speed drops to 0. A CSC notification at ~1 Hz often lands between events at
-  /// normal cadence/speed, so reporting 0 immediately makes the value flicker.
-  static const int _crankZeroDropThreshold = 3;
-  static const int _wheelZeroDropThreshold = 3;
-
-  CscResult update(CscMeasurement m) {
+  /// [now] is injectable for tests; defaults to the wall clock.
+  CscResult update(CscMeasurement m, {DateTime? now}) {
+    final at = now ?? DateTime.now();
     double? speed;
     double? cadence;
 
@@ -37,14 +45,12 @@ class CscCalculator {
         final revDelta = _wrap(m.cumulativeWheelRevs! - _prevWheelRevs!, _uint32);
         final dt = _timeDeltaSeconds(_prevWheelTime!, m.lastWheelEventTime!);
         if (revDelta == 0) {
-          // Hold (null → consumer keeps the last value) through brief gaps —
-          // a notification between wheel events at low/steady speed otherwise
-          // flickers to 0; only drop to 0 once the wheel has clearly stopped.
-          _wheelZeroStreak++;
-          speed = _wheelZeroStreak >= _wheelZeroDropThreshold ? 0.0 : null;
+          final moved = _lastWheelMoveAt;
+          // Hold while it moved recently; only drop to 0 once truly stopped.
+          speed = (moved != null && at.difference(moved) < _moveHold) ? null : 0.0;
         } else if (dt > 0) {
           speed = revDelta * wheelCircumferenceMeters / dt;
-          _wheelZeroStreak = 0;
+          _lastWheelMoveAt = at;
         }
       }
       _prevWheelRevs = m.cumulativeWheelRevs;
@@ -56,13 +62,12 @@ class CscCalculator {
         final revDelta = _wrap(m.cumulativeCrankRevs! - _prevCrankRevs!, _uint16);
         final dt = _timeDeltaSeconds(_prevCrankTime!, m.lastCrankEventTime!);
         if (revDelta == 0) {
-          // Hold (return null → consumer keeps the last value) through brief
-          // gaps; only drop to 0 once pedalling has clearly stopped.
-          _crankZeroStreak++;
-          cadence = _crankZeroStreak >= _crankZeroDropThreshold ? 0.0 : null;
+          final moved = _lastCrankMoveAt;
+          cadence =
+              (moved != null && at.difference(moved) < _moveHold) ? null : 0.0;
         } else if (dt > 0) {
           cadence = revDelta / dt * 60.0;
-          _crankZeroStreak = 0;
+          _lastCrankMoveAt = at;
         }
       }
       _prevCrankRevs = m.cumulativeCrankRevs;
@@ -77,8 +82,8 @@ class CscCalculator {
     _prevWheelTime = null;
     _prevCrankRevs = null;
     _prevCrankTime = null;
-    _crankZeroStreak = 0;
-    _wheelZeroStreak = 0;
+    _lastWheelMoveAt = null;
+    _lastCrankMoveAt = null;
   }
 
   int _wrap(int delta, int modulus) => delta < 0 ? delta + modulus : delta;
