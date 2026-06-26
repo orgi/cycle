@@ -233,8 +233,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _trackLine = PolylineMarker(
         path: List.of(_path),
         strokeColor: _accents.track,
-        strokeWidth: 1.4,
-        strokeDasharray: const [5, 4], // dashed, with arrowheads punctuating it
+        strokeWidth: 1.4, // solid; direction shown by the arrows along it
       );
       _markers.addMarker(_trackLine!);
     }
@@ -251,15 +250,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
     _trackArrows
       ..clear()
-      ..addAll(_arrowsAlong(_path, _accents.track));
+      ..addAll(_arrowsAlong(_path, _accents.meStroke));
     for (final a in _trackArrows) {
       _markers.addMarker(a);
     }
   }
 
-  /// Builds evenly-spaced direction arrows along [pts]. The interval adapts to
-  /// the total length so the whole line is marked with at most ~60 arrows
-  /// (rotated [Icons.navigation] glyphs — no image assets needed).
+  /// Builds frequent, small direction arrows along [pts] — slim chevron
+  /// arrowheads (no wider than the line) in [color], pointing in the travel
+  /// direction so the line clearly reads as a route. The interval adapts to the
+  /// total length so even a long line stays at ~100 arrows.
   List<IconMarker> _arrowsAlong(List<LatLong> pts, int color) {
     final out = <IconMarker>[];
     if (pts.length < 2) return out;
@@ -268,7 +268,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       total += haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
           pts[i].latitude, pts[i].longitude);
     }
-    final interval = total / 60.0 > 200.0 ? total / 60.0 : 200.0;
+    final interval = total / 100.0 > 90.0 ? total / 100.0 : 90.0;
     var acc = interval; // place the first arrow one interval in
     for (var i = 1; i < pts.length; i++) {
       final a = pts[i - 1];
@@ -279,10 +279,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
         acc = 0;
         out.add(IconMarker(
           latLong: b,
-          // A chevron arrowhead that sits inline with the dashed line, pointing
-          // in the direction of travel.
+          // Small chevron arrowhead, inline with the line, pointing forward.
           iconData: Icons.keyboard_arrow_up,
-          size: 18,
+          size: 12,
           bitmapColor: color,
           rotation:
               bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude),
@@ -311,11 +310,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _routeLine = PolylineMarker(
         path: pts,
         strokeColor: _accents.route,
-        strokeWidth: 1.0, // slim guide line, thinner than the recorded track
-        strokeDasharray: const [6, 4],
+        strokeWidth: 1.0, // slim solid guide line; arrows show the direction
       );
       _markers.addMarker(_routeLine!);
-      _routeArrows.addAll(_arrowsAlong(pts, _accents.route));
+      _routeArrows.addAll(_arrowsAlong(pts, _accents.meStroke));
       for (final a in _routeArrows) {
         _markers.addMarker(a);
       }
