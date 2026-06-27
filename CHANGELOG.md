@@ -14,6 +14,7 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   selectable in **Settings → Appearance**, alongside the minimal Dark/Light/B&W
   themes (kept as the lighter, battery-saving options). Bundles the theme + its
   ~195 symbols; a `file:` symbol loader resolves them from the app assets.
+  A **dark/night** variant ("Detailed (Elements) — Dark") is also available.
 - **Free-look on the map** — panning the map now pauses GPS auto-follow so you
   can scout alternative routes without it snapping back to your location on the
   next fix; a **recenter** button appears while paused — tap it to recentre and

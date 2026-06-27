@@ -44,6 +44,11 @@ void main() {
   });
 
   testWidgets('edits the wheel circumference via the dialog', (tester) async {
+    // Tall viewport so the whole settings list (incl. all colour-scheme radios)
+    // fits without anything sitting off-screen.
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(

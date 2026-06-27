@@ -22,7 +22,11 @@ enum AppColorScheme {
 
   /// Detailed OpenAndroMaps "Elements" theme (contours, POIs, cycle routes,
   /// symbols). Richer but busier and heavier than the minimal themes.
-  elements('Detailed (Elements)', 'assets/render_themes/elements/Elements.xml');
+  elements('Detailed (Elements)', 'assets/render_themes/elements/Elements.xml'),
+
+  /// Dark/night variant of the detailed Elements theme.
+  elementsDark('Detailed (Elements) — Dark',
+      'assets/render_themes/elements/Elements-dark.xml');
 
   const AppColorScheme(this.label, this.renderThemeAsset);
   final String label;

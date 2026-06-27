@@ -15,6 +15,7 @@ ThemeData buildAppTheme(AppColorScheme scheme) {
     case AppColorScheme.bw:
       return _oled(const Color(0xFFE0E0E0));
     case AppColorScheme.dark:
+    case AppColorScheme.elementsDark: // dark detailed map → dark app chrome
       return _oled(const Color(0xFF00E5FF));
   }
 }
@@ -130,6 +131,7 @@ class MapAccents {
       case AppColorScheme.bw:
         return _bw;
       case AppColorScheme.dark:
+      case AppColorScheme.elementsDark: // Elements dark is a dark map
         return _dark;
     }
   }
