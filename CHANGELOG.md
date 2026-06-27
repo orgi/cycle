@@ -72,6 +72,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   the batch (vendored patch 4).
 
 ### Changed
+- **Battery: map-follow deadband** — while following, the map now only
+  re-centres once your location drifts ~45% of the way toward the nearest edge,
+  instead of re-stamping/redrawing the tiles on every 1 Hz fix. The location dot
+  still updates live (it drifts within the static map), so it saves a map redraw
+  per second; the map jumps back to centre only as the dot nears the edge.
 - **Live speed holds up under tree cover** — the GPS chip's reported speed
   regresses toward zero when the signal is weak (under canopy), so the
   speedometer read low while the distance-based average stayed correct. When a

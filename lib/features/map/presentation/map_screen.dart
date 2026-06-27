@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -157,12 +158,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // zoom (the remembered one); later fixes use moveTo, which preserves the
     // current zoom — otherwise a manual zoom snaps back on the next 1 Hz fix.
     _lastFix = here;
-    if (firstFix || model.lastPosition == null) {
+    final center = model.lastPosition;
+    if (firstFix || center == null) {
       final zoom = ref.read(settingsProvider).mapZoom;
       model.setPosition(MapPosition(sample.latitude, sample.longitude, zoom));
-    } else if (_follow) {
+    } else if (_follow && _movedBeyondDeadband(center, here)) {
       model.moveTo(sample.latitude, sample.longitude);
     }
+    // Inside the deadband we skip moveTo: the dot (updated above) drifts within
+    // the static map, so the tiles aren't re-stamped/redrawn on every fix.
+  }
+
+  /// While following, only re-centre once the rider has drifted past a fraction
+  /// of the visible map toward the nearest edge — not on every 1 Hz fix. Skips a
+  /// tile redraw per second to save battery; the map jumps back to centre only
+  /// when the dot approaches the edge.
+  static const double _followDeadbandFraction = 0.45;
+  bool _movedBeyondDeadband(MapPosition center, LatLong here) {
+    if (!mounted) return true;
+    // metres per pixel at this latitude/zoom (web-mercator).
+    final mpp = 156543.03392 *
+        math.cos(center.latitude * math.pi / 180.0) /
+        math.pow(2, center.zoomlevel);
+    final size = MediaQuery.sizeOf(context);
+    final halfMinPx = math.min(size.width, size.height) / 2.0;
+    final threshold = _followDeadbandFraction * halfMinPx * mpp;
+    final offset = haversineMeters(
+        center.latitude, center.longitude, here.latitude, here.longitude);
+    return offset > threshold;
   }
 
   /// Subscribe to the map's manual-move (pan/zoom gesture) events so panning
