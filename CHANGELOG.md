@@ -30,6 +30,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **Opening a GPX reuses the running app** — opening/sharing a `.gpx` from a file
+  manager spawned a *second* instance of Cycle instead of handing the route to the
+  one already running. The activity is now `singleTask`, so the intent goes to the
+  existing instance (and you keep your current ride/map state).
 - **Speed no longer sticks at 0 when the sensor sleeps** — a speed sensor that
   goes to sleep keeps reporting 0 while you're still moving; the display held that
   stale (green) 0 and never fell back to GPS. Now, when the BLE wheel reads ~0 but
