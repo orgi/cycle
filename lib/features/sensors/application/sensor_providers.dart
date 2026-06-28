@@ -44,7 +44,9 @@ class SensorConnectionController extends Notifier<Set<String>> {
   }
 
   Future<void> connect(String deviceId) async {
-    await ref.read(sensorServiceProvider).connect(deviceId);
+    // Persistent (autoConnect) so a paired sensor that drops or goes to sleep
+    // mid-ride re-links by itself when it wakes — no manual re-pair needed.
+    await ref.read(sensorServiceProvider).connect(deviceId, autoConnect: true);
     state = {...state, deviceId};
     await _persist();
   }

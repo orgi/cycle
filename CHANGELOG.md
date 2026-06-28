@@ -30,6 +30,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Fixed
+- **Speed no longer sticks at 0 when the sensor sleeps** — a speed sensor that
+  goes to sleep keeps reporting 0 while you're still moving; the display held that
+  stale (green) 0 and never fell back to GPS. Now, when the BLE wheel reads ~0 but
+  GPS clearly shows movement, the speed uses GPS (and shows the GPS colour). Paired
+  sensors also reconnect persistently, so one that drops/sleeps re-links by itself
+  when it wakes — no manual re-pair.
 - **BLE sensors auto-reconnect reliably** — reconnect is now persistent
   (`autoConnect`): a paired sensor that was on standby at launch, or that drops
   out and comes back in range, re-links by itself instead of only getting one

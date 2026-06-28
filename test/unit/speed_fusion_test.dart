@@ -8,6 +8,30 @@ void main() {
     expect(SpeedFusion().fused(t0), 0);
   });
 
+  test('sleeping sensor (BLE ~0) while GPS moving → GPS, not green', () {
+    final f = SpeedFusion()
+      ..updateGps(8) // ~29 km/h
+      ..updateBle(0, t0); // sensor reports 0 (asleep) but we're moving
+    expect(f.fused(t0), 8);
+    expect(f.isUsingBle(t0), isFalse);
+  });
+
+  test('genuinely stopped (BLE 0, GPS 0) stays on the sensor 0', () {
+    final f = SpeedFusion()
+      ..updateGps(0)
+      ..updateBle(0, t0);
+    expect(f.fused(t0), 0);
+    expect(f.isUsingBle(t0), isTrue);
+  });
+
+  test('moving with a live sensor keeps BLE', () {
+    final f = SpeedFusion()
+      ..updateGps(8)
+      ..updateBle(8.5, t0);
+    expect(f.fused(t0), 8.5);
+    expect(f.isUsingBle(t0), isTrue);
+  });
+
   test('GPS used when no BLE sensor', () {
     final f = SpeedFusion()..updateGps(5);
     expect(f.fused(t0), 5);
