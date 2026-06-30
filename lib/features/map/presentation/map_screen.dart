@@ -256,7 +256,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _trackLine = PolylineMarker(
         path: List.of(_path),
         strokeColor: _accents.track,
-        strokeWidth: 1.4, // solid; direction shown by the arrows along it
+        strokeWidth: 2.6, // bold so it stays readable in direct sunlight
       );
       _markers.addMarker(_trackLine!);
     }
@@ -273,17 +273,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
     _trackArrows
       ..clear()
-      ..addAll(_arrowsAlong(_path, _accents.meStroke));
+      ..addAll(_arrowsAlong(_path, _accents.meStroke, size: 14));
     for (final a in _trackArrows) {
       _markers.addMarker(a);
     }
   }
 
-  /// Builds frequent, small direction arrows along [pts] — slim chevron
-  /// arrowheads (no wider than the line) in [color], pointing in the travel
-  /// direction so the line clearly reads as a route. The interval adapts to the
-  /// total length so even a long line stays at ~100 arrows.
-  List<IconMarker> _arrowsAlong(List<LatLong> pts, int color) {
+  /// Builds a chain of small forward-pointing chevrons along [pts] in [color],
+  /// so the line itself reads as a directional ribbon (>>>>>). Chevrons are
+  /// *interpolated* at an even [minSpacing] (independent of how the points
+  /// happen to fall), stretching out for long lines so we never place more than
+  /// [maxCount]. Drawn in the line's own colour and backed by a same-colour line
+  /// so the chain stays continuous and visible at every zoom.
+  List<IconMarker> _arrowsAlong(
+    List<LatLong> pts,
+    int color, {
+    double size = 12,
+    double minSpacing = 90,
+    int maxCount = 100,
+  }) {
     final out = <IconMarker>[];
     if (pts.length < 2) return out;
     var total = 0.0;
@@ -291,25 +299,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
       total += haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
           pts[i].latitude, pts[i].longitude);
     }
-    final interval = total / 100.0 > 90.0 ? total / 100.0 : 90.0;
-    var acc = interval; // place the first arrow one interval in
+    final spacing = math.max(total / maxCount, minSpacing);
+    var carry = spacing / 2; // distance from the line start to the first chevron
     for (var i = 1; i < pts.length; i++) {
       final a = pts[i - 1];
       final b = pts[i];
-      acc += haversineMeters(
-          a.latitude, a.longitude, b.latitude, b.longitude);
-      if (acc >= interval) {
-        acc = 0;
+      final seg = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
+      if (seg <= 0) continue;
+      final theta =
+          bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude);
+      var d = carry;
+      while (d <= seg) {
+        final t = d / seg;
         out.add(IconMarker(
-          latLong: b,
-          // Small chevron arrowhead, inline with the line, pointing forward.
+          latLong: LatLong(
+            a.latitude + (b.latitude - a.latitude) * t,
+            a.longitude + (b.longitude - a.longitude) * t,
+          ),
+          // Chevron (^) rotated to the travel direction → reads as '>'.
           iconData: Icons.keyboard_arrow_up,
-          size: 12,
+          size: size,
           bitmapColor: color,
-          rotation:
-              bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude),
+          rotation: theta,
         ));
+        d += spacing;
       }
+      carry = d - seg; // leftover distance carried into the next segment
     }
     return out;
   }
@@ -333,10 +348,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _routeLine = PolylineMarker(
         path: pts,
         strokeColor: _accents.route,
-        strokeWidth: 1.0, // slim solid guide line; arrows show the direction
+        strokeWidth: 1.2, // thin backing line keeps the chevron chain continuous
       );
       _markers.addMarker(_routeLine!);
-      _routeArrows.addAll(_arrowsAlong(pts, _accents.meStroke));
+      // The route reads as a ribbon of route-coloured chevrons (>>>>>), dense
+      // enough to look continuous at riding zoom.
+      _routeArrows.addAll(_arrowsAlong(pts, _accents.route,
+          size: 18, minSpacing: 22, maxCount: 220));
       for (final a in _routeArrows) {
         _markers.addMarker(a);
       }

@@ -29,6 +29,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   signed cycle routes (local→international, highlighted on the road), and named
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
+### Changed
+- **Followed route is now a chevron ribbon** — instead of a faint guide line with
+  a few tiny white arrows (hard to see, and easy to lose against a light map), the
+  route to follow is drawn as a dense chain of route-coloured chevrons (>>>>>)
+  pointing the way, backed by a thin same-colour line so it stays continuous.
+- **More sunlight readability** — the recorded track line is bolder, and roads /
+  streets are brighter in the Dark and Detailed (Elements) — Dark map themes
+  (near-white road bodies over a dark casing) so they stay legible with the sun on
+  the screen.
+
 ### Fixed
 - **Opening a GPX reuses the running app** — opening/sharing a `.gpx` from a file
   manager spawned a *second* instance of Cycle instead of handing the route to the

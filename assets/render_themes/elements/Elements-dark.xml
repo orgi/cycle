@@ -1245,34 +1245,34 @@ Please have a look at read_me_elevate.txt for reuse and licenses of resources us
 		<rule e="any" k="area" v="~">
 			<rule e="way" k="railway" v="rail">
 				<line stroke="#333333" stroke-width="1.40" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="1.00" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="1.00" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="railway|highway" v="subway|narrow_gauge|preserved|funicular|miniature|tram|light_rail|bus_guideway|disused|abandoned">
 				<line stroke="#333333" stroke-width="1.20" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="0.80" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="0.80" stroke-linecap="butt" />
 			</rule>
 			<rule cat="hike" e="way" k="highway" v="steps|footway|path|bridleway">
 				<line stroke="#333333" stroke-width="1.70" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="1.30" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="1.30" stroke-linecap="butt" />
 			</rule>
 			<rule cat="nohike" e="way" k="highway" v="steps|footway|path|bridleway">
 				<line stroke="#333333" stroke-width="1.30" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="0.90" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="0.90" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="track|byway">
 				<line stroke="#333333" stroke-width="2.00" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="1.50" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="1.50" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="cycleway">
 				<line stroke="#333333" stroke-width="1.80" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="1.30" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="1.30" stroke-linecap="butt" />
 				<rule e="any" k="foot" v="ft_no|~">
 					<line stroke="#3366FF" stroke-width="1.00" stroke-linecap="butt" />
 				</rule>
 			</rule>
 			<rule e="way" k="highway" v="service|pedestrian">
 				<line stroke="#333333" stroke-width="2.00" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="1.50" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="1.50" stroke-linecap="butt" />
 				<line stroke="#222222" stroke-width="1.20" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="construction">
@@ -1282,22 +1282,22 @@ Please have a look at read_me_elevate.txt for reuse and licenses of resources us
 			</rule>
 			<rule e="way" k="highway" v="road|unclassified|residential|living_street">
 				<line stroke="#333333" stroke-width="2.70" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="2.20" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="2.20" stroke-linecap="butt" />
 				<line stroke="#222222" stroke-width="1.60" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="tertiary|tertiary_link|secondary_link|primary_link|trunk_link|secondary|primary|trunk">
 				<line stroke="#333333" stroke-width="3.00" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="2.40" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="2.40" stroke-linecap="butt" />
 				<line stroke="#222222" stroke-width="1.80" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="motorway_link">
 				<line stroke="#333333" stroke-width="3.00" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="2.40" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="2.40" stroke-linecap="butt" />
 				<line stroke="#FF7700" stroke-width="1.80" stroke-linecap="butt" />
 			</rule>
 			<rule e="way" k="highway" v="motorway">
 				<line stroke="#333333" stroke-width="3.50" stroke-linecap="butt" />
-				<line stroke="#7C7C7C" stroke-width="2.90" stroke-linecap="butt" />
+				<line stroke="#E6E6E6" stroke-width="2.90" stroke-linecap="butt" />
 				<line stroke="#FF7700" stroke-width="2.50" stroke-linecap="butt" />
 			</rule>
 		</rule>

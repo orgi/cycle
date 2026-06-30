@@ -62,27 +62,28 @@
         <line stroke="#5A5A5A" stroke-width="0.7" stroke-dasharray="6,3" />
     </rule>
 
-    <!-- Roads, drawn minor → major so majors paint on top -->
+    <!-- Roads, drawn minor → major so majors paint on top. Strokes kept bright
+         and bold so streets stay readable in direct sunlight. -->
     <rule e="way" k="highway" v="service|living_street" zoom-min="14">
-        <line stroke="#4A4A4A" stroke-width="0.8" />
+        <line stroke="#9E9E9E" stroke-width="1.1" />
     </rule>
     <rule e="way" k="highway" v="residential|unclassified|road" zoom-min="11">
-        <line stroke="#6E6E6E" stroke-width="1.0" />
+        <line stroke="#C8C8C8" stroke-width="1.5" />
     </rule>
     <rule e="way" k="highway" v="tertiary|tertiary_link" zoom-min="10">
-        <line stroke="#9A9A9A" stroke-width="1.2" />
+        <line stroke="#DCDCDC" stroke-width="1.7" />
     </rule>
     <rule e="way" k="highway" v="secondary|secondary_link" zoom-min="9">
-        <line stroke="#C9C24A" stroke-width="1.3" />
+        <line stroke="#ECE25C" stroke-width="1.8" />
     </rule>
     <rule e="way" k="highway" v="primary|primary_link" zoom-min="8">
-        <line stroke="#E0C24A" stroke-width="1.5" />
+        <line stroke="#F4D85E" stroke-width="2.0" />
     </rule>
     <rule e="way" k="highway" v="trunk|trunk_link" zoom-min="7">
-        <line stroke="#E2A24A" stroke-width="1.6" />
+        <line stroke="#F4B65E" stroke-width="2.1" />
     </rule>
     <rule e="way" k="highway" v="motorway|motorway_link" zoom-min="6">
-        <line stroke="#E2884A" stroke-width="1.8" />
+        <line stroke="#F49E5E" stroke-width="2.3" />
     </rule>
 
     <!-- Cycling infrastructure — emphasised for a bike computer -->
