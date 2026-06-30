@@ -30,14 +30,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Changed
-- **Followed route is now a chevron ribbon** — instead of a faint guide line with
-  a few tiny white arrows (hard to see, and easy to lose against a light map), the
-  route to follow is drawn as a dense chain of route-coloured chevrons (>>>>>)
-  pointing the way, backed by a thin same-colour line so it stays continuous.
-- **More sunlight readability** — the recorded track line is bolder, and roads /
-  streets are brighter in the Dark and Detailed (Elements) — Dark map themes
-  (near-white road bodies over a dark casing) so they stay legible with the sun on
-  the screen.
+- **Followed route shows direction as arrows (>>>>>)** — instead of a plain line
+  with a few tiny arrows that were hard to see, the route to follow now has a row
+  of ">" arrowheads repeated along it, pointing the way. They keep an even
+  on-screen spacing at every zoom (and always point in the travel direction), so
+  the route clearly reads as a directional ribbon.
+- **More sunlight readability** — the recorded track line is brighter (amber), and
+  roads / streets are brighter in the Dark and Detailed (Elements) — Dark map
+  themes (near-white road bodies over a dark casing) so they stay legible with the
+  sun on the screen. (The map theme refreshes as tiles redraw — pan/zoom or
+  restart to repaint already-cached tiles.)
 
 ### Fixed
 - **Opening a GPX reuses the running app** — opening/sharing a `.gpx` from a file

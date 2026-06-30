@@ -43,9 +43,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   CircleMarker? _ghostMarker;
   PolylineMarker? _trackLine;
   PolylineMarker? _routeLine;
-  // Direction arrows along the recorded track and the followed route.
+  // Direction indicators: chevron glyphs along the recorded track, and a row of
+  // ">" arrowheads repeated along the followed route (constant pixel spacing).
   final List<IconMarker> _trackArrows = [];
-  final List<IconMarker> _routeArrows = [];
+  PolylineTextMarker? _routeArrowsMarker;
   int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
@@ -256,7 +257,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _trackLine = PolylineMarker(
         path: List.of(_path),
         strokeColor: _accents.track,
-        strokeWidth: 2.6, // bold so it stays readable in direct sunlight
+        strokeWidth: 1.6, // brightness (colour) carries readability, not width
       );
       _markers.addMarker(_trackLine!);
     }
@@ -337,10 +338,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _markers.removeMarker(previous);
       _routeLine = null;
     }
-    for (final a in _routeArrows) {
-      _markers.removeMarker(a);
+    if (_routeArrowsMarker != null) {
+      _markers.removeMarker(_routeArrowsMarker!);
+      _routeArrowsMarker = null;
     }
-    _routeArrows.clear();
     if (route != null) {
       final pts = [
         for (final p in route.points) LatLong(p.latitude, p.longitude),
@@ -348,16 +349,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _routeLine = PolylineMarker(
         path: pts,
         strokeColor: _accents.route,
-        strokeWidth: 1.2, // thin backing line keeps the chevron chain continuous
+        strokeWidth: 1.0, // thin backing line keeps the route traceable
       );
       _markers.addMarker(_routeLine!);
-      // The route reads as a ribbon of route-coloured chevrons (>>>>>), dense
-      // enough to look continuous at riding zoom.
-      _routeArrows.addAll(_arrowsAlong(pts, _accents.route,
-          size: 18, minSpacing: 22, maxCount: 220));
-      for (final a in _routeArrows) {
-        _markers.addMarker(a);
-      }
+      // Direction shown as a row of ">" arrowheads repeated along the route at a
+      // fixed *pixel* gap — so they stay evenly spaced and clearly separate at
+      // every zoom (unlike geo-spaced markers, which merge into a band when you
+      // zoom out) — each rotated to the travel direction. Reads as >>>>>.
+      _routeArrowsMarker = PolylineTextMarker(
+        caption: '>',
+        path: pts,
+        fillColor: _accents.route, // arrows in the route colour …
+        strokeColor: _accents.meStroke, // … with a thin light halo to pop
+        strokeWidth: 0.8,
+        fontSize: 20,
+        maxFontSize: 22,
+        repeatStart: 12,
+        repeatGap: 14,
+      );
+      _markers.addMarker(_routeArrowsMarker!);
       // If we have no GPS fix yet, show the route by centring on its start.
       if (model != null && !_initialPositionSet) {
         final start = route.points.first;

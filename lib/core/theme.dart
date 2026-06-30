@@ -97,7 +97,7 @@ class MapAccents {
   final bool onLightMap;
 
   static const _dark = MapAccents(
-    track: 0xFFFF6D00, // orange
+    track: 0xFFFFA726, // bright amber-orange — stays legible in direct sun
     route: 0xFF2979FF, // blue
     me: 0xFF00E5FF, // cyan
     meStroke: 0xFFFFFFFF,
