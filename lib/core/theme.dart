@@ -98,7 +98,7 @@ class MapAccents {
 
   static const _dark = MapAccents(
     track: 0xFFFFA726, // bright amber-orange — stays legible in direct sun
-    route: 0xFF2979FF, // blue
+    route: 0xFF40C4FF, // bright light-blue — route direction arrows pop
     me: 0xFF00E5FF, // cyan
     meStroke: 0xFFFFFFFF,
     ghost: 0xFFB0BEC5,
