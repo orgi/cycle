@@ -9,6 +9,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Auto-pause** — the ride timer, distance and average now pause automatically
+  when you stop or slow below a threshold (default **5 km/h**), so waits at lights
+  and breaks don't drag your moving average down. The TIME box shows **PAUSED**
+  (amber) while paused. Configurable in **Settings → Controls** (on/off + the
+  km/h threshold); max speed still records the true peak.
 - **Detailed (Elements) map theme** — the full OpenAndroMaps *Elements* render
   theme (contour lines, POI symbols, named cycle routes, landuse detail) is now
   selectable in **Settings → Appearance**, alongside the minimal Dark/Light/B&W

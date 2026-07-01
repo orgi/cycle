@@ -346,15 +346,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
       // heads chain into a continuous >>>>>, each rotated to the travel
       // direction. Bright route colour so they stand out on the map.
       _routeArrowsMarker = PolylineTextMarker(
-        caption: '>>>>', // a run of chevrons per repeat → a connected >>>>> chain
+        caption: '>',
         path: pts,
         fillColor: _accents.route,
         strokeColor: _accents.meStroke, // thin halo for edge contrast
         strokeWidth: 0.6,
         fontSize: 20,
         maxFontSize: 22,
-        repeatStart: 4,
-        repeatGap: 4,
+        // Repeat a single ">" head every glyph-width or so — an even, tight
+        // chain (>>>>>) with no big gaps between groups.
+        repeatStart: 2,
+        repeatGap: 2,
       );
       _markers.addMarker(_routeArrowsMarker!);
       // If we have no GPS fix yet, show the route by centring on its start.
@@ -533,9 +535,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       const SizedBox(width: 6),
                       Expanded(
                         child: _MapStat(
-                          label: 'TIME',
+                          // Auto-paused (below the threshold): flag it in amber;
+                          // the time is frozen while paused.
+                          label: m.paused ? 'PAUSED' : 'TIME',
                           value: formatDuration(m.elapsed),
                           unit: '',
+                          valueColor:
+                              m.paused ? const Color(0xFFFFA726) : null,
                         ),
                       ),
                     ],

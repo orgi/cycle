@@ -7,6 +7,7 @@ class RideMetrics {
     required this.maxSpeedMps,
     required this.elapsed,
     this.speedFromSensor = false,
+    this.paused = false,
   });
 
   const RideMetrics.zero()
@@ -15,7 +16,8 @@ class RideMetrics {
         avgSpeedMps = 0,
         maxSpeedMps = 0,
         elapsed = Duration.zero,
-        speedFromSensor = false;
+        speedFromSensor = false,
+        paused = false;
 
   final double distanceMeters;
   final double currentSpeedMps;
@@ -27,6 +29,10 @@ class RideMetrics {
   /// GPS (false) — used to colour the live speed by source.
   final bool speedFromSensor;
 
+  /// Whether the ride is auto-paused (speed below the auto-pause threshold) —
+  /// while paused, moving time and distance don't accumulate.
+  final bool paused;
+
   RideMetrics copyWith({
     double? distanceMeters,
     double? currentSpeedMps,
@@ -34,6 +40,7 @@ class RideMetrics {
     double? maxSpeedMps,
     Duration? elapsed,
     bool? speedFromSensor,
+    bool? paused,
   }) =>
       RideMetrics(
         distanceMeters: distanceMeters ?? this.distanceMeters,
@@ -42,6 +49,7 @@ class RideMetrics {
         maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
         elapsed: elapsed ?? this.elapsed,
         speedFromSensor: speedFromSensor ?? this.speedFromSensor,
+        paused: paused ?? this.paused,
       );
 
   double get distanceKm => distanceMeters / 1000.0;
@@ -57,7 +65,8 @@ class RideMetrics {
       other.avgSpeedMps == avgSpeedMps &&
       other.maxSpeedMps == maxSpeedMps &&
       other.elapsed == elapsed &&
-      other.speedFromSensor == speedFromSensor;
+      other.speedFromSensor == speedFromSensor &&
+      other.paused == paused;
 
   @override
   int get hashCode => Object.hash(
@@ -67,5 +76,6 @@ class RideMetrics {
         maxSpeedMps,
         elapsed,
         speedFromSensor,
+        paused,
       );
 }

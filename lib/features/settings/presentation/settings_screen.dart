@@ -88,6 +88,25 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.showStartStopButton,
             onChanged: controller.setShowStartStopButton,
           ),
+          SwitchListTile(
+            key: const Key('autoPauseSwitch'),
+            title: const Text('Auto-pause'),
+            subtitle: const Text(
+                'Pause the timer, distance and average when you stop or slow '
+                'below the threshold (e.g. at traffic lights).'),
+            value: settings.autoPauseEnabled,
+            onChanged: controller.setAutoPauseEnabled,
+          ),
+          ListTile(
+            key: const Key('autoPauseSpeedTile'),
+            enabled: settings.autoPauseEnabled,
+            title: const Text('Pause below'),
+            subtitle: Text('${_fmtKmh(settings.autoPauseSpeedKmh)} km/h'),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: settings.autoPauseEnabled
+                ? () => _editAutoPauseSpeed(context, ref, settings)
+                : null,
+          ),
           const Divider(),
           const _Header('Accounts'),
           ListTile(
@@ -148,7 +167,47 @@ class SettingsScreen extends ConsumerWidget {
           .setWheelCircumference(mm / 1000.0);
     }
   }
+
+  Future<void> _editAutoPauseSpeed(
+      BuildContext context, WidgetRef ref, AppSettings settings) async {
+    final controllerText =
+        TextEditingController(text: _fmtKmh(settings.autoPauseSpeedKmh));
+    final kmh = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Auto-pause below (km/h)'),
+        content: TextField(
+          key: const Key('autoPauseSpeedField'),
+          controller: controllerText,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+          decoration: const InputDecoration(
+            helperText: 'Ride pauses when your speed drops below this',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('autoPauseSpeedSave'),
+            onPressed: () =>
+                Navigator.pop(ctx, double.tryParse(controllerText.text.trim())),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (kmh != null && kmh >= 0 && kmh < 30) {
+      await ref.read(settingsProvider.notifier).setAutoPauseSpeedKmh(kmh);
+    }
+  }
 }
+
+/// Formats a km/h threshold without a trailing ".0" (5.0 → "5", 3.5 → "3.5").
+String _fmtKmh(double kmh) =>
+    kmh == kmh.roundToDouble() ? kmh.round().toString() : kmh.toString();
 
 class _Header extends StatelessWidget {
   const _Header(this.text);

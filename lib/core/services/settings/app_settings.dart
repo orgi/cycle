@@ -46,6 +46,8 @@ class AppSettings {
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
     this.mapZoom = 16,
+    this.autoPauseEnabled = true,
+    this.autoPauseSpeedKmh = 5.0,
   });
 
   /// Distance/speed units shown in the UI.
@@ -72,6 +74,13 @@ class AppSettings {
   /// Last map zoom level, restored on the next launch.
   final int mapZoom;
 
+  /// When true, the ride timer/distance/average auto-pause below
+  /// [autoPauseSpeedKmh] (so stops at lights / breaks don't count).
+  final bool autoPauseEnabled;
+
+  /// Speed (km/h) below which the ride auto-pauses.
+  final double autoPauseSpeedKmh;
+
   AppSettings copyWith({
     UnitSystem? units,
     double? wheelCircumferenceMeters,
@@ -80,6 +89,8 @@ class AppSettings {
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
     int? mapZoom,
+    bool? autoPauseEnabled,
+    double? autoPauseSpeedKmh,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -93,6 +104,8 @@ class AppSettings {
             : selectedMapFileName as String?,
         colorScheme: colorScheme ?? this.colorScheme,
         mapZoom: mapZoom ?? this.mapZoom,
+        autoPauseEnabled: autoPauseEnabled ?? this.autoPauseEnabled,
+        autoPauseSpeedKmh: autoPauseSpeedKmh ?? this.autoPauseSpeedKmh,
       );
 
   Map<String, dynamic> toJson() => {
@@ -103,6 +116,8 @@ class AppSettings {
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
         'map_zoom': mapZoom,
+        'auto_pause': autoPauseEnabled,
+        'auto_pause_kmh': autoPauseSpeedKmh,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -120,6 +135,9 @@ class AppSettings {
           orElse: () => AppColorScheme.dark,
         ),
         mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
+        autoPauseEnabled: json['auto_pause'] as bool? ?? true,
+        autoPauseSpeedKmh:
+            (json['auto_pause_kmh'] as num?)?.toDouble() ?? 5.0,
       );
 
   @override
@@ -131,9 +149,19 @@ class AppSettings {
       other.showStartStopButton == showStartStopButton &&
       other.selectedMapFileName == selectedMapFileName &&
       other.colorScheme == colorScheme &&
-      other.mapZoom == mapZoom;
+      other.mapZoom == mapZoom &&
+      other.autoPauseEnabled == autoPauseEnabled &&
+      other.autoPauseSpeedKmh == autoPauseSpeedKmh;
 
   @override
-  int get hashCode => Object.hash(units, wheelCircumferenceMeters,
-      hardwareButtonsEnabled, showStartStopButton, selectedMapFileName, colorScheme, mapZoom);
+  int get hashCode => Object.hash(
+      units,
+      wheelCircumferenceMeters,
+      hardwareButtonsEnabled,
+      showStartStopButton,
+      selectedMapFileName,
+      colorScheme,
+      mapZoom,
+      autoPauseEnabled,
+      autoPauseSpeedKmh);
 }

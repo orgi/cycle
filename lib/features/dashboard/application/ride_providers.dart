@@ -14,7 +14,9 @@ import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
+import '../../../core/services/settings/app_settings.dart';
 import '../../sensors/application/sensor_providers.dart';
+import '../../settings/application/settings_providers.dart';
 
 /// Platform GPS source. Overridden with a fake in tests.
 final locationServiceProvider = Provider<LocationService>(
@@ -131,6 +133,9 @@ class RideController extends Notifier<RideMetrics> {
 
   @override
   RideMetrics build() {
+    // Auto-pause config from settings, kept in sync as the user changes it.
+    _applyAutoPause(ref.read(settingsProvider));
+    ref.listen(settingsProvider, (_, next) => _applyAutoPause(next));
     final service = ref.watch(locationServiceProvider);
     // Request location permission (no-op on the emulator where it's pre-granted;
     // shows the system dialog on a real device).
@@ -207,6 +212,11 @@ class RideController extends Notifier<RideMetrics> {
       maxSpeedMps: _maxSpeedMps,
       speedFromSensor: _fusion.isUsingBle(now),
     );
+  }
+
+  void _applyAutoPause(AppSettings s) {
+    _accumulator.autoPauseEnabled = s.autoPauseEnabled;
+    _accumulator.autoPauseThresholdMps = s.autoPauseSpeedKmh / 3.6;
   }
 
   /// Fused (BLE-preferred) speed, also tracking the running max.

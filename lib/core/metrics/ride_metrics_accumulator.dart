@@ -8,11 +8,26 @@ import '../utils/geo.dart';
 /// returns the updated snapshot. Lives outside the Riverpod/UI layers so the
 /// distance/speed maths can be unit-tested in isolation.
 class RideMetricsAccumulator {
+  RideMetricsAccumulator({
+    this.autoPauseEnabled = false,
+    this.autoPauseThresholdMps = 5.0 / 3.6, // 5 km/h
+  });
+
+  /// When enabled, samples below [autoPauseThresholdMps] don't add to moving
+  /// time or distance (so red lights / breaks are excluded from time + average).
+  bool autoPauseEnabled;
+  double autoPauseThresholdMps;
+
   GeoSample? _last;
   DateTime? _startTime;
   double _distanceMeters = 0;
   double _maxSpeedMps = 0;
+  int _movingMillis = 0;
+  bool _paused = false;
   final List<GeoSample> _window = [];
+
+  /// Whether the ride is currently auto-paused (last sample below threshold).
+  bool get paused => _paused;
 
   /// Ignore implausibly large jumps between samples (e.g. GPS teleports) so a
   /// single bad fix does not corrupt total distance. 200 m between two
@@ -34,20 +49,18 @@ class RideMetricsAccumulator {
 
     var current = _gpsSpeedOrZero(sample);
     final last = _last;
+    var leg = 0.0;
+    var dtSeconds = 0.0;
     if (last != null) {
-      final leg = haversineMeters(
+      leg = haversineMeters(
         last.latitude,
         last.longitude,
         sample.latitude,
         sample.longitude,
       );
-      if (leg <= _maxLegMeters) {
-        _distanceMeters += leg;
-      }
+      dtSeconds = sample.time.difference(last.time).inMilliseconds / 1000.0;
       // Prefer the GPS-reported speed; fall back to distance/time.
       if (sample.speedMps == null || sample.speedMps! < 0) {
-        final dtSeconds =
-            sample.time.difference(last.time).inMilliseconds / 1000.0;
         current = dtSeconds > 0 ? leg / dtSeconds : 0.0;
       }
     }
@@ -67,10 +80,19 @@ class RideMetricsAccumulator {
     if (current > _maxSpeedMps) {
       _maxSpeedMps = current;
     }
+
+    // Auto-pause: below the threshold, don't grow moving time or distance, so a
+    // stop at a light / a break is excluded from the timer and the average.
+    // (max speed still tracks the true peak above.)
+    _paused = autoPauseEnabled && current < autoPauseThresholdMps;
+    if (last != null && !_paused) {
+      if (leg <= _maxLegMeters) _distanceMeters += leg;
+      _movingMillis += (dtSeconds * 1000).round();
+    }
     _last = sample;
 
-    final elapsed = sample.time.difference(_startTime!);
-    final elapsedSeconds = elapsed.inMilliseconds / 1000.0;
+    final elapsed = Duration(milliseconds: _movingMillis);
+    final elapsedSeconds = _movingMillis / 1000.0;
     final avg = elapsedSeconds > 0 ? _distanceMeters / elapsedSeconds : 0.0;
 
     return RideMetrics(
@@ -79,6 +101,7 @@ class RideMetricsAccumulator {
       avgSpeedMps: avg,
       maxSpeedMps: _maxSpeedMps,
       elapsed: elapsed,
+      paused: _paused,
     );
   }
 
@@ -88,6 +111,8 @@ class RideMetricsAccumulator {
     _startTime = null;
     _distanceMeters = 0;
     _maxSpeedMps = 0;
+    _movingMillis = 0;
+    _paused = false;
     _window.clear();
   }
 

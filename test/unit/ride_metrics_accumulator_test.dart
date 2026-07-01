@@ -107,4 +107,53 @@ void main() {
     }
     expect(m.currentSpeedMps, 0);
   });
+
+  group('auto-pause', () {
+    const east100m = 0.00089932; // ~100 m east at the equator
+
+    test('excludes below-threshold time and distance from moving totals', () {
+      final a = RideMetricsAccumulator(autoPauseEnabled: true); // 5 km/h
+      a.add(sampleAt(t0, lon: 0, speed: 5));
+      // +10 s, moved ~100 m, moving fast → accrues
+      final m1 =
+          a.add(sampleAt(t0.add(const Duration(seconds: 10)), lon: east100m, speed: 8));
+      expect(m1.paused, isFalse);
+      expect(m1.distanceMeters, closeTo(100, 1));
+      expect(m1.elapsed, const Duration(seconds: 10));
+
+      // +10 s, stopped at a light (same spot, speed 0) → paused, no accrual
+      final m2 = a
+          .add(sampleAt(t0.add(const Duration(seconds: 20)), lon: east100m, speed: 0));
+      expect(m2.paused, isTrue);
+      expect(m2.distanceMeters, closeTo(100, 1)); // unchanged
+      expect(m2.elapsed, const Duration(seconds: 10)); // timer frozen
+
+      // +10 s, moving again another ~100 m → resumes
+      final m3 = a.add(sampleAt(t0.add(const Duration(seconds: 30)),
+          lon: east100m * 2, speed: 8));
+      expect(m3.paused, isFalse);
+      expect(m3.distanceMeters, closeTo(200, 1));
+      expect(m3.elapsed, const Duration(seconds: 20)); // 10 s stop excluded
+      expect(m3.avgSpeedMps, closeTo(10, 0.3)); // 200 m / 20 s moving
+    });
+
+    test('disabled: below-threshold samples still count', () {
+      final a = RideMetricsAccumulator(autoPauseEnabled: false);
+      a.add(sampleAt(t0, lon: 0, speed: 0));
+      final m =
+          a.add(sampleAt(t0.add(const Duration(seconds: 10)), lon: east100m, speed: 0));
+      expect(m.paused, isFalse);
+      expect(m.distanceMeters, closeTo(100, 1));
+      expect(m.elapsed, const Duration(seconds: 10));
+    });
+
+    test('reset clears the paused state', () {
+      final a = RideMetricsAccumulator(autoPauseEnabled: true);
+      a.add(sampleAt(t0, speed: 0));
+      final paused = a.add(sampleAt(t0.add(const Duration(seconds: 1)), speed: 0));
+      expect(paused.paused, isTrue);
+      a.reset();
+      expect(a.paused, isFalse);
+    });
+  });
 }

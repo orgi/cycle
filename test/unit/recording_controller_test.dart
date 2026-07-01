@@ -3,6 +3,7 @@ import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
+import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,7 @@ void main() {
         locationServiceProvider.overrideWithValue(location),
         sensorServiceProvider.overrideWithValue(sensors),
         appDatabaseProvider.overrideWithValue(db),
+        settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
         recordingForegroundServiceProvider
             .overrideWithValue(const NoopRecordingForegroundService()),
       ],
