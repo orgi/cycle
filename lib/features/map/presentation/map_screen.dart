@@ -42,10 +42,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   CircleMarker? _meMarker;
   CircleMarker? _ghostMarker;
   PolylineMarker? _trackLine;
-  // Direction indicators: chevron glyphs along the recorded track, and a row of
-  // ">" arrowheads repeated along the followed route (constant pixel spacing).
+  // Direction arrows along the recorded track and the followed route — small
+  // glyphs each rotated to the travel direction.
   final List<IconMarker> _trackArrows = [];
-  PolylineTextMarker? _routeArrowsMarker;
+  final List<IconMarker> _routeArrows = [];
   int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
@@ -279,15 +279,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
-  /// Builds a chain of small forward-pointing chevrons along [pts] in [color],
-  /// so the line itself reads as a directional ribbon (>>>>>). Chevrons are
-  /// *interpolated* at an even [minSpacing] (independent of how the points
-  /// happen to fall), stretching out for long lines so we never place more than
-  /// [maxCount]. Drawn in the line's own colour and backed by a same-colour line
-  /// so the chain stays continuous and visible at every zoom.
+  /// Builds a chain of small [icon] glyphs along [pts] in [color], each rotated
+  /// to the travel direction (explicit per-segment bearing — no readability
+  /// flip, so they always point *forward*). Glyphs are *interpolated* at an even
+  /// [minSpacing] (independent of how the points fall), stretching out for long
+  /// lines so we never place more than [maxCount].
   List<IconMarker> _arrowsAlong(
     List<LatLong> pts,
     int color, {
+    IconData icon = Icons.keyboard_arrow_up,
     double size = 12,
     double minSpacing = 90,
     int maxCount = 100,
@@ -316,8 +316,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             a.latitude + (b.latitude - a.latitude) * t,
             a.longitude + (b.longitude - a.longitude) * t,
           ),
-          // Chevron (^) rotated to the travel direction → reads as '>'.
-          iconData: Icons.keyboard_arrow_up,
+          iconData: icon, // rotated to the travel direction below
           size: size,
           bitmapColor: color,
           rotation: theta,
@@ -332,33 +331,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
   /// Draws (or clears) the route being followed as a dashed blue guide line. The
   /// recorded track and location dot keep drawing on top of it.
   void _onRouteChanged(MapModel? model, FollowRoute? route) {
-    if (_routeArrowsMarker != null) {
-      _markers.removeMarker(_routeArrowsMarker!);
-      _routeArrowsMarker = null;
+    for (final a in _routeArrows) {
+      _markers.removeMarker(a);
     }
+    _routeArrows.clear();
     if (route != null) {
       final pts = [
         for (final p in route.points) LatLong(p.latitude, p.longitude),
       ];
-      // The route is *only* a chain of arrowheads — no backing line. ">" glyphs
-      // are repeated along the path at a fixed *pixel* gap (so they stay evenly
-      // spaced at every zoom, never merging into a band), packed tight so the
-      // heads chain into a continuous >>>>>, each rotated to the travel
-      // direction. Bright route colour so they stand out on the map.
-      _routeArrowsMarker = PolylineTextMarker(
-        caption: '>',
-        path: pts,
-        fillColor: _accents.route,
-        strokeColor: _accents.meStroke, // thin halo for edge contrast
-        strokeWidth: 0.6,
-        fontSize: 20,
-        maxFontSize: 22,
-        // Repeat a single ">" head every glyph-width or so — an even, tight
-        // chain (>>>>>) with no big gaps between groups.
-        repeatStart: 2,
-        repeatGap: 2,
-      );
-      _markers.addMarker(_routeArrowsMarker!);
+      // The route is *only* a tight chain of small arrows (no backing line),
+      // each an arrow_upward glyph rotated to the travel direction so it points
+      // the right way everywhere. Bright route colour so it stands out.
+      _routeArrows.addAll(_arrowsAlong(pts, _accents.route,
+          icon: Icons.arrow_upward, size: 15, minSpacing: 20, maxCount: 320));
+      for (final a in _routeArrows) {
+        _markers.addMarker(a);
+      }
       // If we have no GPS fix yet, show the route by centring on its start.
       if (model != null && !_initialPositionSet) {
         final start = route.points.first;
