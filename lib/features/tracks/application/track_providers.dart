@@ -6,10 +6,22 @@ import '../../dashboard/application/ride_providers.dart';
 import '../../map/application/map_providers.dart';
 import '../../map/application/map_render_service.dart';
 import '../../settings/application/settings_providers.dart';
+import 'track_repair.dart';
 
 /// All recorded rides, newest first, live-updating.
 final tracksProvider = StreamProvider<List<Track>>(
   (ref) => ref.watch(appDatabaseProvider).watchTracks(),
+);
+
+/// Runs once at startup: recompute + finalise any ride interrupted by a crash /
+/// kill (still `endedAt == null`), so its stats aren't stuck at zero. Read it
+/// somewhere that loads at launch (the home screen). Returns how many were
+/// recovered; the live [tracksProvider] stream then refreshes automatically.
+final interruptedTrackRecoveryProvider = FutureProvider<int>(
+  (ref) => recoverInterruptedTracks(
+    ref.read(appDatabaseProvider),
+    ref.read(settingsProvider),
+  ),
 );
 
 /// A single track's recorded points.

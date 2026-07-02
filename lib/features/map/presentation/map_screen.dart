@@ -21,6 +21,7 @@ import '../../routing/domain/route_navigator.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
+import '../../tracks/application/track_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_catalog.dart';
@@ -378,6 +379,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Recover any ride interrupted by a crash/kill (runs once, off-screen).
+    ref.watch(interruptedTrackRecoveryProvider);
     final mapModelAsync = ref.watch(activeMapModelProvider);
     final m = ref.watch(rideMetricsProvider);
     final sensor = ref.watch(sensorSnapshotProvider).value;

@@ -58,4 +58,33 @@ void main() {
     expect(result.removed, 0);
     expect((await db.pointsFor(id)).length, 5);
   });
+
+  test('recovers an interrupted (never finalised) ride from its points',
+      () async {
+    final id = await db.createTrack(t0); // endedAt stays null (killed mid-ride)
+    for (var i = 0; i < 6; i++) {
+      await addPoint(id, i, 0, 0.0001 * i, speed: 5);
+    }
+    // Before recovery: zero stats, no end time.
+    var track = await db.track(id);
+    expect(track!.endedAt, isNull);
+    expect(track.distanceMeters, 0);
+
+    final n = await recoverInterruptedTracks(db, settings);
+    expect(n, 1);
+
+    track = await db.track(id);
+    expect(track!.endedAt, isNotNull);
+    expect(track.distanceMeters, greaterThan(0));
+    expect(track.durationSeconds, greaterThan(0));
+    expect(track.avgSpeedMps, greaterThan(0));
+    // A finalised ride is left alone on a second pass.
+    expect(await recoverInterruptedTracks(db, settings), 0);
+  });
+
+  test('drops an empty interrupted track (crash before any point)', () async {
+    final id = await db.createTrack(t0);
+    expect(await recoverInterruptedTracks(db, settings), 0);
+    expect(await db.track(id), isNull); // deleted
+  });
 }

@@ -23,6 +23,53 @@ GeoSample _toSample(TrackPoint p) => GeoSample(
       speedMps: p.speedMps,
     );
 
+/// Recomputes ride stats from recorded [points] (outliers skipped), the way a
+/// live ride would.
+RideMetrics computeStatsFromPoints(
+    List<TrackPoint> points, AppSettings settings) {
+  final filter = GpsOutlierFilter();
+  final acc = RideMetricsAccumulator(
+    autoPauseEnabled: settings.autoPauseEnabled,
+    autoPauseThresholdMps: settings.autoPauseSpeedKmh / 3.6,
+  );
+  var m = const RideMetrics.zero();
+  for (final p in points) {
+    final s = _toSample(p);
+    if (filter.accept(s)) m = acc.add(s);
+  }
+  return m;
+}
+
+/// Recovers rides interrupted by a crash/kill: any track still marked unfinished
+/// (`endedAt == null`) has its stats recomputed from the points that *were*
+/// saved live, and is finalised — so a killed recording is no longer stuck at
+/// zero. Empty leftovers (created but never given a point) are dropped. Returns
+/// the number of rides recovered.
+Future<int> recoverInterruptedTracks(
+    AppDatabase db, AppSettings settings) async {
+  final tracks = await db.allTracks();
+  var recovered = 0;
+  for (final t in tracks) {
+    if (t.endedAt != null) continue; // already finalised
+    final points = await db.pointsFor(t.id);
+    if (points.isEmpty) {
+      await db.deleteTrack(t.id); // crash artefact with no data
+      continue;
+    }
+    final m = computeStatsFromPoints(points, settings);
+    await db.finalizeTrack(
+      t.id,
+      endedAt: points.last.time,
+      distanceMeters: m.distanceMeters,
+      durationSeconds: m.elapsed.inSeconds,
+      avgSpeedMps: m.avgSpeedMps,
+      maxSpeedMps: m.maxSpeedMps,
+    );
+    recovered++;
+  }
+  return recovered;
+}
+
 /// Removes GPS "spike" outliers from an already-recorded track and recomputes
 /// its distance / duration / average / max from the cleaned points — the same
 /// [GpsOutlierFilter] we now apply live, but run after the fact on a ride that
