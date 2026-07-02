@@ -24,6 +24,7 @@ import '../../settings/application/settings_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_catalog.dart';
+import 'route_arrows_marker.dart';
 
 /// The single main screen: a full-screen offline map (with the recorded track
 /// and current location) plus the live ride statistics as semi-transparent
@@ -42,10 +43,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   CircleMarker? _meMarker;
   CircleMarker? _ghostMarker;
   PolylineMarker? _trackLine;
-  // Direction arrows along the recorded track and the followed route — small
-  // glyphs each rotated to the travel direction.
+  // Direction arrows along the recorded track (icon glyphs) and the followed
+  // route (a custom dashed-arrow marker, pixel-spaced + correctly rotated).
   final List<IconMarker> _trackArrows = [];
-  final List<IconMarker> _routeArrows = [];
+  RouteArrowsMarker? _routeArrowsMarker;
   int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
@@ -331,22 +332,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
   /// Draws (or clears) the route being followed as a dashed blue guide line. The
   /// recorded track and location dot keep drawing on top of it.
   void _onRouteChanged(MapModel? model, FollowRoute? route) {
-    for (final a in _routeArrows) {
-      _markers.removeMarker(a);
+    if (_routeArrowsMarker != null) {
+      _markers.removeMarker(_routeArrowsMarker!);
+      _routeArrowsMarker = null;
     }
-    _routeArrows.clear();
     if (route != null) {
       final pts = [
         for (final p in route.points) LatLong(p.latitude, p.longitude),
       ];
-      // The route is *only* a tight chain of small arrows (no backing line),
-      // each an arrow_upward glyph rotated to the travel direction so it points
-      // the right way everywhere. Bright route colour so it stands out.
-      _routeArrows.addAll(_arrowsAlong(pts, _accents.route,
-          icon: Icons.arrow_upward, size: 15, minSpacing: 20, maxCount: 320));
-      for (final a in _routeArrows) {
-        _markers.addMarker(a);
-      }
+      // The route is a dashed line of small arrows — pixel-spaced so the gap
+      // stays tiny at any zoom, each pointing in the travel direction. Bright
+      // route colour so it stands out.
+      _routeArrowsMarker = RouteArrowsMarker(path: pts, color: _accents.route);
+      _markers.addMarker(_routeArrowsMarker!);
       // If we have no GPS fix yet, show the route by centring on its start.
       if (model != null && !_initialPositionSet) {
         final start = route.points.first;

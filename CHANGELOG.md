@@ -35,10 +35,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
 ### Changed
-- **Followed route is drawn as arrows only** — no underlying line: the route to
-  follow is a tight chain of small bright arrows (arrow shape, not chevrons), each
-  rotated to point in the actual travel direction so it always shows the right way
-  to go.
+- **Followed route is a dashed line of small arrows** — the route to follow is
+  drawn as a dashed line whose every dash is a small arrow (a short shaft with a
+  head no wider than the line), packed with a tiny gap. Custom-drawn in screen
+  space, so the gap stays tight at any zoom and every arrow points in the actual
+  travel direction (earlier approaches either spread out when you zoomed in or
+  pointed backwards on half the route).
 - **More sunlight readability** — the recorded track line is brighter (amber), and
   roads / streets are brighter in the Dark and Detailed (Elements) — Dark map
   themes (near-white road bodies over a dark casing) so they stay legible with the
