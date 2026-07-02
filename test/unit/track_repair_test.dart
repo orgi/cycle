@@ -70,8 +70,8 @@ void main() {
     expect(track!.endedAt, isNull);
     expect(track.distanceMeters, 0);
 
-    final n = await recoverInterruptedTracks(db, settings);
-    expect(n, 1);
+    // Old timestamps → recovered but not offered for resume.
+    expect(await recoverInterruptedTracks(db, settings), isNull);
 
     track = await db.track(id);
     expect(track!.endedAt, isNotNull);
@@ -79,12 +79,27 @@ void main() {
     expect(track.durationSeconds, greaterThan(0));
     expect(track.avgSpeedMps, greaterThan(0));
     // A finalised ride is left alone on a second pass.
-    expect(await recoverInterruptedTracks(db, settings), 0);
+    expect(await recoverInterruptedTracks(db, settings), isNull);
+  });
+
+  test('offers resume for the newest recently-interrupted ride', () async {
+    final base = DateTime.now().subtract(const Duration(minutes: 3));
+    final id = await db.createTrack(base);
+    for (var i = 0; i < 4; i++) {
+      await db.addPoint(TrackPointsCompanion.insert(
+        trackId: id,
+        time: base.add(Duration(seconds: i)),
+        latitude: 0,
+        longitude: 0.0001 * i,
+        speedMps: const Value(5),
+      ));
+    }
+    expect(await recoverInterruptedTracks(db, settings), id);
   });
 
   test('drops an empty interrupted track (crash before any point)', () async {
     final id = await db.createTrack(t0);
-    expect(await recoverInterruptedTracks(db, settings), 0);
+    expect(await recoverInterruptedTracks(db, settings), isNull);
     expect(await db.track(id), isNull); // deleted
   });
 }

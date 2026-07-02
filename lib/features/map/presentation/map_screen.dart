@@ -126,6 +126,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _rebuildTrackLine();
   }
 
+  /// Prompts to resume a ride a crash/kill interrupted (recovered at startup).
+  void _offerResume(int trackId) {
+    if (!mounted || ref.read(recordingProvider)) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('Last ride was interrupted'),
+      duration: const Duration(seconds: 12),
+      action: SnackBarAction(
+        label: 'RESUME',
+        onPressed: () => ref.read(recordingProvider.notifier).resume(trackId),
+      ),
+    ));
+  }
+
   void _onPosition(MapModel model, GeoSample sample) {
     final firstFix = !_initialPositionSet;
     _initialPositionSet = true;
@@ -379,8 +392,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Recover any ride interrupted by a crash/kill (runs once, off-screen).
-    ref.watch(interruptedTrackRecoveryProvider);
     final mapModelAsync = ref.watch(activeMapModelProvider);
     final m = ref.watch(rideMetricsProvider);
     final sensor = ref.watch(sensorSnapshotProvider).value;
@@ -420,7 +431,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     // Start fresh on each recording start, and clear the line when it stops.
     ref.listen(recordingProvider, (prev, next) {
-      if (prev != next) _clearTrack();
+      if (prev == next) return;
+      // On stop, clear the track. On start/resume, reload from the current
+      // ride's saved points — empty for a fresh ride, the existing trail when
+      // resuming an interrupted one.
+      if (next) {
+        _seedFromCurrentRecording();
+      } else {
+        _clearTrack();
+      }
+    });
+
+    // Offer to resume a ride that a crash/kill interrupted (recovered above).
+    ref.listen(interruptedTrackRecoveryProvider, (_, next) {
+      next.whenData((resumableId) {
+        if (resumableId != null) _offerResume(resumableId);
+      });
     });
 
     // Recolour the overlays when the colour scheme changes (the map itself

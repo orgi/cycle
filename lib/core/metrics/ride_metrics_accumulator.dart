@@ -116,6 +116,23 @@ class RideMetricsAccumulator {
     _window.clear();
   }
 
+  /// Resumes an interrupted ride: seed the running totals from the points that
+  /// were already recorded, and start a **fresh leg** (`_last = null`) so the
+  /// dead-time gap while the app was gone isn't counted as distance or time.
+  void resumeWith({
+    required double distanceMeters,
+    required int movingMillis,
+    required double maxSpeedMps,
+  }) {
+    _distanceMeters = distanceMeters;
+    _movingMillis = movingMillis;
+    _maxSpeedMps = maxSpeedMps;
+    _last = null;
+    _startTime = null;
+    _paused = false;
+    _window.clear();
+  }
+
   double _gpsSpeedOrZero(GeoSample s) =>
       (s.speedMps != null && s.speedMps! >= 0) ? s.speedMps! : 0.0;
 

@@ -156,4 +156,20 @@ void main() {
       expect(a.paused, isFalse);
     });
   });
+
+  test('resumeWith seeds totals and does not count the dead-time gap', () {
+    final a = RideMetricsAccumulator()
+      ..resumeWith(distanceMeters: 500, movingMillis: 100000, maxSpeedMps: 9);
+    // First sample after a long gap only re-anchors — no gap distance/time.
+    final m0 = a.add(sampleAt(t0.add(const Duration(minutes: 30)), lon: 0.01, speed: 8));
+    expect(m0.distanceMeters, 500); // unchanged by the gap
+    expect(m0.elapsed, const Duration(milliseconds: 100000));
+    // Continuing adds to the carried-over totals.
+    final m1 = a.add(sampleAt(
+        t0.add(const Duration(minutes: 30, seconds: 10)),
+        lon: 0.01 + 0.00089932, // ~100 m further, 10 s later
+        speed: 8));
+    expect(m1.distanceMeters, closeTo(600, 1));
+    expect(m1.elapsed, const Duration(milliseconds: 110000));
+  });
 }

@@ -15,9 +15,10 @@ final tracksProvider = StreamProvider<List<Track>>(
 
 /// Runs once at startup: recompute + finalise any ride interrupted by a crash /
 /// kill (still `endedAt == null`), so its stats aren't stuck at zero. Read it
-/// somewhere that loads at launch (the home screen). Returns how many were
-/// recovered; the live [tracksProvider] stream then refreshes automatically.
-final interruptedTrackRecoveryProvider = FutureProvider<int>(
+/// somewhere that loads at launch (the home screen). The live [tracksProvider]
+/// stream then refreshes automatically. Resolves to the id of the most recent
+/// ride if it was interrupted recently (offer to resume it), else `null`.
+final interruptedTrackRecoveryProvider = FutureProvider<int?>(
   (ref) => recoverInterruptedTracks(
     ref.read(appDatabaseProvider),
     ref.read(settingsProvider),

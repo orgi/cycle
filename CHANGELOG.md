@@ -9,6 +9,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Resume an interrupted ride** — if a ride was cut short by a crash/kill, on
+  the next launch the app offers **"Resume"**: recording continues into the same
+  track with its distance/time/average carried over (the dead-time gap while the
+  app was gone isn't counted).
 - **Clean GPS spikes on a recorded ride** — a new wand action on the ride screen
   removes teleport outliers from an already-recorded track and recomputes its
   distance / average / max from the cleaned points (for rides recorded before the

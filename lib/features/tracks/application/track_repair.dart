@@ -43,18 +43,30 @@ RideMetrics computeStatsFromPoints(
 /// Recovers rides interrupted by a crash/kill: any track still marked unfinished
 /// (`endedAt == null`) has its stats recomputed from the points that *were*
 /// saved live, and is finalised — so a killed recording is no longer stuck at
-/// zero. Empty leftovers (created but never given a point) are dropped. Returns
-/// the number of rides recovered.
-Future<int> recoverInterruptedTracks(
-    AppDatabase db, AppSettings settings) async {
-  final tracks = await db.allTracks();
-  var recovered = 0;
-  for (final t in tracks) {
+/// zero. Empty leftovers (created but never given a point) are dropped.
+///
+/// Returns the id of the **most recent** ride if it was interrupted recently
+/// (within [resumableWithin]) so the caller can offer to resume it; otherwise
+/// `null`.
+Future<int?> recoverInterruptedTracks(
+  AppDatabase db,
+  AppSettings settings, {
+  Duration resumableWithin = const Duration(hours: 6),
+}) async {
+  final tracks = await db.allTracks(); // newest first
+  final now = DateTime.now();
+  int? resumable;
+  for (var i = 0; i < tracks.length; i++) {
+    final t = tracks[i];
     if (t.endedAt != null) continue; // already finalised
     final points = await db.pointsFor(t.id);
     if (points.isEmpty) {
       await db.deleteTrack(t.id); // crash artefact with no data
       continue;
+    }
+    // Only the newest ride, interrupted recently, is offered for resume.
+    if (i == 0 && now.difference(points.last.time) <= resumableWithin) {
+      resumable = t.id;
     }
     final m = computeStatsFromPoints(points, settings);
     await db.finalizeTrack(
@@ -65,9 +77,8 @@ Future<int> recoverInterruptedTracks(
       avgSpeedMps: m.avgSpeedMps,
       maxSpeedMps: m.maxSpeedMps,
     );
-    recovered++;
   }
-  return recovered;
+  return resumable;
 }
 
 /// Removes GPS "spike" outliers from an already-recorded track and recomputes

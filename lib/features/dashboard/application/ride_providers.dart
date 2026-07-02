@@ -17,6 +17,7 @@ import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/settings_providers.dart';
+import '../../tracks/application/track_repair.dart';
 
 /// Platform GPS source. Overridden with a fake in tests.
 final locationServiceProvider = Provider<LocationService>(
@@ -68,6 +69,18 @@ class RecordingController extends Notifier<bool> {
     _trackId = await ref
         .read(appDatabaseProvider)
         .createTrack(DateTime.now(), batteryStartPercent: battery);
+    await ref.read(recordingForegroundServiceProvider).start();
+    state = true;
+  }
+
+  /// Resumes recording into an existing, interrupted ride — continues appending
+  /// to the same track, its stats carried over.
+  Future<void> resume(int trackId) async {
+    if (state) return;
+    await ref.read(screenWakeServiceProvider).enable();
+    final points = await ref.read(appDatabaseProvider).pointsFor(trackId);
+    ref.read(rideControllerProvider.notifier).resumeFrom(points);
+    _trackId = trackId;
     await ref.read(recordingForegroundServiceProvider).start();
     state = true;
   }
@@ -212,6 +225,19 @@ class RideController extends Notifier<RideMetrics> {
       maxSpeedMps: _maxSpeedMps,
       speedFromSensor: _fusion.isUsingBle(now),
     );
+  }
+
+  /// Preloads the metrics from an interrupted ride's [points] so a resumed ride
+  /// continues from where it left off (the dead-time gap is not counted).
+  void resumeFrom(List<TrackPoint> points) {
+    final m = computeStatsFromPoints(points, ref.read(settingsProvider));
+    _maxSpeedMps = m.maxSpeedMps;
+    _accumulator.resumeWith(
+      distanceMeters: m.distanceMeters,
+      movingMillis: m.elapsed.inMilliseconds,
+      maxSpeedMps: m.maxSpeedMps,
+    );
+    state = m.copyWith(currentSpeedMps: 0, speedFromSensor: false);
   }
 
   void _applyAutoPause(AppSettings s) {
