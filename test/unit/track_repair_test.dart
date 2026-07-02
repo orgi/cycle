@@ -1,0 +1,61 @@
+import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/features/tracks/application/track_repair.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  late AppDatabase db;
+  final t0 = DateTime.utc(2026, 1, 1, 12, 0, 0);
+  // Auto-pause off so the recompute reflects only spike removal.
+  const settings = AppSettings(autoPauseEnabled: false);
+
+  setUp(() => db = AppDatabase(NativeDatabase.memory()));
+  tearDown(() => db.close());
+
+  Future<void> addPoint(int trackId, int sec, double lat, double lon,
+          {double? speed}) =>
+      db.addPoint(TrackPointsCompanion.insert(
+        trackId: trackId,
+        time: t0.add(Duration(seconds: sec)),
+        latitude: lat,
+        longitude: lon,
+        speedMps: Value(speed),
+      ));
+
+  test('removes a spike point and recomputes stats', () async {
+    final id = await db.createTrack(t0);
+    // Riding east ~11 m/s… actually ~5.5 m/s per 0.0001° over 1 s.
+    await addPoint(id, 0, 0, 0.0000, speed: 5);
+    await addPoint(id, 1, 0, 0.0001, speed: 5);
+    await addPoint(id, 2, 0, 0.0050, speed: 5); // SPIKE ~556 m east
+    await addPoint(id, 3, 0, 0.0002, speed: 5); // back on track
+    await addPoint(id, 4, 0, 0.0003, speed: 5);
+
+    final result = await repairTrackSpikes(db, settings, id);
+    expect(result.removed, 1);
+    expect(result.kept, 4);
+
+    final remaining = await db.pointsFor(id);
+    expect(remaining.length, 4);
+    // No remaining point is the spike.
+    expect(remaining.any((p) => p.longitude > 0.004), isFalse);
+
+    final track = await db.track(id);
+    // 4 legs of ~11 m along the cleaned path ≈ 33 m total (0→0.0003° over 3 legs
+    // that were kept), certainly far below the ~1100 m a spike out-and-back adds.
+    expect(track!.distanceMeters, lessThan(100));
+    expect(track.distanceMeters, greaterThan(0));
+  });
+
+  test('no spikes → nothing removed', () async {
+    final id = await db.createTrack(t0);
+    for (var i = 0; i < 5; i++) {
+      await addPoint(id, i, 0, 0.0001 * i, speed: 5);
+    }
+    final result = await repairTrackSpikes(db, settings, id);
+    expect(result.removed, 0);
+    expect((await db.pointsFor(id)).length, 5);
+  });
+}

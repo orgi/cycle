@@ -118,4 +118,28 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteTrack(int id) =>
       (delete(tracks)..where((t) => t.id.equals(id))).go();
+
+  /// Deletes specific track points (used to clean GPS spike outliers).
+  Future<void> deletePoints(List<int> ids) async {
+    if (ids.isEmpty) return;
+    await (delete(trackPoints)..where((p) => p.id.isIn(ids))).go();
+  }
+
+  /// Overwrites just a track's computed stats (after cleaning/repair), leaving
+  /// its start/end/battery untouched.
+  Future<void> updateTrackStats(
+    int trackId, {
+    required double distanceMeters,
+    required int durationSeconds,
+    required double avgSpeedMps,
+    required double maxSpeedMps,
+  }) =>
+      (update(tracks)..where((t) => t.id.equals(trackId))).write(
+        TracksCompanion(
+          distanceMeters: Value(distanceMeters),
+          durationSeconds: Value(durationSeconds),
+          avgSpeedMps: Value(avgSpeedMps),
+          maxSpeedMps: Value(maxSpeedMps),
+        ),
+      );
 }

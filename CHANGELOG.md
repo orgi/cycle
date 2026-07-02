@@ -9,6 +9,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Clean GPS spikes on a recorded ride** — a new wand action on the ride screen
+  removes teleport outliers from an already-recorded track and recomputes its
+  distance / average / max from the cleaned points (for rides recorded before the
+  outlier filter below).
 - **Auto-pause** — the ride timer, distance and average now pause automatically
   when you stop or slow below a threshold (default **5 km/h**), so waits at lights
   and breaks don't drag your moving average down. The TIME box shows **PAUSED**
@@ -48,6 +52,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   restart to repaint already-cached tiles.)
 
 ### Fixed
+- **GPS spikes no longer corrupt the track or the average** — occasional GPS
+  "teleport" outliers (multipath reflections, worse in the evening) made the
+  recorded track dart out and back, and — because the huge out/back legs are
+  rejected for distance while time keeps running — dragged the average speed down
+  with every spike. Such fixes are now rejected at the source (any that imply an
+  impossible speed from the last good position), keeping the last good fix as the
+  reference so the next real leg is measured across the gap. Cleaner track,
+  correct distance and average.
 - **Opening a GPX reuses the running app** — opening/sharing a `.gpx` from a file
   manager spawned a *second* instance of Cycle instead of handing the route to the
   one already running. The activity is now `singleTask`, so the intent goes to the

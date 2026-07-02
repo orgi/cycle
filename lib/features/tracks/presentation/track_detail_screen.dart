@@ -11,8 +11,10 @@ import '../../../core/services/upload/upload_models.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
+import '../../settings/application/settings_providers.dart';
 import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
+import '../application/track_repair.dart';
 import 'widgets/ride_map.dart';
 import 'widgets/speed_color.dart';
 
@@ -35,6 +37,12 @@ class TrackDetailScreen extends ConsumerWidget {
             icon: const Icon(Icons.cloud_upload_outlined),
             tooltip: 'Upload',
             onPressed: () => _upload(context, ref),
+          ),
+          IconButton(
+            key: const Key('cleanSpikesButton'),
+            icon: const Icon(Icons.auto_fix_high),
+            tooltip: 'Clean GPS spikes',
+            onPressed: () => _cleanSpikes(context, ref),
           ),
           IconButton(
             key: const Key('exportButton'),
@@ -80,6 +88,24 @@ class TrackDetailScreen extends ConsumerWidget {
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     await ref.read(appDatabaseProvider).deleteTrack(trackId);
     if (context.mounted) context.pop();
+  }
+
+  Future<void> _cleanSpikes(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await repairTrackSpikes(
+      ref.read(appDatabaseProvider),
+      ref.read(settingsProvider),
+      trackId,
+    );
+    // Reload the header stats + points so the map/chart redraw without spikes.
+    ref.invalidate(trackProvider(trackId));
+    ref.invalidate(trackPointsProvider(trackId));
+    final n = result.removed;
+    messenger.showSnackBar(SnackBar(
+      content: Text(n == 0
+          ? 'No GPS spikes found'
+          : 'Removed $n GPS spike${n == 1 ? '' : 's'} and recomputed stats'),
+    ));
   }
 
   Future<void> _upload(BuildContext context, WidgetRef ref) async {
