@@ -33,11 +33,14 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
 * For the general code testing there ALWAYS have to be unit tests.
 * For the system testing there needs to be at last a GUI test
 * Tests need to be executed for acceptance of any automated edit
+* Build for Android 32 & 64 bit shall ALWWAYS be done to verify a change.
 
 The actual phones available for manual testing will be
 
-* A Galaxy A33 5G
-* Possibly a Galaxy A3 2017
+* A Galaxy A33 5G (64 bit)
+* Possibly a Galaxy A3 2017 (32 bit)
+
+If either (or both) phones are connected while you are implementing a new feature / bugfix or any other changes, ALWAYS install the latest app w/o uninstalling the previous one to keep the database intact.
 
 When installing the app using adb, NEVER uninstall the existing app to avoid data loss.
 
@@ -164,7 +167,9 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   so real-sensor/Garmin verification needs a physical device).
 * **M4 — Recording & track DB:** done. `drift`/SQLite (`tracks` + `trackPoints`); recording
   persists a point per GPS sample with sensor values and finalises stats on stop; Rides list
-  + detail (stats, route-sketch, elevation chart) with GPX export. DB/GPX/persistence
+  + detail (stats, route-sketch, elevation chart) with GPX export. The Rides list also shows
+  rolling **week/month/year summary cards** above the ride list (rides count, distance, time;
+  `lib/core/utils/ride_summary.dart`, pure + unit-tested). DB/GPX/persistence
   unit-tested; list/detail widget-tested; record→stop→Rides verified on the emulator.
   NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
   main-thread ANR on Android 14. A real foreground service (background recording with screen
@@ -234,7 +239,13 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
     colour bucket) + legend; the map pinch-zooms natively and the elevation chart is wrapped in
-    an `InteractiveViewer`. Stats include distance/time/avg/max + ascent + avg HR/cadence/power
+    an `InteractiveViewer` (its `LineChartData.lineTouchData` must stay **disabled** — fl_chart's
+    own touch handling otherwise wins the gesture arena and the pinch/pan never reaches the
+    viewer). The map and elevation sections each sit in a `Listener`-based "isolated region"
+    (`_BodyState._isolate`) that disables the outer page's scroll physics for as long as any
+    finger is down on them, so a one-finger drag or pinch on the map/chart never fights the
+    page scroll for the gesture (scoped per-widget, not the whole page, so the rest of the ride
+    detail still scrolls normally). Stats include distance/time/avg/max + ascent + avg HR/cadence/power
     + **battery used** (`tracks.batteryStart/EndPercent`, schema v2; read via the native
     `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
     only). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
