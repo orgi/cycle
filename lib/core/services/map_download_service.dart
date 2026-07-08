@@ -82,7 +82,19 @@ class MapDownloadService {
     try {
       final request = http.Request('GET', Uri.parse(region.url));
       if (existing > 0) request.headers['range'] = 'bytes=$existing-';
-      final response = await client.send(request);
+      var response = await client.send(request);
+
+      // 416 = our .part file's size no longer matches a valid resume point on
+      // the server (e.g. a previous attempt left a stale/complete-looking
+      // .part after a later failure, or the remote file changed) — the Range
+      // request itself is then unsatisfiable forever, so retrying as-is would
+      // just 416 again. Discard the stale partial and restart fresh instead
+      // of surfacing a dead-end error.
+      if (response.statusCode == 416) {
+        await response.stream.drain<void>();
+        if (await partFile.exists()) await partFile.delete();
+        response = await client.send(http.Request('GET', Uri.parse(region.url)));
+      }
 
       // 206 = the server honoured our Range (resume); 200 = full content (start
       // over, even if a stale .part existed).
