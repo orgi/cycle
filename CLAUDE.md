@@ -66,6 +66,24 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
 * **GPS:** `geolocator` — note we **poll `getCurrentPosition` at 1 Hz** (not
   `getPositionStream`, which is broken on Android 14) with `forceLocationManager: true`
   (raw GPS). See `lib/core/services/location_service.dart`.
+  * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
+    at the source when the GPS chip's own accuracy estimate is worse than 10 m
+    (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
+    reported accuracy is kept). An earlier approach rejected fixes by *implied speed*
+    (`GpsOutlierFilter`, live in `location_service.dart` + a flat 200 m per-leg cap in
+    `RideMetricsAccumulator`) — field data on the Galaxy A3 2017 showed this didn't
+    work: a slow sustained drift (e.g. multipath under tree cover) never looks "too
+    fast" so it sailed through un-flagged and showed up as the track wandering off
+    the real road for a stretch (the "clean spikes" tool couldn't fix it either, since
+    none of those points individually look like a spike to that same algorithm) —
+    while a *genuine* fast/sparse-fix descent after a real GPS gap of tens of seconds
+    produced a large-but-plausible-speed leg that got its **entire distance silently
+    discarded** by the flat 200 m cap, undercounting real rides. `GpsOutlierFilter`
+    and the 200 m cap were reverted from the live path; `GpsOutlierFilter` itself is
+    kept only as the manual "clean spikes" repair tool on the ride-detail screen and
+    for crash-interrupted-track recovery (`track_repair.dart`) — deliberately a
+    legacy/manual path, since GPS accuracy isn't persisted per point (no schema
+    change), so old tracks can't be re-judged by accuracy after the fact.
 * **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
   (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
   with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in
@@ -169,7 +187,24 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   persists a point per GPS sample with sensor values and finalises stats on stop; Rides list
   + detail (stats, route-sketch, elevation chart) with GPX export. The Rides list also shows
   rolling **week/month/year summary cards** above the ride list (rides count, distance, time;
-  `lib/core/utils/ride_summary.dart`, pure + unit-tested). DB/GPX/persistence
+  `lib/core/utils/ride_summary.dart`, pure + unit-tested). **Backup & restore** (Settings →
+  Backup & restore, `lib/core/services/backup_service.dart` +
+  `lib/features/backup/`): exports the whole ride DB to a portable `.sqlite` snapshot
+  (`VACUUM INTO`, so it's a live consistent copy without closing the DB) into the app's
+  external files folder (adb/USB/Files-app reachable, no root needed); import **merges** by
+  matching `startedAt`, so re-importing or importing on a phone that already has some of the
+  same rides is safe. Moving a backup to another phone goes through the **OS share sheet**,
+  not an in-app cloud integration: a "Share" action per backup hands the file to
+  `ACTION_SEND` (`cycle/share` native channel + a `FileProvider`, `android/app/src/main/res/xml/file_paths.xml`)
+  so the user picks whatever app (OneDrive, Drive, email, Bluetooth, …) to send it through —
+  that app handles its own login, so Cycle itself has zero OAuth/account plumbing. Receiving
+  is symmetric: opening/sharing a `.sqlite` into Cycle (`cycle/incoming_backup` channel +
+  manifest intent-filters, mirroring the GPX open/share handling below) auto-imports it on
+  resume. (An earlier direct-OneDrive OAuth integration — Azure app registration, PKCE,
+  Microsoft Graph API — was built, tested, then deliberately dropped in favour of this: the
+  Azure registration/tenant setup was disproportionate ceremony for what is fundamentally a
+  personal file transfer between two owned phones, and the share-sheet works with *any*
+  storage app, not just OneDrive.) DB/GPX/persistence
   unit-tested; list/detail widget-tested; record→stop→Rides verified on the emulator.
   NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
   main-thread ANR on Android 14. A real foreground service (background recording with screen
