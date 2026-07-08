@@ -118,6 +118,16 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/upload-accounts'),
           ),
           const Divider(),
+          const _Header('Data'),
+          ListTile(
+            key: const Key('backupRestoreTile'),
+            leading: const Icon(Icons.save_alt),
+            title: const Text('Backup & restore'),
+            subtitle: const Text('Move your rides to another phone'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/backup'),
+          ),
+          const Divider(),
           const _Header('About'),
           const ListTile(
             key: Key('appVersionTile'),

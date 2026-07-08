@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
+import 'features/backup/presentation/backup_screen.dart';
 import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
@@ -45,6 +46,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+    GoRoute(
+      path: '/backup',
+      builder: (context, state) => const BackupScreen(),
     ),
   ],
 );

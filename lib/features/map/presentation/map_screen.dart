@@ -13,6 +13,7 @@ import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
+import '../../backup/application/backup_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
@@ -68,8 +69,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _seedFromCurrentRecording();
-    // Pick up a GPX the app was opened/shared with.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkIncomingGpx());
+    // Pick up a GPX / ride-backup the app was opened/shared with.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkIncomingGpx();
+      _checkIncomingBackup();
+    });
   }
 
   @override
@@ -82,8 +86,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // A GPX may have been opened/shared while we were backgrounded.
-    if (state == AppLifecycleState.resumed) _checkIncomingGpx();
+    // A GPX / ride-backup may have been opened/shared while we were backgrounded.
+    if (state == AppLifecycleState.resumed) {
+      _checkIncomingGpx();
+      _checkIncomingBackup();
+    }
     // Remember the current zoom when leaving the foreground.
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
@@ -112,6 +119,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (name != null && mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Following $name')));
+    }
+  }
+
+  /// Imports a `.sqlite` ride-backup the app was opened/shared with (e.g.
+  /// "Open with Cycle" after downloading one from OneDrive on another phone).
+  Future<void> _checkIncomingBackup() async {
+    if (!mounted) return;
+    int? imported;
+    try {
+      imported = await ref
+          .read(backupImportControllerProvider.notifier)
+          .importIncomingIfAny();
+    } on Object catch (_) {
+      return;
+    }
+    if (imported != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(imported == 0
+            ? 'No new rides in that backup'
+            : 'Imported $imported ride${imported == 1 ? '' : 's'} from backup'),
+      ));
     }
   }
 

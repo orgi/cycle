@@ -98,6 +98,31 @@
                 <data android:mimeType="application/xml"/>
                 <data android:mimeType="text/xml"/>
             </intent-filter>
+            <!-- Open a .sqlite ride-database backup with Cycle (from a cloud
+                 storage app, file manager, mail, etc. — mirrors .gpx above).
+                 SQLite has no widely-registered mime type, so most incoming
+                 intents arrive as application/octet-stream and are matched by
+                 extension instead. -->
+            <intent-filter android:label="Import ride backup">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:host="*"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/vnd.sqlite3"/>
+                <data android:mimeType="application/x-sqlite3"/>
+                <data android:pathPattern=".*\\.sqlite"/>
+            </intent-filter>
+            <!-- Share a .sqlite backup to Cycle. -->
+            <intent-filter android:label="Import ride backup">
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/vnd.sqlite3"/>
+                <data android:mimeType="application/x-sqlite3"/>
+            </intent-filter>
             <!-- Strava OAuth redirect (cycle://strava-callback?code=…). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
@@ -106,6 +131,24 @@
                 <data android:scheme="cycle" android:host="strava-callback"/>
             </intent-filter>
         </activity>
+        <!-- FileProvider for "Share backup": exposes a file:// backup as a
+             content:// Uri so ACTION_SEND can hand it to another app
+             (OneDrive, Drive, email, …) without granting broader file access. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
+        <!-- flutter_foreground_task service (keeps recording alive in the
+             background). foregroundServiceType=location: we record GPS. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

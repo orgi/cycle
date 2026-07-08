@@ -5,27 +5,39 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
 import android.view.KeyEvent
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 /**
  * Native bridges (no plugins, to stay compatible with this project's AGP 9 +
  * standalone-Kotlin build):
  *  - `cycle/incoming_gpx`: a `.gpx` the app was opened with (ACTION_VIEW) or
  *    shared with (ACTION_SEND) — read and handed to Dart on demand.
+ *  - `cycle/incoming_backup`: same idea for a `.sqlite` ride-database backup
+ *    (e.g. opened from a cloud-storage app after "Share backup" on another
+ *    phone) — binary, so bytes are handed over rather than decoded as text.
+ *  - `cycle/share`: hands a local file to the OS share sheet (`ACTION_SEND`)
+ *    via a `FileProvider` content Uri, so "Share backup" can target OneDrive/
+ *    Drive/email/Bluetooth/etc. without Cycle doing any of that app's login.
  *  - `cycle/oauth`: open a browser URL and capture the `cycle://…` OAuth
  *    redirect (Strava sign-in) so Dart can pull the authorization code.
  */
 class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
     private val gpxChannel = "cycle/incoming_gpx"
+    private val backupChannel = "cycle/incoming_backup"
+    private val shareChannel = "cycle/share"
     private val oauthChannel = "cycle/oauth"
     private val buttonsChannel = "cycle/hardware_buttons"
 
     private var pendingName: String? = null
     private var pendingXml: String? = null
     private var pendingRedirect: String? = null
+    private var pendingBackupName: String? = null
+    private var pendingBackupBytes: ByteArray? = null
 
     private var buttons: MethodChannel? = null
     private var buttonsEnabled = false
@@ -44,6 +56,50 @@ class MainActivity : FlutterActivity() {
                     pendingName = null
                     pendingXml = null
                     result.success(map)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(messenger, backupChannel).setMethodCallHandler { call, result ->
+            if (call.method == "consumePending") {
+                val bytes = pendingBackupBytes
+                if (bytes == null) {
+                    result.success(null)
+                } else {
+                    val map = mapOf(
+                        "name" to (pendingBackupName ?: "cycle_backup.sqlite"),
+                        "bytes" to bytes,
+                    )
+                    pendingBackupName = null
+                    pendingBackupBytes = null
+                    result.success(map)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(messenger, shareChannel).setMethodCallHandler { call, result ->
+            if (call.method == "shareFile") {
+                val path = call.arguments as? String
+                if (path == null) {
+                    result.error("bad_args", "path required", null)
+                } else {
+                    try {
+                        val uri = FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", File(path))
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/octet-stream"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(Intent.createChooser(send, "Share backup"))
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("share_failed", e.message, null)
+                    }
                 }
             } else {
                 result.notImplemented()
@@ -151,18 +207,27 @@ class MainActivity : FlutterActivity() {
         }
 
         Log.i(TAG, "handleIntent action=${intent.action} uri=$uri")
+        val name = displayName(uri)
         try {
             val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return
-            pendingXml = String(bytes, Charsets.UTF_8)
-            pendingName = displayName(uri)
-            Log.i(TAG, "handleIntent read ${bytes.size} bytes name=$pendingName")
+            if (name.endsWith(".sqlite", ignoreCase = true)) {
+                pendingBackupName = name
+                pendingBackupBytes = bytes
+                Log.i(TAG, "handleIntent read ${bytes.size} bytes backup name=$name")
+            } else {
+                pendingXml = String(bytes, Charsets.UTF_8)
+                pendingName = name.replace(Regex("\\.gpx$", RegexOption.IGNORE_CASE), "")
+                Log.i(TAG, "handleIntent read ${bytes.size} bytes name=$pendingName")
+            }
         } catch (e: Exception) {
             Log.w(TAG, "handleIntent failed to read $uri", e)
         }
     }
 
+    /** Raw display name (with extension) — a content Uri's real filename, or the
+     * last path segment for a file:// Uri. */
     private fun displayName(uri: Uri): String {
-        var name = "Route"
+        var name = "file"
         if (uri.scheme == "content") {
             contentResolver.query(uri, null, null, null, null)?.use { c ->
                 val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -173,6 +238,6 @@ class MainActivity : FlutterActivity() {
         } else {
             uri.lastPathSegment?.let { name = it }
         }
-        return name.replace(Regex("\\.gpx$", RegexOption.IGNORE_CASE), "")
+        return name
     }
 }
