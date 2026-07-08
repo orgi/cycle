@@ -167,18 +167,25 @@ class _Body extends StatefulWidget {
 }
 
 class _BodyState extends State<_Body> {
-  // Active pointer count. When >= 2 (a pinch), the page scroll is disabled so
-  // the gesture reaches the map / elevation chart to zoom them.
-  int _pointers = 0;
+  // Count of pointers currently down over an "isolated" region (the map or
+  // the elevation chart). While > 0 the outer list's scroll is disabled, so a
+  // single-finger pan or a two-finger pinch that starts on the map/chart goes
+  // entirely to that widget instead of fighting the page scroll for the
+  // gesture. Scoping this per-region (rather than to the whole page) means
+  // the rest of the ride details still scroll normally.
+  int _isolated = 0;
 
-  void _update(int delta) {
-    final next = (_pointers + delta).clamp(0, 10);
-    if ((next >= 2) != (_pointers >= 2)) {
-      setState(() => _pointers = next);
-    } else {
-      _pointers = next;
-    }
-  }
+  void _lock() => setState(() => _isolated++);
+  void _unlock() => setState(() => _isolated = (_isolated - 1).clamp(0, 10));
+
+  /// Wraps [child] so any touch on it claims the gesture away from the outer
+  /// scroll view for as long as a finger is down.
+  Widget _isolate(Widget child) => Listener(
+        onPointerDown: (_) => _lock(),
+        onPointerUp: (_) => _unlock(),
+        onPointerCancel: (_) => _unlock(),
+        child: child,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -238,12 +245,9 @@ class _BodyState extends State<_Body> {
       }
     }
 
-    return Listener(
-      onPointerDown: (_) => _update(1),
-      onPointerUp: (_) => _update(-1),
-      onPointerCancel: (_) => _update(-1),
-      child: ListView(
-        physics: _pointers >= 2 ? const NeverScrollableScrollPhysics() : null,
+    return ListView(
+        physics:
+            _isolated > 0 ? const NeverScrollableScrollPhysics() : null,
         padding: const EdgeInsets.all(12),
         children: [
         Text(formatDateTime(track.startedAt),
@@ -267,18 +271,18 @@ class _BodyState extends State<_Body> {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
-        const Text('MAP — track coloured by speed (pinch to zoom)',
+        const Text('MAP — drag/pinch to pan & zoom',
             style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
         const SizedBox(height: 8),
-        SizedBox(height: 300, child: RideMap(points: points)),
+        _isolate(SizedBox(height: 300, child: RideMap(points: points))),
         const SizedBox(height: 8),
         const _SpeedLegend(),
         if (_hasElevation) ...[
           const SizedBox(height: 16),
-          const Text('ELEVATION (pinch to zoom)',
+          const Text('ELEVATION — drag/pinch to pan & zoom',
               style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
           const SizedBox(height: 8),
-          SizedBox(
+          _isolate(SizedBox(
             height: 150,
             child: InteractiveViewer(
               panEnabled: true,
@@ -287,11 +291,10 @@ class _BodyState extends State<_Body> {
               maxScale: 8,
               child: _ElevationChart(points: points),
             ),
-          ),
+          )),
         ],
         ],
-      ),
-    );
+      );
   }
 
   bool get _hasElevation => widget.points.any((p) => p.altitude != null);
@@ -384,7 +387,10 @@ class _ElevationChart extends StatelessWidget {
         titlesData: const FlTitlesData(show: false),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
-        lineTouchData: const LineTouchData(enabled: true),
+        // Disabled: fl_chart's own touch handling otherwise wins the gesture
+        // arena against the enclosing InteractiveViewer, so pinch-zoom/pan
+        // never reached it.
+        lineTouchData: const LineTouchData(enabled: false),
       ),
     );
   }

@@ -49,7 +49,12 @@ void main() {
 
     expect(find.byKey(Key('trackTile_$id')), findsOneWidget);
     expect(find.text('Morning ride'), findsOneWidget);
-    expect(find.textContaining('12.00 km'), findsOneWidget);
+    expect(find.textContaining('12.00 km'), findsWidgets);
+
+    // Week/month/year summary cards above the list pick up the seeded ride.
+    expect(find.byKey(const Key('summaryWeek')), findsOneWidget);
+    expect(find.byKey(const Key('summaryMonth')), findsOneWidget);
+    expect(find.byKey(const Key('summaryYear')), findsOneWidget);
 
     // Unmount, then close the db so drift's watch-stream timer is cleared before
     // the framework's end-of-test timer check.
