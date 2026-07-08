@@ -29,11 +29,6 @@ class RideMetricsAccumulator {
   /// Whether the ride is currently auto-paused (last sample below threshold).
   bool get paused => _paused;
 
-  /// Ignore implausibly large jumps between samples (e.g. GPS teleports) so a
-  /// single bad fix does not corrupt total distance. 200 m between two
-  /// consecutive fixes at typical 1 Hz cycling cadence is already generous.
-  static const double _maxLegMeters = 200;
-
   // Rolling-window speed fallback. The GPS chip's reported velocity regresses
   // toward zero when the signal is poor (under tree cover), so it reads *low*.
   // When accuracy is poor we instead use the speed implied by how far we've
@@ -86,7 +81,7 @@ class RideMetricsAccumulator {
     // (max speed still tracks the true peak above.)
     _paused = autoPauseEnabled && current < autoPauseThresholdMps;
     if (last != null && !_paused) {
-      if (leg <= _maxLegMeters) _distanceMeters += leg;
+      _distanceMeters += leg;
       _movingMillis += (dtSeconds * 1000).round();
     }
     _last = sample;

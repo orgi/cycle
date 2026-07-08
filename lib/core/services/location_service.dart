@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
-import '../utils/gps_outlier_filter.dart';
+import '../utils/gps_accuracy_filter.dart';
 
 /// Abstraction over the platform GPS so the rest of the app depends on a stream
 /// of [GeoSample]s rather than on geolocator directly. This keeps controllers
@@ -40,11 +40,6 @@ class GeolocatorLocationService implements LocationService {
   Stream<GeoSample> positions() => _shared ??= _poll().asBroadcastStream();
 
   Stream<GeoSample> _poll() async* {
-    // Reject teleport outliers (multipath spikes) before anyone sees them, so
-    // the drawn track, the recorded points and the distance/average all stay
-    // clean. Keeps the last good fix as the reference across a dropped spike.
-    final filter = GpsOutlierFilter();
-
     // Seed immediately with the last known position so the map centres and the
     // location dot appear at once — even before a fresh fix. Without this the
     // raw GPS provider (below) can take a long time to lock, or never lock
@@ -53,7 +48,7 @@ class GeolocatorLocationService implements LocationService {
       final last = await Geolocator.getLastKnownPosition();
       if (last != null) {
         final seed = _toSample(last);
-        if (filter.accept(seed)) yield seed;
+        if (isAccurateEnough(seed)) yield seed;
       }
     } catch (_) {}
 
@@ -75,7 +70,7 @@ class GeolocatorLocationService implements LocationService {
           locationSettings: useFused ? _fusedSettings() : _settings(),
         );
         final sample = _toSample(position);
-        if (filter.accept(sample)) yield sample;
+        if (isAccurateEnough(sample)) yield sample;
         gpsFailures = 0;
       } catch (e) {
         // Transient (e.g. no fix within timeLimit); retry on the next tick.

@@ -47,14 +47,20 @@ void main() {
     expect(m.currentSpeedMps, closeTo(10, 0.2)); // 100 m / 10 s
   });
 
-  test('ignores implausible GPS jumps when totalling distance', () {
+  test('adds every leg\'s distance — bad-fix rejection lives upstream now',
+      () {
+    // The accumulator itself no longer second-guesses individual legs (no
+    // flat distance cap): field data showed it discarded genuine large-but-
+    // plausible legs (e.g. after a real GPS gap of tens of seconds) as often
+    // as it caught anything wrong. Rejecting bad fixes is now the live
+    // accuracy filter's job (`gps_accuracy_filter.dart`), upstream of this
+    // accumulator — so by the time a sample reaches `add`, it's assumed kept.
     final acc = RideMetricsAccumulator();
     acc.add(sampleAt(t0, lat: 0, lon: 0));
-    // ~1000 km jump between two consecutive fixes — discard the leg.
     final m = acc.add(
       sampleAt(t0.add(const Duration(seconds: 1)), lat: 9, lon: 0),
     );
-    expect(m.distanceMeters, 0);
+    expect(m.distanceMeters, greaterThan(0));
   });
 
   test('reset clears all running totals', () {
