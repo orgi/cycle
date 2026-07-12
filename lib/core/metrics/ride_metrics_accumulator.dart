@@ -37,7 +37,8 @@ class RideMetricsAccumulator {
   static const double _windowSeconds = 5.0;
   static const double _windowMinMeters = 8.0; // below this = stopped / jitter
   static const double _poorAccuracyMeters = 18.0; // canopy / weak signal
-  static const double _maxPlausibleMps = 30.0; // reject GPS teleports (108 km/h)
+  static const double _maxPlausibleMps =
+      30.0; // reject GPS teleports (108 km/h)
 
   RideMetrics add(GeoSample sample) {
     _startTime ??= sample.time;
@@ -81,7 +82,22 @@ class RideMetricsAccumulator {
     // (max speed still tracks the true peak above.)
     _paused = autoPauseEnabled && current < autoPauseThresholdMps;
     if (last != null && !_paused) {
-      _distanceMeters += leg;
+      // Integrate *speed* over time rather than differencing raw positions.
+      // Position-differencing is what causes the "coastline paradox"
+      // overcount: GPS jitter adds spurious zig-zag length on *every* leg,
+      // not just while stationary, so a minimum-leg-distance gate (tried and
+      // reverted here) does nothing once real per-sample movement already
+      // clears it — which is the normal case for a continuously-moving bike
+      // ride (field data: Cycle read ~5% long vs. a reference recording of
+      // the same ride even with no individual bad/spike fixes). `current`
+      // (the GPS chip's own Doppler-measured speed, falling back to the
+      // position-window speed under poor accuracy) doesn't have that bias:
+      // Doppler velocity is measured directly from the carrier signal, not
+      // by differencing two noisy fixes a second apart. When no GPS speed is
+      // reported at all, `current` above already fell back to `leg /
+      // dtSeconds`, so `current * dtSeconds` reduces to the raw leg in that
+      // case — no separate fallback branch needed here.
+      _distanceMeters += current * dtSeconds;
       _movingMillis += (dtSeconds * 1000).round();
     }
     _last = sample;
@@ -147,7 +163,11 @@ class RideMetricsAccumulator {
     final seconds = sample.time.difference(first.time).inMilliseconds / 1000.0;
     if (seconds <= 0) return null;
     final disp = haversineMeters(
-        first.latitude, first.longitude, sample.latitude, sample.longitude);
+      first.latitude,
+      first.longitude,
+      sample.latitude,
+      sample.longitude,
+    );
     if (disp < _windowMinMeters) return 0.0; // not really moving
     final speed = disp / seconds;
     if (speed > _maxPlausibleMps) return null; // teleport / bad fix

@@ -29,8 +29,9 @@ void main() {
         sensorServiceProvider.overrideWithValue(sensors),
         appDatabaseProvider.overrideWithValue(db),
         settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
-        recordingForegroundServiceProvider
-            .overrideWithValue(const NoopRecordingForegroundService()),
+        recordingForegroundServiceProvider.overrideWithValue(
+          const NoopRecordingForegroundService(),
+        ),
       ],
     );
   });
@@ -60,12 +61,14 @@ void main() {
 
     location.emit(GeoSample(latitude: 0, longitude: 0, time: t0, speedMps: 5));
     await Future<void>.delayed(Duration.zero);
-    location.emit(GeoSample(
-      latitude: 0,
-      longitude: 0.00089932,
-      time: t0.add(const Duration(seconds: 10)),
-      speedMps: 8,
-    ));
+    location.emit(
+      GeoSample(
+        latitude: 0,
+        longitude: 0.00089932,
+        time: t0.add(const Duration(seconds: 10)),
+        speedMps: 8,
+      ),
+    );
     await Future<void>.delayed(Duration.zero);
 
     final metrics = container.read(rideControllerProvider);
@@ -82,17 +85,19 @@ void main() {
     final t0 = DateTime.utc(2026, 1, 1, 12);
     location.emit(GeoSample(latitude: 0, longitude: 0, time: t0, speedMps: 5));
     await Future<void>.delayed(const Duration(milliseconds: 30));
-    location.emit(GeoSample(
-      latitude: 0,
-      longitude: 0.00089932,
-      time: t0.add(const Duration(seconds: 10)),
-      speedMps: 8,
-    ));
+    location.emit(
+      GeoSample(
+        latitude: 0,
+        longitude: 0.00089932,
+        time: t0.add(const Duration(seconds: 10)),
+        speedMps: 10,
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 30));
 
     final metrics = container.read(rideControllerProvider);
     expect(metrics.distanceMeters, closeTo(100, 1));
-    expect(metrics.currentSpeedMps, 8);
+    expect(metrics.currentSpeedMps, 10);
     expect(metrics.elapsed, const Duration(seconds: 10));
     await notifier.stop();
   });
@@ -107,12 +112,14 @@ void main() {
     final t0 = DateTime.utc(2026, 1, 1, 12);
     location.emit(GeoSample(latitude: 0, longitude: 0, time: t0, speedMps: 5));
     await Future<void>.delayed(const Duration(milliseconds: 30));
-    location.emit(GeoSample(
-      latitude: 0,
-      longitude: 0.00089932,
-      time: t0.add(const Duration(seconds: 10)),
-      speedMps: 8,
-    ));
+    location.emit(
+      GeoSample(
+        latitude: 0,
+        longitude: 0.00089932,
+        time: t0.add(const Duration(seconds: 10)),
+        speedMps: 10,
+      ),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 30));
 
     await notifier.stop();

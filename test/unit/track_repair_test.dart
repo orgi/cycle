@@ -14,15 +14,21 @@ void main() {
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
 
-  Future<void> addPoint(int trackId, int sec, double lat, double lon,
-          {double? speed}) =>
-      db.addPoint(TrackPointsCompanion.insert(
-        trackId: trackId,
-        time: t0.add(Duration(seconds: sec)),
-        latitude: lat,
-        longitude: lon,
-        speedMps: Value(speed),
-      ));
+  Future<void> addPoint(
+    int trackId,
+    int sec,
+    double lat,
+    double lon, {
+    double? speed,
+  }) => db.addPoint(
+    TrackPointsCompanion.insert(
+      trackId: trackId,
+      time: t0.add(Duration(seconds: sec)),
+      latitude: lat,
+      longitude: lon,
+      speedMps: Value(speed),
+    ),
+  );
 
   test('removes a spike point and recomputes stats', () async {
     final id = await db.createTrack(t0);
@@ -59,40 +65,46 @@ void main() {
     expect((await db.pointsFor(id)).length, 5);
   });
 
-  test('recovers an interrupted (never finalised) ride from its points',
-      () async {
-    final id = await db.createTrack(t0); // endedAt stays null (killed mid-ride)
-    for (var i = 0; i < 6; i++) {
-      await addPoint(id, i, 0, 0.0001 * i, speed: 5);
-    }
-    // Before recovery: zero stats, no end time.
-    var track = await db.track(id);
-    expect(track!.endedAt, isNull);
-    expect(track.distanceMeters, 0);
+  test(
+    'recovers an interrupted (never finalised) ride from its points',
+    () async {
+      final id = await db.createTrack(
+        t0,
+      ); // endedAt stays null (killed mid-ride)
+      for (var i = 0; i < 6; i++) {
+        await addPoint(id, i, 0, 0.0001 * i, speed: 5);
+      }
+      // Before recovery: zero stats, no end time.
+      var track = await db.track(id);
+      expect(track!.endedAt, isNull);
+      expect(track.distanceMeters, 0);
 
-    // Old timestamps → recovered but not offered for resume.
-    expect(await recoverInterruptedTracks(db, settings), isNull);
+      // Old timestamps → recovered but not offered for resume.
+      expect(await recoverInterruptedTracks(db, settings), isNull);
 
-    track = await db.track(id);
-    expect(track!.endedAt, isNotNull);
-    expect(track.distanceMeters, greaterThan(0));
-    expect(track.durationSeconds, greaterThan(0));
-    expect(track.avgSpeedMps, greaterThan(0));
-    // A finalised ride is left alone on a second pass.
-    expect(await recoverInterruptedTracks(db, settings), isNull);
-  });
+      track = await db.track(id);
+      expect(track!.endedAt, isNotNull);
+      expect(track.distanceMeters, greaterThan(0));
+      expect(track.durationSeconds, greaterThan(0));
+      expect(track.avgSpeedMps, greaterThan(0));
+      // A finalised ride is left alone on a second pass.
+      expect(await recoverInterruptedTracks(db, settings), isNull);
+    },
+  );
 
   test('offers resume for the newest recently-interrupted ride', () async {
     final base = DateTime.now().subtract(const Duration(minutes: 3));
     final id = await db.createTrack(base);
     for (var i = 0; i < 4; i++) {
-      await db.addPoint(TrackPointsCompanion.insert(
-        trackId: id,
-        time: base.add(Duration(seconds: i)),
-        latitude: 0,
-        longitude: 0.0001 * i,
-        speedMps: const Value(5),
-      ));
+      await db.addPoint(
+        TrackPointsCompanion.insert(
+          trackId: id,
+          time: base.add(Duration(seconds: i)),
+          latitude: 0,
+          longitude: 0.0001 * i,
+          speedMps: const Value(5),
+        ),
+      );
     }
     expect(await recoverInterruptedTracks(db, settings), id);
   });
@@ -101,5 +113,72 @@ void main() {
     final id = await db.createTrack(t0);
     expect(await recoverInterruptedTracks(db, settings), isNull);
     expect(await db.track(id), isNull); // deleted
+  });
+
+  test(
+    'recalculateTrackStats recomputes a finalised ride\'s distance',
+    () async {
+      final id = await db.createTrack(t0);
+      for (var i = 0; i < 5; i++) {
+        await addPoint(id, i, 0, 0.0001 * i, speed: 5);
+      }
+      // Finalise with a deliberately wrong stored distance (as if computed by
+      // an older, jitter-prone version of the maths).
+      await db.finalizeTrack(
+        id,
+        endedAt: t0.add(const Duration(seconds: 4)),
+        distanceMeters: 9999,
+        durationSeconds: 4,
+        avgSpeedMps: 1,
+        maxSpeedMps: 1,
+      );
+
+      final recomputed = await recalculateTrackStats(db, settings, id);
+      expect(recomputed, isNotNull);
+      expect(recomputed, lessThan(100));
+
+      final track = await db.track(id);
+      expect(track!.distanceMeters, recomputed);
+    },
+  );
+
+  test(
+    'recalculateTrackStats returns null for a track with no points',
+    () async {
+      final id = await db.createTrack(t0);
+      await db.finalizeTrack(
+        id,
+        endedAt: t0,
+        distanceMeters: 0,
+        durationSeconds: 0,
+        avgSpeedMps: 0,
+        maxSpeedMps: 0,
+      );
+      expect(await recalculateTrackStats(db, settings, id), isNull);
+    },
+  );
+
+  test('recalculateAllTrackStats updates every finalised ride, skips '
+      'interrupted ones', () async {
+    final finished = await db.createTrack(t0);
+    for (var i = 0; i < 5; i++) {
+      await addPoint(finished, i, 0, 0.0001 * i, speed: 5);
+    }
+    await db.finalizeTrack(
+      finished,
+      endedAt: t0.add(const Duration(seconds: 4)),
+      distanceMeters: 9999,
+      durationSeconds: 4,
+      avgSpeedMps: 1,
+      maxSpeedMps: 1,
+    );
+
+    final interrupted = await db.createTrack(t0); // endedAt stays null
+    await addPoint(interrupted, 0, 0, 0);
+
+    final n = await recalculateAllTrackStats(db, settings);
+    expect(n, 1);
+    final track = await db.track(finished);
+    expect(track!.distanceMeters, lessThan(100));
   });
 }

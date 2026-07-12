@@ -17,16 +17,18 @@ class TrackRepairResult {
 }
 
 GeoSample _toSample(TrackPoint p) => GeoSample(
-      latitude: p.latitude,
-      longitude: p.longitude,
-      time: p.time,
-      speedMps: p.speedMps,
-    );
+  latitude: p.latitude,
+  longitude: p.longitude,
+  time: p.time,
+  speedMps: p.speedMps,
+);
 
 /// Recomputes ride stats from recorded [points] (outliers skipped), the way a
 /// live ride would.
 RideMetrics computeStatsFromPoints(
-    List<TrackPoint> points, AppSettings settings) {
+  List<TrackPoint> points,
+  AppSettings settings,
+) {
   final filter = GpsOutlierFilter();
   final acc = RideMetricsAccumulator(
     autoPauseEnabled: settings.autoPauseEnabled,
@@ -79,6 +81,47 @@ Future<int?> recoverInterruptedTracks(
     );
   }
   return resumable;
+}
+
+/// Recomputes and saves one track's distance/duration/avg/max from its
+/// already-recorded points, without touching the points themselves — for
+/// rides recorded before a change to [RideMetricsAccumulator]'s maths (e.g.
+/// the GPS-jitter noise gate) so old rides read consistently with new ones.
+/// Returns the recomputed distance in metres, or null if the track has no
+/// points (nothing to recompute).
+Future<double?> recalculateTrackStats(
+  AppDatabase db,
+  AppSettings settings,
+  int trackId,
+) async {
+  final points = await db.pointsFor(trackId);
+  if (points.isEmpty) return null;
+  final m = computeStatsFromPoints(points, settings);
+  await db.updateTrackStats(
+    trackId,
+    distanceMeters: m.distanceMeters,
+    durationSeconds: m.elapsed.inSeconds,
+    avgSpeedMps: m.avgSpeedMps,
+    maxSpeedMps: m.maxSpeedMps,
+  );
+  return m.distanceMeters;
+}
+
+/// Runs [recalculateTrackStats] over every finalised ride — a one-off "fix my
+/// old rides" maintenance action (Settings → Data) after a distance-maths
+/// change, so the user doesn't need adb/PC access to correct history.
+/// Returns the number of tracks updated.
+Future<int> recalculateAllTrackStats(
+  AppDatabase db,
+  AppSettings settings,
+) async {
+  final tracks = await db.allTracks();
+  var updated = 0;
+  for (final t in tracks) {
+    if (t.endedAt == null) continue; // interrupted; recovered separately
+    if (await recalculateTrackStats(db, settings, t.id) != null) updated++;
+  }
+  return updated;
 }
 
 /// Removes GPS "spike" outliers from an already-recorded track and recomputes
