@@ -1,0 +1,60 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/services/file_access_service.dart';
+import '../../../core/services/incoming_oruxmaps_service.dart';
+import '../../dashboard/application/ride_providers.dart';
+import '../../settings/application/settings_providers.dart';
+import 'gpx_ride_import_service.dart';
+import 'oruxmaps_import_service.dart';
+
+/// Checks/requests "All files access", needed only for the bulk
+/// oruxmapstracks.db import. Overridable in tests.
+final fileAccessServiceProvider = Provider<FileAccessService>(
+  (ref) => FileAccessService(),
+);
+
+final oruxMapsImportServiceProvider = Provider<OruxMapsImportService>(
+  (ref) => OruxMapsImportService(
+    ref.watch(appDatabaseProvider),
+    ref.watch(settingsProvider),
+  ),
+);
+
+/// Imports a shared GPX's own track points as a past ride — the practical
+/// per-track path for OruxMaps (see `GpxRideImportService`'s doc comment).
+final gpxRideImportServiceProvider = Provider<GpxRideImportService>(
+  (ref) => GpxRideImportService(
+    ref.watch(appDatabaseProvider),
+    ref.watch(settingsProvider),
+  ),
+);
+
+/// Picks up an OruxMaps `oruxmapstracks.db` the app was opened/shared with.
+/// Overridable in tests.
+final incomingOruxMapsServiceProvider = Provider<IncomingOruxMapsService>(
+  (ref) => IncomingOruxMapsService(),
+);
+
+final oruxMapsImportControllerProvider =
+    NotifierProvider<OruxMapsImportController, void>(
+      OruxMapsImportController.new,
+    );
+
+/// Imports an OruxMaps track database the app was opened/shared with, if any
+/// — mirrors `BackupImportController.importIncomingIfAny()`.
+class OruxMapsImportController extends Notifier<void> {
+  @override
+  void build() {}
+
+  /// Returns the number of rides imported, or null when there was nothing
+  /// pending (no incoming db / no native handler on this platform).
+  Future<int?> importIncomingIfAny() async {
+    final incoming = await ref
+        .read(incomingOruxMapsServiceProvider)
+        .consumePending();
+    if (incoming == null) return null;
+    return ref
+        .read(oruxMapsImportServiceProvider)
+        .importIncomingBytes(incoming.name, incoming.bytes);
+  }
+}

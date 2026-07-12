@@ -2,7 +2,10 @@ package com.cycleapp.cycle
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import androidx.core.content.FileProvider
@@ -19,25 +22,38 @@ import java.io.File
  *  - `cycle/incoming_backup`: same idea for a `.sqlite` ride-database backup
  *    (e.g. opened from a cloud-storage app after "Share backup" on another
  *    phone) — binary, so bytes are handed over rather than decoded as text.
+ *  - `cycle/incoming_oruxmaps`: same idea for an OruxMaps `oruxmapstracks.db`
+ *    track database (opened/shared from a file manager, no PC/adb needed) —
+ *    binary, handled like the backup channel above but kept separate so a
+ *    `.db` file isn't mistaken for a `.sqlite` ride backup.
  *  - `cycle/share`: hands a local file to the OS share sheet (`ACTION_SEND`)
  *    via a `FileProvider` content Uri, so "Share backup" can target OneDrive/
  *    Drive/email/Bluetooth/etc. without Cycle doing any of that app's login.
  *  - `cycle/oauth`: open a browser URL and capture the `cycle://…` OAuth
  *    redirect (Strava sign-in) so Dart can pull the authorization code.
+ *  - `cycle/file_access`: check/request the "All files access" special
+ *    permission (`MANAGE_EXTERNAL_STORAGE`), so a bulk OruxMaps
+ *    `oruxmapstracks.db` import can read it straight from OruxMaps' own
+ *    storage — Android 11+ otherwise blocks every other app, including file
+ *    managers, from that path (see `OruxMapsImportService`'s doc comment).
  */
 class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
     private val gpxChannel = "cycle/incoming_gpx"
     private val backupChannel = "cycle/incoming_backup"
+    private val oruxmapsChannel = "cycle/incoming_oruxmaps"
     private val shareChannel = "cycle/share"
     private val oauthChannel = "cycle/oauth"
     private val buttonsChannel = "cycle/hardware_buttons"
+    private val fileAccessChannel = "cycle/file_access"
 
     private var pendingName: String? = null
     private var pendingXml: String? = null
     private var pendingRedirect: String? = null
     private var pendingBackupName: String? = null
     private var pendingBackupBytes: ByteArray? = null
+    private var pendingOruxName: String? = null
+    private var pendingOruxBytes: ByteArray? = null
 
     private var buttons: MethodChannel? = null
     private var buttonsEnabled = false
@@ -74,6 +90,25 @@ class MainActivity : FlutterActivity() {
                     )
                     pendingBackupName = null
                     pendingBackupBytes = null
+                    result.success(map)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(messenger, oruxmapsChannel).setMethodCallHandler { call, result ->
+            if (call.method == "consumePending") {
+                val bytes = pendingOruxBytes
+                if (bytes == null) {
+                    result.success(null)
+                } else {
+                    val map = mapOf(
+                        "name" to (pendingOruxName ?: "oruxmapstracks.db"),
+                        "bytes" to bytes,
+                    )
+                    pendingOruxName = null
+                    pendingOruxBytes = null
                     result.success(map)
                 }
             } else {
@@ -136,6 +171,44 @@ class MainActivity : FlutterActivity() {
                     val r = pendingRedirect
                     pendingRedirect = null
                     result.success(r)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(messenger, fileAccessChannel).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasAllFilesAccess" -> {
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Environment.isExternalStorageManager()
+                    } else {
+                        true // scoped storage didn't restrict Android/data before R
+                    }
+                    result.success(granted)
+                }
+                "requestAllFilesAccess" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                )
+                            )
+                        } catch (e: Exception) {
+                            // Some OEM ROMs don't resolve the per-app intent; fall back
+                            // to the general "All files access" list.
+                            try {
+                                startActivity(
+                                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                                )
+                            } catch (e2: Exception) {
+                                result.error("request_failed", e2.message, null)
+                                return@setMethodCallHandler
+                            }
+                        }
+                    }
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }
@@ -214,6 +287,10 @@ class MainActivity : FlutterActivity() {
                 pendingBackupName = name
                 pendingBackupBytes = bytes
                 Log.i(TAG, "handleIntent read ${bytes.size} bytes backup name=$name")
+            } else if (name.endsWith(".db", ignoreCase = true)) {
+                pendingOruxName = name
+                pendingOruxBytes = bytes
+                Log.i(TAG, "handleIntent read ${bytes.size} bytes oruxmaps db name=$name")
             } else {
                 pendingXml = String(bytes, Charsets.UTF_8)
                 pendingName = name.replace(Regex("\\.gpx$", RegexOption.IGNORE_CASE), "")

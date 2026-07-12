@@ -15,9 +15,11 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../tracks/application/oruxmaps_providers.dart';
 import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
 import '../../routing/domain/follow_route.dart';
+import '../../routing/domain/gpx_route_parser.dart';
 import '../../routing/domain/route_navigator.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
@@ -27,6 +29,9 @@ import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_catalog.dart';
 import 'route_arrows_marker.dart';
+
+/// User's choice when a timestamped GPX arrives — it could be either.
+enum _GpxChoice { cancel, follow, importRide }
 
 /// The single main screen: a full-screen offline map (with the recorded track
 /// and current location) plus the live ride statistics as semi-transparent
@@ -63,16 +68,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
   MapAccents get _accents =>
       MapAccents.of(ref.read(settingsProvider).colorScheme);
 
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _seedFromCurrentRecording();
-    // Pick up a GPX / ride-backup the app was opened/shared with.
+    // Pick up a GPX / ride-backup / OruxMaps db the app was opened/shared with.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkIncomingGpx();
       _checkIncomingBackup();
+      _checkIncomingOruxMaps();
     });
   }
 
@@ -90,35 +95,108 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (state == AppLifecycleState.resumed) {
       _checkIncomingGpx();
       _checkIncomingBackup();
+      _checkIncomingOruxMaps();
     }
     // Remember the current zoom when leaving the foreground.
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      final z = ref.read(activeMapModelProvider).value?.model.lastPosition?.zoomlevel;
+      final z = ref
+          .read(activeMapModelProvider)
+          .value
+          ?.model
+          .lastPosition
+          ?.zoomlevel;
       if (z != null) ref.read(settingsProvider.notifier).setMapZoom(z);
     }
   }
 
   /// Follows a GPX the app was opened with ("Open with Cycle" / "Share to
-  /// Cycle"), if any.
+  /// Cycle"), if any. A GPX with per-point timestamps (a *recorded* track,
+  /// e.g. an OruxMaps per-track export — see `GpxRideImportService`'s doc
+  /// comment) could equally be a past ride, so the user is asked; a plain
+  /// (untimed) route is followed directly, same as before.
   Future<void> _checkIncomingGpx() async {
     if (!mounted) return;
-    String? name;
+    final incoming = await ref
+        .read(incomingGpxServiceProvider)
+        .consumePending();
+    if (incoming == null) return;
+
+    FollowRoute route;
     try {
-      name =
-          await ref.read(followRouteProvider.notifier).followIncomingIfAny();
+      route = parseGpxRoute(incoming.xml, fallbackName: incoming.name);
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Invalid GPX: ${e.message}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Invalid GPX: ${e.message}')));
       }
       return;
     } on Object catch (_) {
       return;
     }
-    if (name != null && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Following $name')));
+    if (!mounted) return;
+
+    if (!route.isTimed) {
+      ref.read(followRouteProvider.notifier).follow(route);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Following ${route.name}')));
+      return;
+    }
+
+    final choice = await showDialog<_GpxChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Shared GPX file'),
+        content: Text(
+          '"${route.name}" has recorded times — is this a route to follow '
+          'live, or a past ride to add to your history?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _GpxChoice.cancel),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _GpxChoice.follow),
+            child: const Text('Follow route'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _GpxChoice.importRide),
+            child: const Text('Import as ride'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || choice == null || choice == _GpxChoice.cancel) return;
+
+    if (choice == _GpxChoice.follow) {
+      ref.read(followRouteProvider.notifier).follow(route);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Following ${route.name}')));
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final imported = await ref
+          .read(gpxRideImportServiceProvider)
+          .importRide(incoming.xml, fallbackName: incoming.name);
+      if (!mounted) return;
+      ref.invalidate(tracksProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            imported
+                ? 'Imported ride "${route.name}"'
+                : 'That ride is already in your history',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
     }
   }
 
@@ -135,11 +213,40 @@ class _MapScreenState extends ConsumerState<MapScreen>
       return;
     }
     if (imported != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(imported == 0
-            ? 'No new rides in that backup'
-            : 'Imported $imported ride${imported == 1 ? '' : 's'} from backup'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            imported == 0
+                ? 'No new rides in that backup'
+                : 'Imported $imported ride${imported == 1 ? '' : 's'} from backup',
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Imports an OruxMaps `oruxmapstracks.db` the app was opened/shared with
+  /// (e.g. "Open with Cycle" from a file manager — no PC/adb needed).
+  Future<void> _checkIncomingOruxMaps() async {
+    if (!mounted) return;
+    int? imported;
+    try {
+      imported = await ref
+          .read(oruxMapsImportControllerProvider.notifier)
+          .importIncomingIfAny();
+    } on Object catch (_) {
+      return;
+    }
+    if (imported != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            imported == 0
+                ? 'No new rides in that OruxMaps database'
+                : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+          ),
+        ),
+      );
     }
   }
 
@@ -157,14 +264,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
   /// Prompts to resume a ride a crash/kill interrupted (recovered at startup).
   void _offerResume(int trackId) {
     if (!mounted || ref.read(recordingProvider)) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: const Text('Last ride was interrupted'),
-      duration: const Duration(seconds: 12),
-      action: SnackBarAction(
-        label: 'RESUME',
-        onPressed: () => ref.read(recordingProvider.notifier).resume(trackId),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Last ride was interrupted'),
+        duration: const Duration(seconds: 12),
+        action: SnackBarAction(
+          label: 'RESUME',
+          onPressed: () => ref.read(recordingProvider.notifier).resume(trackId),
+        ),
       ),
-    ));
+    );
   }
 
   void _onPosition(MapModel model, GeoSample sample) {
@@ -177,8 +286,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (ref.read(recordingProvider)) {
       final last = _path.isNotEmpty ? _path.last : null;
       if (last == null ||
-          haversineMeters(last.latitude, last.longitude, here.latitude,
-                  here.longitude) >
+          haversineMeters(
+                last.latitude,
+                last.longitude,
+                here.latitude,
+                here.longitude,
+              ) >
               2) {
         _path.add(here);
         _rebuildTrackLine();
@@ -220,14 +333,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _movedBeyondDeadband(MapPosition center, LatLong here) {
     if (!mounted) return true;
     // metres per pixel at this latitude/zoom (web-mercator).
-    final mpp = 156543.03392 *
+    final mpp =
+        156543.03392 *
         math.cos(center.latitude * math.pi / 180.0) /
         math.pow(2, center.zoomlevel);
     final size = MediaQuery.sizeOf(context);
     final halfMinPx = math.min(size.width, size.height) / 2.0;
     final threshold = _followDeadbandFraction * halfMinPx * mpp;
     final offset = haversineMeters(
-        center.latitude, center.longitude, here.latitude, here.longitude);
+      center.latitude,
+      center.longitude,
+      here.latitude,
+      here.longitude,
+    );
     return offset > threshold;
   }
 
@@ -271,8 +389,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
         // Centre on the loaded map's own area (not a fixed demo location), so a
         // downloaded region renders immediately even before a GPS fix, at the
         // remembered zoom; a GPS fix then snaps to the rider's position.
-        model.setPosition(MapPosition(mapCenter.latitude, mapCenter.longitude,
-            ref.read(settingsProvider).mapZoom));
+        model.setPosition(
+          MapPosition(
+            mapCenter.latitude,
+            mapCenter.longitude,
+            ref.read(settingsProvider).mapZoom,
+          ),
+        );
       }
     });
   }
@@ -339,31 +462,47 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (pts.length < 2) return out;
     var total = 0.0;
     for (var i = 1; i < pts.length; i++) {
-      total += haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
-          pts[i].latitude, pts[i].longitude);
+      total += haversineMeters(
+        pts[i - 1].latitude,
+        pts[i - 1].longitude,
+        pts[i].latitude,
+        pts[i].longitude,
+      );
     }
     final spacing = math.max(total / maxCount, minSpacing);
-    var carry = spacing / 2; // distance from the line start to the first chevron
+    var carry =
+        spacing / 2; // distance from the line start to the first chevron
     for (var i = 1; i < pts.length; i++) {
       final a = pts[i - 1];
       final b = pts[i];
-      final seg = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
+      final seg = haversineMeters(
+        a.latitude,
+        a.longitude,
+        b.latitude,
+        b.longitude,
+      );
       if (seg <= 0) continue;
-      final theta =
-          bearingDegrees(a.latitude, a.longitude, b.latitude, b.longitude);
+      final theta = bearingDegrees(
+        a.latitude,
+        a.longitude,
+        b.latitude,
+        b.longitude,
+      );
       var d = carry;
       while (d <= seg) {
         final t = d / seg;
-        out.add(IconMarker(
-          latLong: LatLong(
-            a.latitude + (b.latitude - a.latitude) * t,
-            a.longitude + (b.longitude - a.longitude) * t,
+        out.add(
+          IconMarker(
+            latLong: LatLong(
+              a.latitude + (b.latitude - a.latitude) * t,
+              a.longitude + (b.longitude - a.longitude) * t,
+            ),
+            iconData: icon, // rotated to the travel direction below
+            size: size,
+            bitmapColor: color,
+            rotation: theta,
           ),
-          iconData: icon, // rotated to the travel direction below
-          size: size,
-          bitmapColor: color,
-          rotation: theta,
-        ));
+        );
         d += spacing;
       }
       carry = d - seg; // leftover distance carried into the next segment
@@ -483,8 +622,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _rebuildTrackLine();
       _rebuildTrackArrows(force: true);
       _onRouteChanged(
-          ref.read(activeMapModelProvider).value?.model,
-          ref.read(followRouteProvider));
+        ref.read(activeMapModelProvider).value?.model,
+        ref.read(followRouteProvider),
+      );
       _onGhost(ref.read(ghostProvider));
       _markers.requestRepaint();
     });
@@ -571,8 +711,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           emphasized: true,
                           // Green when the speed comes from the BLE wheel sensor
                           // (accurate); default accent when it's GPS.
-                          valueColor:
-                              m.speedFromSensor ? const Color(0xFF4CD964) : null,
+                          valueColor: m.speedFromSensor
+                              ? const Color(0xFF4CD964)
+                              : null,
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -583,8 +724,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           label: m.paused ? 'PAUSED' : 'TIME',
                           value: formatDuration(m.elapsed),
                           unit: '',
-                          valueColor:
-                              m.paused ? const Color(0xFFFFA726) : null,
+                          valueColor: m.paused ? const Color(0xFFFFA726) : null,
                         ),
                       ),
                     ],
@@ -598,13 +738,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     right: 8,
                     child: Center(
                       child: _RouteBanner(
-                          route: route, progress: progress, ghost: ghost),
+                        route: route,
+                        progress: progress,
+                        ghost: ghost,
+                      ),
                     ),
                   ),
                 Positioned(
                   // Clear the Android nav bar when there's no Start/Stop button
                   // (with its SafeArea) below to push the stats up.
-                  bottom: 8 +
+                  bottom:
+                      8 +
                       (showStartStop
                           ? 0.0
                           : MediaQuery.of(context).viewPadding.bottom),
@@ -693,12 +837,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
           // (3-button / gesture) so it is always tappable.
           if (showStartStop)
             const SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.all(8),
-              child: StartStopButton(),
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: StartStopButton(),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -741,8 +885,10 @@ class _MapStat extends StatelessWidget {
           Text(
             label,
             maxLines: 1,
-            style: theme.textTheme.labelMedium
-                ?.copyWith(color: Colors.white60, letterSpacing: 1.1),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: Colors.white60,
+              letterSpacing: 1.1,
+            ),
           ),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -753,21 +899,28 @@ class _MapStat extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: (emphasized
-                          ? theme.textTheme.headlineMedium
-                          : theme.textTheme.headlineSmall)
-                      ?.copyWith(
-                    color: valueColor ??
-                        (emphasized ? theme.colorScheme.primary : Colors.white),
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                  style:
+                      (emphasized
+                              ? theme.textTheme.headlineMedium
+                              : theme.textTheme.headlineSmall)
+                          ?.copyWith(
+                            color:
+                                valueColor ??
+                                (emphasized
+                                    ? theme.colorScheme.primary
+                                    : Colors.white),
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                 ),
                 if (unit.isNotEmpty) ...[
                   const SizedBox(width: 3),
-                  Text(unit,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: Colors.white38)),
+                  Text(
+                    unit,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white38,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -815,8 +968,9 @@ class _MapPickerMenu extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final installed = ref.watch(installedMapsProvider).value ?? const [];
     if (installed.length < 2) return const SizedBox.shrink();
-    final selected =
-        ref.watch(settingsProvider.select((s) => s.selectedMapFileName));
+    final selected = ref.watch(
+      settingsProvider.select((s) => s.selectedMapFileName),
+    );
     return PopupMenuButton<String>(
       key: const Key('mapPickerButton'),
       icon: const Icon(Icons.map_outlined),
@@ -831,11 +985,13 @@ class _MapPickerMenu extends ConsumerWidget {
           child: const Text('Automatic (by location)'),
         ),
         const PopupMenuDivider(),
-        ...installed.map((m) => CheckedPopupMenuItem<String>(
-              value: m.fileName,
-              checked: selected == m.fileName,
-              child: Text(_mapName(m.fileName)),
-            )),
+        ...installed.map(
+          (m) => CheckedPopupMenuItem<String>(
+            value: m.fileName,
+            checked: selected == m.fileName,
+            child: Text(_mapName(m.fileName)),
+          ),
+        ),
       ],
     );
   }
@@ -869,7 +1025,10 @@ class _FollowRouteMenu extends ConsumerWidget {
         const PopupMenuItem(
           key: Key('followDemoItem'),
           value: 'demo',
-          child: _MenuRow(icon: Icons.route_outlined, label: 'Follow demo route'),
+          child: _MenuRow(
+            icon: Icons.route_outlined,
+            label: 'Follow demo route',
+          ),
         ),
         if (active)
           const PopupMenuItem(
@@ -882,7 +1041,10 @@ class _FollowRouteMenu extends ConsumerWidget {
   }
 
   Future<void> _onSelected(
-      BuildContext context, WidgetRef ref, String value) async {
+    BuildContext context,
+    WidgetRef ref,
+    String value,
+  ) async {
     final controller = ref.read(followRouteProvider.notifier);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -895,11 +1057,13 @@ class _FollowRouteMenu extends ConsumerWidget {
           controller.clear();
       }
     } on FormatException catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Invalid GPX: ${e.message}')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Invalid GPX: ${e.message}')),
+      );
     } on Object catch (e) {
-      messenger
-          .showSnackBar(SnackBar(content: Text('Could not load route: $e')));
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not load route: $e')),
+      );
     }
   }
 
@@ -965,11 +1129,7 @@ class _MenuRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: [
-        Icon(icon, size: 20),
-        const SizedBox(width: 12),
-        Text(label),
-      ],
+      children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(label)],
     );
   }
 }
@@ -996,8 +1156,9 @@ class _RouteBanner extends StatelessWidget {
       key: const Key('routeBanner'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: (off ? const Color(0xFF7F1414) : Colors.black)
-            .withValues(alpha: 0.62),
+        color: (off ? const Color(0xFF7F1414) : Colors.black).withValues(
+          alpha: 0.62,
+        ),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1021,7 +1182,9 @@ class _RouteBanner extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               '${formatDistanceKm(remaining / 1000)} km left',
-              style: theme.textTheme.labelLarge?.copyWith(color: Colors.white70),
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: Colors.white70,
+              ),
             ),
           ],
           if (ghost != null) ...[
@@ -1055,10 +1218,10 @@ class _GhostDelta extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           '${ahead ? '+' : '−'}$text',
-          style: Theme.of(context)
-              .textTheme
-              .labelLarge
-              ?.copyWith(color: color, fontWeight: FontWeight.w600),
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );

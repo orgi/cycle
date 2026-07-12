@@ -84,6 +84,24 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     for crash-interrupted-track recovery (`track_repair.dart`) — deliberately a
     legacy/manual path, since GPS accuracy isn't persisted per point (no schema
     change), so old tracks can't be re-judged by accuracy after the fact.
+  * **Distance is integrated from reported speed, not differenced from positions
+    (jitter, not spikes).** Even with every fix passing the accuracy filter above,
+    summing the haversine leg between *every* consecutive 1 Hz fix reads ~5% long vs.
+    a reference track (Komoot) with no spikes/outliers involved — plain GPS jitter
+    around the true position adds spurious zig-zag length (the "coastline paradox"),
+    and it does so *continuously while riding*, not just when stationary: a first
+    attempt at a fix gated out only small (near-stationary) legs, which turned out to
+    do nothing in practice, since real per-sample movement at riding speed already
+    clears any sane minimum-leg-length gate on its own — the dominant case for a
+    moving bike ride. `RideMetricsAccumulator` (`lib/core/metrics/ride_metrics_accumulator.dart`)
+    instead integrates the GPS chip's own *Doppler-measured* speed
+    (`GeoSample.speedMps`, the same value already preferred for the live speed
+    display) over elapsed time for each leg, rather than differencing the two fixes'
+    positions — Doppler velocity is measured directly from the carrier signal, so it
+    doesn't carry the position-fix noise that causes the zig-zag overcount. Falls back
+    to the position-diff leg only when no GPS speed was reported at all (some
+    historical/imported data). Applies to both live recording and `track_repair.dart`'s
+    replay (same accumulator).
 * **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
   (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
   with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in
@@ -287,6 +305,47 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     as the initial/first-fix zoom). The recorded track + followed route render as a **dashed
     line with chevron arrowheads** (`Icons.keyboard_arrow_up` `IconMarker`s). Map **rotation is
     disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).
+* **OruxMaps import** (Settings → Data → "Import from OruxMaps",
+  `oruxmaps_import_screen.dart`). `lib/features/tracks/application/oruxmaps_import_service.dart`
+  reads OruxMaps' `oruxmapstracks.db` (SQLite, `tracks`/`segments`/`trackpoints`, schema
+  unverified against a real device export — built against the one confirmed by
+  github.com/wolfgangasdf/oruxtool; see the file's doc comment) and merges its rides into
+  Cycle's own database with the same "safe to run twice" start-time dedup as
+  `BackupService.importBackup`. Distance/duration/avg/max are **recomputed** with
+  `computeStatsFromPoints` rather than trusting OruxMaps' own segment stats. Entirely on-device,
+  no PC/adb, via two paths:
+  * **Bulk (recommended for a full ride history).** OruxMaps' database normally lives in its
+    own private storage (`Android/data/com.orux.oruxmaps/…`), which Android 11+ blocks every
+    other app — including file managers — from browsing (confirmed against a real device: the
+    folder is simply inaccessible from a file-manager app). `lib/core/services/file_access_service.dart`
+    checks/requests the **"All files access"** special permission (`MANAGE_EXTERNAL_STORAGE`;
+    manifest + native `cycle/file_access` channel in `MainActivity.kt`, opens
+    `Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`) — the same permission a file-manager
+    app holds, so once granted it lifts the block for Cycle too. This is a personal sideload, not
+    Play-distributed, so Play's policy restricting who may hold this permission doesn't apply.
+    Once granted, `OruxMapsImportService.findDatabaseOnDevice` locates `oruxmapstracks.db` itself
+    (checks OruxMaps' known storage paths across every volume — same
+    `getExternalStorageDirectories`-derived volume-root technique `MapStorageService` uses for
+    maps — then falls back to a depth-bounded recursive search) and `importFromDeviceStorage`
+    imports it directly; no manual file hunting needed. **OruxMaps ships as (at least) two
+    separate Android package ids** — `com.orux.oruxmaps` (free) and `com.orux.oruxmapsDonate`
+    (paid "Donate" version, same app) — each with its own storage folder; verified on a real
+    device with the Donate variant installed (`_knownPackageIds` checks both).
+  * **Per-track GPX (no permission needed).** OruxMaps' own Track Manager can Export/Share a
+    single ride as a `.gpx`, which — since OruxMaps owns that file — it can share directly
+    regardless of the storage restriction above. `lib/features/tracks/application/gpx_ride_import_service.dart`
+    (`GpxRideImportService.importRide`) imports a GPX's own timestamped track points as a past
+    ride (same recompute + dedup as the bulk import). Because the existing `cycle/incoming_gpx`
+    channel already treats every incoming GPX as a route to follow, `map_screen.dart`'s
+    `_checkIncomingGpx` now checks `FollowRoute.isTimed` (a GPX with real per-point timestamps
+    could be either): an untimed GPX still follows directly as before, but a timed one prompts
+    "Follow route" vs. "Import as ride" before doing either.
+* **Recalculate ride distances** (Settings → Data): a maintenance action —
+  `recalculateAllTrackStats`/`recalculateTrackStats` (`track_repair.dart`) reruns
+  `computeStatsFromPoints` over every finalised ride's already-recorded points and saves
+  the result, without touching the points. For rides recorded before a change to
+  `RideMetricsAccumulator`'s maths (e.g. the speed-integration distance fix above) so old
+  rides read consistently with new ones — a one-tap, on-device fix, no adb/DB surgery needed.
 
 ## Known gotchas
 

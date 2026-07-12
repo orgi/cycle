@@ -9,6 +9,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Import from OruxMaps** (Settings → Data) — bring in ride history recorded with
+  OruxMaps, entirely on-device, no PC/adb. Bulk-import your whole ride history in one go by
+  granting "All files access" (the same permission a file-manager app holds) — needed
+  because Android 11+ otherwise blocks every other app from OruxMaps' storage entirely.
+  Alternatively, share a single track's GPX export from OruxMaps' own Track Manager, no
+  permission required. Either way, already-imported rides are skipped, so re-importing is
+  safe.
+- **Recalculate ride distances** (Settings → Data) — a one-tap maintenance action that
+  recomputes every ride's distance/average/max from its recorded points using the current
+  maths, for rides recorded before a distance-calculation fix (see "Fixed" below).
 - **Resume an interrupted ride** — if a ride was cut short by a crash/kill, on
   the next launch the app offers **"Resume"**: recording continues into the same
   track with its distance/time/average carried over (the dead-time gap while the
@@ -56,6 +66,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   restart to repaint already-cached tiles.)
 
 ### Fixed
+- **Recorded distance no longer reads ~5% long from GPS jitter** — even with
+  every fix passing the accuracy filter, summing the leg between *every*
+  consecutive 1 Hz fix overcounted distance vs. a reference track (Komoot) with
+  no spikes involved: plain positional noise adds spurious zig-zag length (the
+  "coastline paradox") continuously while riding, not just when stationary.
+  Distance is now integrated from the GPS chip's own reported (Doppler) speed
+  over time rather than differenced from consecutive positions — Doppler
+  velocity doesn't carry the position-fix noise that caused the overcount.
+  Existing rides can be corrected with the new "Recalculate ride distances"
+  action above.
 - **GPS spikes no longer corrupt the track or the average** — occasional GPS
   "teleport" outliers (multipath reflections, worse in the evening) made the
   recorded track dart out and back, and — because the huge out/back legs are

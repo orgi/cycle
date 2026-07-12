@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/app_version.dart';
 import '../../../core/services/settings/app_settings.dart';
+import '../../dashboard/application/ride_providers.dart';
+import '../../tracks/application/track_providers.dart';
+import '../../tracks/application/track_repair.dart';
 import '../application/settings_providers.dart';
 
 /// App preferences: units, wheel size and physical-button control.
@@ -63,8 +66,9 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             title: const Text('Wheel circumference'),
             subtitle: Text(
-                '${(settings.wheelCircumferenceMeters * 1000).round()} mm '
-                '— used for BLE speed sensors'),
+              '${(settings.wheelCircumferenceMeters * 1000).round()} mm '
+              '— used for BLE speed sensors',
+            ),
             trailing: const Icon(Icons.edit_outlined),
             onTap: () => _editWheel(context, ref, settings),
           ),
@@ -74,8 +78,9 @@ class SettingsScreen extends ConsumerWidget {
             key: const Key('hardwareButtonsSwitch'),
             title: const Text('Volume keys start/stop'),
             subtitle: const Text(
-                'Use the phone\'s volume buttons to start/stop recording '
-                '(Android only; not available on iOS).'),
+              'Use the phone\'s volume buttons to start/stop recording '
+              '(Android only; not available on iOS).',
+            ),
             value: settings.hardwareButtonsEnabled,
             onChanged: controller.setHardwareButtons,
           ),
@@ -83,8 +88,9 @@ class SettingsScreen extends ConsumerWidget {
             key: const Key('showStartStopSwitch'),
             title: const Text('Show Start/Stop button'),
             subtitle: const Text(
-                'Off by default — use the volume keys. Always shown when the '
-                'volume keys are disabled.'),
+              'Off by default — use the volume keys. Always shown when the '
+              'volume keys are disabled.',
+            ),
             value: settings.showStartStopButton,
             onChanged: controller.setShowStartStopButton,
           ),
@@ -92,8 +98,9 @@ class SettingsScreen extends ConsumerWidget {
             key: const Key('autoPauseSwitch'),
             title: const Text('Auto-pause'),
             subtitle: const Text(
-                'Pause the timer, distance and average when you stop or slow '
-                'below the threshold (e.g. at traffic lights).'),
+              'Pause the timer, distance and average when you stop or slow '
+              'below the threshold (e.g. at traffic lights).',
+            ),
             value: settings.autoPauseEnabled,
             onChanged: controller.setAutoPauseEnabled,
           ),
@@ -127,6 +134,23 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/backup'),
           ),
+          ListTile(
+            key: const Key('oruxmapsImportTile'),
+            leading: const Icon(Icons.map_outlined),
+            title: const Text('Import from OruxMaps'),
+            subtitle: const Text('Bring in tracks recorded with OruxMaps'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/oruxmaps-import'),
+          ),
+          ListTile(
+            key: const Key('recalculateDistancesTile'),
+            leading: const Icon(Icons.straighten),
+            title: const Text('Recalculate ride distances'),
+            subtitle: const Text(
+              'Fixes rides recorded before a GPS-jitter distance fix',
+            ),
+            onTap: () => _recalculateDistances(context, ref),
+          ),
           const Divider(),
           const _Header('About'),
           const ListTile(
@@ -140,10 +164,54 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _recalculateDistances(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recalculate ride distances?'),
+        content: const Text(
+          'Recomputes every ride\'s distance/average/max from its recorded '
+          'points using the current maths. Use this once after an update '
+          'that changes how distance is calculated (e.g. the GPS-jitter '
+          'fix) so old rides match new ones.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('recalculateDistancesConfirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Recalculate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final n = await recalculateAllTrackStats(
+      ref.read(appDatabaseProvider),
+      ref.read(settingsProvider),
+    );
+    ref.invalidate(tracksProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Recalculated $n ride${n == 1 ? '' : 's'}')),
+    );
+  }
+
   Future<void> _editWheel(
-      BuildContext context, WidgetRef ref, AppSettings settings) async {
+    BuildContext context,
+    WidgetRef ref,
+    AppSettings settings,
+  ) async {
     final controllerText = TextEditingController(
-        text: (settings.wheelCircumferenceMeters * 1000).round().toString());
+      text: (settings.wheelCircumferenceMeters * 1000).round().toString(),
+    );
     final mm = await showDialog<int>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -179,9 +247,13 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _editAutoPauseSpeed(
-      BuildContext context, WidgetRef ref, AppSettings settings) async {
-    final controllerText =
-        TextEditingController(text: _fmtKmh(settings.autoPauseSpeedKmh));
+    BuildContext context,
+    WidgetRef ref,
+    AppSettings settings,
+  ) async {
+    final controllerText = TextEditingController(
+      text: _fmtKmh(settings.autoPauseSpeedKmh),
+    );
     final kmh = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -229,10 +301,9 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Text(
         text.toUpperCase(),
-        style: Theme.of(context)
-            .textTheme
-            .labelMedium
-            ?.copyWith(color: Theme.of(context).colorScheme.primary),
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+        ),
       ),
     );
   }

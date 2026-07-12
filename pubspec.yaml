@@ -54,6 +54,7 @@ dependencies:
   shared_preferences: ^2.5.5
   drift: ^2.33.0
   sqlite3_flutter_libs: ^0.6.0+eol
+  sqlite3: ^3.3.2
   fl_chart: ^1.2.0
   gpx: ^2.3.0
 dev_dependencies:

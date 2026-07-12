@@ -26,7 +26,8 @@ final incomingGpxServiceProvider = Provider<IncomingGpxService>(
 /// loading the bundled demo route.
 final followRouteProvider =
     NotifierProvider<FollowRouteController, FollowRoute?>(
-        FollowRouteController.new);
+      FollowRouteController.new,
+    );
 
 class FollowRouteController extends Notifier<FollowRoute?> {
   @override
@@ -59,11 +60,17 @@ class FollowRouteController extends Notifier<FollowRoute?> {
   /// the route name when one was loaded, else null. Throws [FormatException] on
   /// an invalid file.
   Future<String?> followIncomingIfAny() async {
-    final imported = await ref.read(incomingGpxServiceProvider).consumePending();
+    final imported = await ref
+        .read(incomingGpxServiceProvider)
+        .consumePending();
     if (imported == null) return null;
     state = parseGpxRoute(imported.xml, fallbackName: imported.name);
     return state?.name;
   }
+
+  /// Follows an already-parsed route directly (e.g. one the caller parsed
+  /// itself to decide between following vs. importing as a ride).
+  void follow(FollowRoute route) => state = route;
 
   /// Stops following.
   void clear() => state = null;

@@ -1,8 +1,17 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Network: map-region downloads (OpenAndroMaps) + ride uploads (Strava/
          Komoot). Without this a release build's HTTP calls fail instantly;
          debug/profile builds get it auto-added for tooling, which hid the bug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- "All files access" (opt-in, Settings → Data → Import from OruxMaps):
+         lets a bulk OruxMaps oruxmapstracks.db import read it straight out of
+         OruxMaps' own storage, which Android 11+ otherwise blocks every other
+         app (including file managers) from reaching. Not used for anything
+         else. Personal sideload, not Play-distributed, so Play's restricted
+         permission policy for MANAGE_EXTERNAL_STORAGE doesn't apply. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage"/>
     <!-- Live GPS tracking. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -117,6 +126,30 @@
             </intent-filter>
             <!-- Share a .sqlite backup to Cycle. -->
             <intent-filter android:label="Import ride backup">
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/vnd.sqlite3"/>
+                <data android:mimeType="application/x-sqlite3"/>
+            </intent-filter>
+            <!-- Open an OruxMaps oruxmapstracks.db track database with Cycle
+                 (from a file manager — mirrors .sqlite above). No PC/adb
+                 needed: the user shares the file from wherever OruxMaps
+                 stores it, and Cycle imports it on receipt. -->
+            <intent-filter android:label="Import OruxMaps tracks">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/>
+                <data android:scheme="file"/>
+                <data android:host="*"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="application/vnd.sqlite3"/>
+                <data android:mimeType="application/x-sqlite3"/>
+                <data android:pathPattern=".*\\.db"/>
+            </intent-filter>
+            <!-- Share an OruxMaps oruxmapstracks.db to Cycle. -->
+            <intent-filter android:label="Import OruxMaps tracks">
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="application/octet-stream"/>
