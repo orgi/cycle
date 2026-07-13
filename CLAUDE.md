@@ -84,24 +84,45 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     for crash-interrupted-track recovery (`track_repair.dart`) — deliberately a
     legacy/manual path, since GPS accuracy isn't persisted per point (no schema
     change), so old tracks can't be re-judged by accuracy after the fact.
-  * **Distance is integrated from reported speed, not differenced from positions
-    (jitter, not spikes).** Even with every fix passing the accuracy filter above,
-    summing the haversine leg between *every* consecutive 1 Hz fix reads ~5% long vs.
-    a reference track (Komoot) with no spikes/outliers involved — plain GPS jitter
-    around the true position adds spurious zig-zag length (the "coastline paradox"),
-    and it does so *continuously while riding*, not just when stationary: a first
-    attempt at a fix gated out only small (near-stationary) legs, which turned out to
-    do nothing in practice, since real per-sample movement at riding speed already
-    clears any sane minimum-leg-length gate on its own — the dominant case for a
-    moving bike ride. `RideMetricsAccumulator` (`lib/core/metrics/ride_metrics_accumulator.dart`)
-    instead integrates the GPS chip's own *Doppler-measured* speed
-    (`GeoSample.speedMps`, the same value already preferred for the live speed
-    display) over elapsed time for each leg, rather than differencing the two fixes'
-    positions — Doppler velocity is measured directly from the carrier signal, so it
-    doesn't carry the position-fix noise that causes the zig-zag overcount. Falls back
-    to the position-diff leg only when no GPS speed was reported at all (some
-    historical/imported data). Applies to both live recording and `track_repair.dart`'s
-    replay (same accumulator).
+  * **Distance is accumulated via streaming path simplification, not raw position
+    summing and not speed integration (jitter, not spikes).** Even with every fix
+    passing the accuracy filter above, summing the haversine leg between *every*
+    consecutive 1 Hz fix reads several percent long vs. a reference track (Komoot)
+    with no spikes/outliers involved — plain GPS jitter around the true position
+    adds spurious zig-zag length (the "coastline paradox"), and it does so
+    *continuously while riding*, not just when stationary: a first attempt at a fix
+    gated out only small (near-stationary) legs, which turned out to do nothing in
+    practice, since real per-sample movement at riding speed already clears any sane
+    minimum-leg-length gate on its own. A **second** attempt integrated the GPS
+    chip's own Doppler-measured speed (`GeoSample.speedMps`) over elapsed time
+    instead of differencing positions — this avoided the jitter bias but traded it
+    for a larger one in the other direction: field data from two real rides against
+    known (Komoot-planned) route distances showed it **undercounting by 4-6%**, and
+    every geometric alternative tried at the time (raw sum, fixed-time-window
+    displacement, batch Douglas-Peucker) came out *higher*, not lower, ruling out
+    "just needs more smoothing" — the reported speed itself isn't a reliable basis
+    for distance. `RideMetricsAccumulator` (`lib/core/metrics/ride_metrics_accumulator.dart`)
+    now instead runs an **incremental, buffered Douglas-Peucker-style streaming
+    simplifier**: every point since the last committed anchor is buffered, and on
+    each new point *all* buffered points are re-tested against the line from the
+    anchor to the new point; if all stay within `_simplifyEpsilonMeters` (7 m,
+    swept 3-10 m against the same two real rides — 27.10 km / 40.50 km,
+    ~1000-1600 points each — landing within -0.70%/+0.61%) they're absorbed as
+    noise on one straight bit of path with no added zig-zag length, otherwise the
+    line up to the last still-valid point is committed as real distance and a new
+    run starts there. Testing every buffered point against the anchor→newest line
+    (not just the immediately-preceding point) matters: a naive two-point "sleeve"
+    that only compares against the prior candidate lets one noisy point corrupt the
+    reference line for the next comparison ("noise chasing noise") — verified to
+    overcount by 60%+ against synthetic alternating jitter of just 1.5-2m: the
+    buffered/re-tested version resolves cleanly up to ~3.5m of the same synthetic
+    jitter. This is the streaming (single-pass, small bounded state) form of what a
+    batch Douglas-Peucker would produce, so it can drive the live distance display
+    incrementally — the batch algorithm needs the whole path to recursively find the
+    worst-deviating point, which live recording doesn't have yet. Applies to both
+    live recording and `track_repair.dart`'s replay (same accumulator) — existing
+    rides recorded under either earlier approach can be corrected via Settings →
+    Data → "Recalculate ride distances".
 * **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
   (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
   with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in

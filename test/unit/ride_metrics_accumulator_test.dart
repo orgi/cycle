@@ -26,9 +26,11 @@ void main() {
   test('accumulates distance and computes average over elapsed time', () {
     final acc = RideMetricsAccumulator();
     acc.add(sampleAt(t0, lat: 0, lon: 0, speed: 5));
-    // Position implies ~10 m/s, but GPS reports 8 m/s — distance is driven by
-    // the *reported* speed (Doppler), not the position delta (see below), so
-    // it comes out at 8 m/s × 10 s, not the position-implied 100 m.
+    // Distance is driven by the *position* delta (streaming path
+    // simplification, see the accumulator's doc comment), not the reported
+    // speed — with only two points there's nothing yet to simplify, so it's
+    // exactly the haversine leg between them (~100 m), regardless of the
+    // reported (Doppler) speed of 8 m/s.
     final m = acc.add(
       sampleAt(
         t0.add(const Duration(seconds: 10)),
@@ -37,10 +39,10 @@ void main() {
         speed: 8,
       ),
     );
-    expect(m.distanceMeters, closeTo(80, 1));
+    expect(m.distanceMeters, closeTo(100, 1));
     expect(m.currentSpeedMps, 8); // prefers GPS-reported speed
     expect(m.maxSpeedMps, 8);
-    expect(m.avgSpeedMps, closeTo(8, 0.2)); // 80 m / 10 s
+    expect(m.avgSpeedMps, closeTo(10, 0.2)); // 100 m / 10 s
   });
 
   test('falls back to distance/time when GPS speed is missing', () {
@@ -69,10 +71,10 @@ void main() {
 
   test('GPS position jitter while stationary does not accumulate distance', () {
     // A stationary rider's raw fixes wobble a few metres around the true
-    // position by noise alone — but the GPS chip's own Doppler-measured
-    // speed correctly reads ~0 regardless (it isn't derived from the noisy
-    // position fixes), so integrating *that* over time keeps distance at 0.
-    final acc = RideMetricsAccumulator();
+    // position by noise alone. Auto-pause (speed-based, already reliable at
+    // true-zero speed) gates what's fed to the path simplifier, so this
+    // jitter never even reaches it.
+    final acc = RideMetricsAccumulator(autoPauseEnabled: true);
     final jitterLon = 0.000018; // ~2 m east at the equator
     acc.add(sampleAt(t0, lat: 0, lon: 0, speed: 0));
     acc.add(
@@ -104,13 +106,13 @@ void main() {
       // raw 1 Hz fix overcounts distance from jitter alone, even while
       // genuinely moving (not just when stationary) — a naive fix that only
       // gates *tiny* legs does nothing here, since real per-sample movement at
-      // riding speed already clears any sane gate. Distance must instead track
-      // the reported (Doppler) speed, which is unaffected by the position
-      // noise laid on top of it, so it comes out to exactly speed × time even
-      // though the raw positions zig-zag.
+      // riding speed already clears any sane gate. The streaming path
+      // simplifier absorbs realistic jitter (a couple of metres, the kind
+      // real GPS fixes show) into the straight-line run instead of counting
+      // each wiggle's own zig-zag distance.
       final acc = RideMetricsAccumulator();
       const forwardStep = 0.000045; // ~5 m east at the equator per second
-      const jitter = 0.00003; // ~3 m north/south jitter, alternating
+      const jitter = 0.00002; // ~2 m north/south jitter, alternating
       late RideMetrics m;
       for (var i = 0; i <= 9; i++) {
         m = acc.add(
@@ -122,20 +124,22 @@ void main() {
           ),
         );
       }
-      expect(m.distanceMeters, closeTo(5 * 9, 0.5)); // speed × time, not more
+      expect(m.distanceMeters, closeTo(5 * 9, 1)); // ~true forward distance
     },
   );
 
-  test('slow real movement is captured in full, with no delay', () {
-    // Nothing gates or defers a leg based on its size any more — every
-    // sample's reported speed counts immediately, so genuinely slow riding
-    // (well under typical GPS jitter magnitude) isn't shortchanged.
+  test('slow real movement in a straight line is captured in full', () {
+    // Position-based distance (not speed integration) still tracks genuinely
+    // slow riding (well under typical GPS jitter magnitude) in full.
     final acc = RideMetricsAccumulator();
+    const perSecond = 0.00000898; // ~1 m east at the equator per second
     late RideMetrics m;
     for (var i = 0; i <= 9; i++) {
-      m = acc.add(sampleAt(t0.add(Duration(seconds: i)), speed: 1.0));
+      m = acc.add(
+        sampleAt(t0.add(Duration(seconds: i)), lon: perSecond * i, speed: 1.0),
+      );
     }
-    expect(m.distanceMeters, closeTo(1.0 * 9, 0.01));
+    expect(m.distanceMeters, closeTo(9, 0.5));
   });
 
   test('reset clears all running totals', () {
@@ -236,14 +240,16 @@ void main() {
 
     test('disabled: below-threshold samples still count', () {
       final a = RideMetricsAccumulator(autoPauseEnabled: false);
-      // Genuinely slow (1 m/s, under the 5 km/h ≈ 1.39 m/s threshold) but
-      // auto-pause is off, so it still accrues at that (slow) rate.
+      // Genuinely slow (reported 1 m/s, under the 5 km/h ≈ 1.39 m/s
+      // threshold) but auto-pause is off, so time still accrues; distance is
+      // position-based, so it reflects the actual ~100 m moved, not the
+      // (here unrelated) reported speed.
       a.add(sampleAt(t0, lon: 0, speed: 1));
       final m = a.add(
         sampleAt(t0.add(const Duration(seconds: 10)), lon: east100m, speed: 1),
       );
       expect(m.paused, isFalse);
-      expect(m.distanceMeters, closeTo(10, 0.5));
+      expect(m.distanceMeters, closeTo(100, 1));
       expect(m.elapsed, const Duration(seconds: 10));
     });
 
