@@ -12,6 +12,7 @@ import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/fg_task_recording_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/settings/app_settings.dart';
@@ -44,7 +45,7 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 /// deferred to M7; for now this is a no-op (recording runs while the screen is
 /// on via the wakelock).
 final recordingForegroundServiceProvider = Provider<RecordingForegroundService>(
-  (ref) => const NoopRecordingForegroundService(),
+  (ref) => const FgTaskRecordingService(),
 );
 
 /// Whether a ride is currently being recorded. Recording persists a [Tracks]

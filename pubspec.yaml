@@ -57,6 +57,7 @@ dependencies:
   sqlite3: ^3.3.2
   fl_chart: ^1.2.0
   gpx: ^2.3.0
+  flutter_foreground_task: ^9.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
