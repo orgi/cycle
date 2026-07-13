@@ -105,9 +105,10 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     now instead runs an **incremental, buffered Douglas-Peucker-style streaming
     simplifier**: every point since the last committed anchor is buffered, and on
     each new point *all* buffered points are re-tested against the line from the
-    anchor to the new point; if all stay within `_simplifyEpsilonMeters` (7 m,
-    swept 3-10 m against the same two real rides — 27.10 km / 40.50 km,
-    ~1000-1600 points each — landing within -0.70%/+0.61%) they're absorbed as
+    anchor to the new point; if all stay within `_simplifyEpsilonMeters` (5 m,
+    swept 3-10 m against the same two real rides — independently re-planned in
+    Komoot to 27.20 km / 40.80 km, ~1000-1600 points each — landing within
+    -0.74%/+0.64%) they're absorbed as
     noise on one straight bit of path with no added zig-zag length, otherwise the
     line up to the last still-valid point is committed as real distance and a new
     run starts there. Testing every buffered point against the anchor→newest line

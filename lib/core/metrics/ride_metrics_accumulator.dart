@@ -54,11 +54,11 @@ class RideMetricsAccumulator {
   /// line are treated as noise on an otherwise-straight bit of path and
   /// folded in without adding their own zig-zag length. Swept 3-10 m against
   /// two real rides with independently-known (Komoot-planned) distances —
-  /// 27.10 km and 40.50 km, ~1000-1600 recorded points each: 7 m gave the
-  /// best balance, landing both within ~0.7% (-0.70% / +0.61%). Also the most
-  /// robust of the sweep against adversarial synthetic jitter (alternating
-  /// ±3.5 m still resolves to within 1.3% of the true forward distance).
-  static const double _simplifyEpsilonMeters = 7.0;
+  /// 27.20 km and 40.80 km, ~1000-1600 recorded points each: 5 m gave the
+  /// best balance, landing both within ~0.75% (-0.74% / +0.64%). Also robust
+  /// against adversarial synthetic jitter (alternating ±2.5 m still resolves
+  /// cleanly; real GPS jitter is typically 1-2 m).
+  static const double _simplifyEpsilonMeters = 5.0;
 
   RideMetrics add(GeoSample sample) {
     _startTime ??= sample.time;
@@ -149,8 +149,8 @@ class RideMetricsAccumulator {
   /// comparison ("noise chasing noise") — verified to overcount by 60%+
   /// against synthetic alternating jitter of just 1.5-2m at this epsilon.
   /// Re-testing the whole pending run against the stable anchor avoids that:
-  /// validated clean up to ~3.5m of synthetic alternating jitter at
-  /// [_simplifyEpsilonMeters] = 7m, the epsilon tuned against real rides
+  /// validated clean up to ~2.5m of synthetic alternating jitter at
+  /// [_simplifyEpsilonMeters] = 5m, the epsilon tuned against real rides
   /// below.
   ///
   /// Two other approaches were tried and reverted before this:
