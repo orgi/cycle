@@ -1,6 +1,9 @@
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/settings_screen.dart';
 import 'package:drift/native.dart';
@@ -15,7 +18,10 @@ void main() {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -31,7 +37,10 @@ void main() {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -57,7 +66,10 @@ void main() {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -109,6 +121,7 @@ void main() {
       ProviderScope(
         overrides: [
           settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
           appDatabaseProvider.overrideWithValue(db),
         ],
         child: const MaterialApp(home: SettingsScreen()),
@@ -128,5 +141,31 @@ void main() {
     expect(find.text('Recalculated 1 ride'), findsOneWidget);
     final track = await db.track(id);
     expect(track!.distanceMeters, lessThan(200));
+  });
+
+  testWidgets('bike profiles tile summarises the active profile', (tester) async {
+    final store = FakeSettingsStore();
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Gravel bike', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('bikeProfilesTile')),
+      200,
+    );
+    expect(find.textContaining('1 bike'), findsOneWidget);
+    expect(find.textContaining('Gravel bike'), findsOneWidget);
   });
 }

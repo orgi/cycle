@@ -1,19 +1,18 @@
 /// Keeps recording alive in the background while a ride is recorded.
 ///
-/// NOTE: a real foreground-service implementation (persistent notification +
-/// keep-alive) is deferred to M7. The `flutter_foreground_task` plugin was
-/// removed for now because its engine-startup registration caused a main-thread
-/// ANR on Android 14, and it is not essential to M4's core (DB recording works
-/// while the screen is on via the wakelock — the handlebar use case). The
-/// interface stays so the real implementation can drop in later behind the
-/// existing provider.
+/// Default implementation is `FgTaskRecordingService` (see its doc comment) —
+/// a real Android foreground service via `flutter_foreground_task`, started
+/// deliberately without a callback so it avoids the second-Flutter-engine
+/// registration that caused an earlier Android-14 ANR with the same plugin.
+/// [NoopRecordingForegroundService] (below) stays for tests / platforms
+/// without it.
 abstract class RecordingForegroundService {
   Future<void> start();
   Future<void> stop();
 }
 
-/// Current default: does nothing. Recording runs on the main isolate while the
-/// screen is on (wakelock).
+/// Test/fallback default: does nothing. Recording still runs on the main
+/// isolate while the screen is on (wakelock) even without this service.
 class NoopRecordingForegroundService implements RecordingForegroundService {
   const NoopRecordingForegroundService();
 

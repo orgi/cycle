@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/location_service.dart';
 import 'package:cycle/core/services/route_import_service.dart';
@@ -157,4 +159,16 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Future<void> save(AppSettings settings) async => _settings = settings;
+}
+
+/// An in-memory [BikeProfilesStore] seeded with [initial].
+class FakeBikeProfilesStore implements BikeProfilesStore {
+  FakeBikeProfilesStore([this._state = BikeProfilesState.empty]);
+  BikeProfilesState _state;
+
+  @override
+  Future<BikeProfilesState> load() async => _state;
+
+  @override
+  Future<void> save(BikeProfilesState state) async => _state = state;
 }

@@ -19,6 +19,10 @@ class Tracks extends Table {
   // Battery level (%) at start/stop, for the drain stat.
   IntColumn get batteryStartPercent => integer().nullable()();
   IntColumn get batteryEndPercent => integer().nullable()();
+  // Which bike this ride was recorded on (BikeProfile.id from bike_profiles
+  // prefs — not a SQL foreign key, profiles live outside this DB). Null for
+  // rides recorded before profiles existed, or if the profile was deleted.
+  TextColumn get bikeProfileId => text().nullable()();
 }
 
 /// A single sample within a ride (position + optional sensor values).
@@ -41,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -49,6 +53,9 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await m.addColumn(tracks, tracks.batteryStartPercent);
             await m.addColumn(tracks, tracks.batteryEndPercent);
+          }
+          if (from < 3) {
+            await m.addColumn(tracks, tracks.bikeProfileId);
           }
         },
         beforeOpen: (_) async {
@@ -63,12 +70,15 @@ class AppDatabase extends _$AppDatabase {
       });
 
   Future<int> createTrack(DateTime startedAt,
-          {String name = 'Ride', int? batteryStartPercent}) =>
+          {String name = 'Ride',
+          int? batteryStartPercent,
+          String? bikeProfileId}) =>
       into(tracks).insert(
         TracksCompanion.insert(
           startedAt: startedAt,
           name: Value(name),
           batteryStartPercent: Value(batteryStartPercent),
+          bikeProfileId: Value(bikeProfileId),
         ),
       );
 
@@ -98,6 +108,13 @@ class AppDatabase extends _$AppDatabase {
   Future<void> renameTrack(int trackId, String name) =>
       (update(tracks)..where((t) => t.id.equals(trackId)))
           .write(TracksCompanion(name: Value(name)));
+
+  /// Sets (or clears, with null) which bike a ride is attributed to — used
+  /// both when starting a ride and to live-correct an in-progress one.
+  Future<void> setTrackBikeProfile(int trackId, String? bikeProfileId) =>
+      (update(tracks)..where((t) => t.id.equals(trackId))).write(
+        TracksCompanion(bikeProfileId: Value(bikeProfileId)),
+      );
 
   /// Most-recent rides first.
   Stream<List<Track>> watchTracks() => (select(tracks)

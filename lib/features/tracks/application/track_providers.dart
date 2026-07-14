@@ -13,6 +13,19 @@ final tracksProvider = StreamProvider<List<Track>>(
   (ref) => ref.watch(appDatabaseProvider).watchTracks(),
 );
 
+/// Which bike profile the Rides list is filtered to, or `null` for all bikes
+/// (total). Not persisted — resets to "All" on next launch.
+final selectedBikeProfileFilterProvider =
+    NotifierProvider<SelectedBikeProfileFilter, String?>(
+        SelectedBikeProfileFilter.new);
+
+class SelectedBikeProfileFilter extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String? bikeProfileId) => state = bikeProfileId;
+}
+
 /// Runs once at startup: recompute + finalise any ride interrupted by a crash /
 /// kill (still `endedAt == null`), so its stats aren't stuck at zero. Read it
 /// somewhere that loads at launch (the home screen). The live [tracksProvider]

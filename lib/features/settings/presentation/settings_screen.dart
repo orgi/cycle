@@ -7,6 +7,7 @@ import '../../../core/services/settings/app_settings.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../tracks/application/track_providers.dart';
 import '../../tracks/application/track_repair.dart';
+import '../application/bike_profile_providers.dart';
 import '../application/settings_providers.dart';
 
 /// App preferences: units, wheel size and physical-button control.
@@ -114,6 +115,23 @@ class SettingsScreen extends ConsumerWidget {
                 ? () => _editAutoPauseSpeed(context, ref, settings)
                 : null,
           ),
+          const Divider(),
+          const _Header('Bikes'),
+          Consumer(builder: (context, ref, _) {
+            final profiles = ref.watch(bikeProfilesProvider).profiles;
+            final active = ref.watch(bikeProfilesProvider).active;
+            return ListTile(
+              key: const Key('bikeProfilesTile'),
+              leading: const Icon(Icons.pedal_bike),
+              title: const Text('Bike profiles'),
+              subtitle: Text(active != null
+                  ? '${profiles.length} bike${profiles.length == 1 ? '' : 's'}'
+                      ' • active: ${active.name}'
+                  : 'No bikes yet'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/bike-profiles'),
+            );
+          }),
           const Divider(),
           const _Header('Accounts'),
           ListTile(

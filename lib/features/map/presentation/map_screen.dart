@@ -9,6 +9,7 @@ import 'package:mapsforge_flutter/marker.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../core/models/geo_sample.dart';
+import '../../../core/services/bike_profiles/bike_profiles_state.dart';
 import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
@@ -22,6 +23,7 @@ import '../../routing/domain/follow_route.dart';
 import '../../routing/domain/gpx_route_parser.dart';
 import '../../routing/domain/route_navigator.dart';
 import '../../sensors/application/sensor_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../../tracks/application/track_providers.dart';
@@ -632,6 +634,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cycle'),
+        // A dedicated, fixed-width slot for the bike-profile chip — putting it
+        // in the title Row instead overflowed on a narrow phone once "Cycle" +
+        // the chip + the 5 action icons all competed for the same app bar
+        // width (verified on the emulator).
+        leadingWidth: 96,
+        leading: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Align(
+              alignment: Alignment.centerLeft, child: _BikeProfileChip()),
+        ),
         actions: [
           _FollowRouteMenu(active: route != null),
           const _MapPickerMenu(),
@@ -952,6 +964,96 @@ class _ScreenMarkerDatastore extends DefaultMarkerDatastore {
   void disposeForReal() {
     _allowDispose = true;
     dispose();
+  }
+}
+
+/// A small coloured chip in the app bar showing the active bike profile.
+/// Tapping it opens a picker (also reachable without hardware buttons, e.g.
+/// iOS) to explicitly choose a profile, or to manage them. Hidden when there
+/// are no profiles yet (before the async load settles on a fresh install).
+class _BikeProfileChip extends ConsumerWidget {
+  const _BikeProfileChip();
+
+  static const String _manageSentinel = '__manage__';
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final data = ref.watch(bikeProfilesProvider);
+    final active = data.active;
+    if (active == null) return const SizedBox.shrink();
+    final color = Color(active.colorArgb);
+    return InkWell(
+      key: const Key('bikeProfileChip'),
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _pick(context, ref, data),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.20),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 52),
+              child: Text(
+                active.name,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pick(
+      BuildContext context, WidgetRef ref, BikeProfilesState data) async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final p in data.profiles)
+              ListTile(
+                key: Key('bikeProfileOption_${p.id}'),
+                leading: CircleAvatar(
+                  radius: 10,
+                  backgroundColor: Color(p.colorArgb),
+                ),
+                title: Text(p.name),
+                trailing:
+                    p.id == data.activeId ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(ctx, p.id),
+              ),
+            const Divider(height: 1),
+            ListTile(
+              key: const Key('manageBikeProfilesTile'),
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Manage bike profiles'),
+              onTap: () => Navigator.pop(ctx, _manageSentinel),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null) return;
+    if (chosen == _manageSentinel) {
+      if (context.mounted) context.push('/bike-profiles');
+      return;
+    }
+    await ref.read(recordingProvider.notifier).setBikeProfile(chosen);
   }
 }
 

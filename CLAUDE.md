@@ -246,9 +246,20 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   personal file transfer between two owned phones, and the share-sheet works with *any*
   storage app, not just OneDrive.) DB/GPX/persistence
   unit-tested; list/detail widget-tested; record→stop→Rides verified on the emulator.
-  NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
-  main-thread ANR on Android 14. A real foreground service (background recording with screen
-  off) is **deferred to M7**; recording currently runs while the screen is on (wakelock).
+  **Background recording (real foreground service).** `flutter_foreground_task` was
+  originally removed here — its engine-startup registration caused a main-thread ANR on
+  Android 14 — and recording ran on the wakelock alone (screen-on only) for a while. It's
+  since been **re-added and wired in** (`lib/core/services/fg_task_recording_service.dart`,
+  `FgTaskRecordingService`, the default `recordingForegroundServiceProvider`): a real
+  Android foreground service (persistent notification, `location` service type) starts on
+  `RecordingController.start()`/`resume()` and stops on `stop()`, so the OS won't reclaim
+  Cycle for RAM while backgrounded mid-ride. The ANR is avoided by starting the service
+  **without a `callback`/`TaskHandler`** — that's what makes the plugin spin up a second
+  Flutter engine/callback dispatcher, which is what caused the original hang; without one,
+  we only keep the *main* isolate's process alive, no background Dart execution needed.
+  Verified on a real device (Galaxy A33): start/stop round-trip cleanly via the volume-key
+  path, the service starts/stops with no ANR, and the process survives being backgrounded.
+  `NoopRecordingForegroundService` remains for tests/platforms without it.
 * **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack), load the
   bundled demo route, or **open/share a `.gpx` into the app** (Android intent-filters +
   native `MainActivity` `cycle/incoming_gpx` MethodChannel → `IncomingGpxService`; iOS
@@ -368,6 +379,43 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   the result, without touching the points. For rides recorded before a change to
   `RideMetricsAccumulator`'s maths (e.g. the speed-integration distance fix above) so old
   rides read consistently with new ones — a one-tap, on-device fix, no adb/DB surgery needed.
+* **Bike profiles** — record against different bicycles and view stats per bike or in
+  total, without a pop-up on every ride. `BikeProfile` (`lib/core/models/bike_profile.dart`,
+  `id`/`name`/`colorArgb`, colours from `kBikeProfileColors`) + `BikeProfilesState`
+  (profiles list + `activeId`) persisted outside the SQL DB via
+  `lib/core/services/bike_profiles/bike_profiles_store.dart` (`shared_preferences` JSON,
+  same pattern as `SettingsStore`), managed by `BikeProfilesController`
+  (`lib/features/settings/application/bike_profile_providers.dart`; a fresh install
+  auto-seeds one default profile, "Bike 1", so there's always an active one — no setup
+  dialog). `Tracks` gained a nullable `bikeProfileId` `TextColumn` (schema v3, plain
+  `addColumn` migration, same shape as the v1→v2 one) — **not a SQL foreign key**, since
+  profiles live in prefs, not the DB; a deleted profile just leaves old rides pointing at
+  an id that matches nothing (same as a pre-feature ride with a null id).
+  * **No pop-up, but still correctable:** `RecordingController.start()` stamps the new
+    track with whichever profile is currently active — no prompt. Volume-up while **not**
+    recording starts the ride as before; volume-up again *while already recording*
+    (`HardwareButtonController`) calls `RecordingController.cycleBikeProfile()`, which
+    advances to the next profile and **live-corrects the DB row** for the ride in progress
+    (`AppDatabase.setTrackBikeProfile`) — so a wrong bike picked at the start can be fixed
+    from the saddle without stopping. `setBikeProfile`/`cycleBikeProfile` are the single
+    path both the hardware-button cycling and the on-screen picker go through.
+  * **Display + manual pick:** a coloured chip (`_BikeProfileChip` in `map_screen.dart`)
+    shows the active profile's colour + name. It sits in the **AppBar's `leading` slot**
+    (a fixed-width reservation), not the title — an earlier attempt put it in the title
+    `Row` alongside "Cycle" and it overflowed once the 5 action icons + title + chip all
+    competed for the same narrow app-bar width (only caught by an emulator screenshot;
+    plain `flutter analyze`/tests don't render real widths). Tapping the chip opens a
+    bottom sheet to explicitly pick a profile (works without hardware buttons too, e.g.
+    iOS) or jump to **Settings → Bikes → Bike profiles** (`/bike-profiles`,
+    `BikeProfilesScreen`) to add/rename/recolour/delete profiles and set the active one.
+  * **Rides list filtering:** `TracksScreen` gets an "All" + per-bike `ChoiceChip` row
+    (`selectedBikeProfileFilterProvider`, a plain in-memory `Notifier`, not persisted —
+    only shown once you have 2+ profiles, since one bike has nothing to filter), which
+    filters both the ride rows and the existing week/month/year summary cards
+    (`computeRideSummaries` already takes a plain `List<Track>`, so filtering before
+    calling it gives per-bike or total summaries for free) — plus a small colour dot per
+    row (also only shown with 2+ profiles, since a single bike's colour carries no
+    distinguishing information).
 
 ## Known gotchas
 
@@ -392,10 +440,12 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `aapt dump permissions`), not just the debug build.
 * **Tests don't catch startup hangs.** Widget/integration tests bypass real app launch, so a
   green suite is NOT proof the app runs. After adding a plugin/package or touching startup,
-  boot the emulator and screenshot the app. Two packages broke launch despite green tests and
-  were removed: `flutter_foreground_task` (main-thread ANR) and `dashboard` (first-frame hang,
-  splash forever) — the latter was for the customisable dashboard, now **deferred**; build any
-  editor from first-party widgets.
+  boot the emulator and screenshot the app. Two packages broke launch despite green tests:
+  `flutter_foreground_task` (main-thread ANR — since fixed and **re-added**, see the M4
+  background-recording note above: the ANR was specifically from starting it *with* a
+  callback/TaskHandler; starting it without one avoids the second-engine registration that
+  caused the hang) and `dashboard` (first-frame hang, splash forever) — the latter was for
+  the customisable dashboard, now **deferred**; build any editor from first-party widgets.
 * `MetricTile` reserves the widest value (`referenceValue`) so the speed/avg/etc. value does
   not resize when it gains a digit.
 * **`file_picker` does not build here.** The project uses **AGP 9 + standalone Kotlin**

@@ -66,4 +66,25 @@ void main() {
     expect(await db.track(id), isNull);
     expect(await db.pointsFor(id), isEmpty);
   });
+
+  test('createTrack stamps a bike profile; defaults to null', () async {
+    final withProfile = await db.createTrack(DateTime.utc(2026, 1, 1),
+        bikeProfileId: 'p1');
+    final withoutProfile = await db.createTrack(DateTime.utc(2026, 1, 1));
+
+    expect((await db.track(withProfile))!.bikeProfileId, 'p1');
+    expect((await db.track(withoutProfile))!.bikeProfileId, isNull);
+  });
+
+  test('setTrackBikeProfile corrects/clears the profile on an existing track',
+      () async {
+    final id = await db.createTrack(DateTime.utc(2026, 1, 1),
+        bikeProfileId: 'p1');
+
+    await db.setTrackBikeProfile(id, 'p2');
+    expect((await db.track(id))!.bikeProfileId, 'p2');
+
+    await db.setTrackBikeProfile(id, null);
+    expect((await db.track(id))!.bikeProfileId, isNull);
+  });
 }

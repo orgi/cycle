@@ -9,6 +9,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Bike profiles** — record against different bicycles and see stats per bike or
+  in total. A coloured chip in the top-left of the home screen shows the active
+  profile; tap it to switch, or manage profiles (add/rename/recolour/delete) from
+  **Settings → Bikes**. No pop-up when starting a ride: the volume-up button
+  starts recording with whichever profile is already active, and pressing it
+  again *while already recording* cycles to the next profile — correcting the
+  ride in progress if the wrong bike was active, without interrupting it. Rides
+  are stamped with their bike; the Rides list gets a filter row ("All" + one chip
+  per bike, only shown once you have 2+) that filters both the ride list and the
+  week/month/year summary cards, plus a small colour dot on each row.
 - **Import from OruxMaps** (Settings → Data) — bring in ride history recorded with
   OruxMaps, entirely on-device, no PC/adb. Bulk-import your whole ride history in one go by
   granting "All files access" (the same permission a file-manager app holds) — needed

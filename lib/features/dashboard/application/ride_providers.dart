@@ -17,6 +17,7 @@ import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../sensors/application/sensor_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../../tracks/application/track_repair.dart';
 
@@ -41,9 +42,10 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// Keeps recording alive in the background. A real foreground service is
-/// deferred to M7; for now this is a no-op (recording runs while the screen is
-/// on via the wakelock).
+/// Keeps recording alive in the background: a real Android foreground service
+/// (persistent notification, `location` type), started without a callback/
+/// TaskHandler so the plugin doesn't spin up a second Flutter engine — see
+/// FgTaskRecordingService's doc comment.
 final recordingForegroundServiceProvider = Provider<RecordingForegroundService>(
   (ref) => const FgTaskRecordingService(),
 );
@@ -67,11 +69,36 @@ class RecordingController extends Notifier<bool> {
     await ref.read(screenWakeServiceProvider).enable();
     ref.read(rideControllerProvider.notifier).reset();
     final battery = await ref.read(batteryServiceProvider).level();
-    _trackId = await ref
-        .read(appDatabaseProvider)
-        .createTrack(DateTime.now(), batteryStartPercent: battery);
+    final bikeProfileId = ref.read(bikeProfilesProvider).activeId;
+    _trackId = await ref.read(appDatabaseProvider).createTrack(
+          DateTime.now(),
+          batteryStartPercent: battery,
+          bikeProfileId: bikeProfileId,
+        );
     await ref.read(recordingForegroundServiceProvider).start();
     state = true;
+  }
+
+  /// Sets the active bike profile; if a ride is currently recording, also
+  /// live-corrects that ride's stamped profile (in case the wrong one was
+  /// active when it started).
+  Future<void> setBikeProfile(String id) async {
+    await ref.read(bikeProfilesProvider.notifier).setActive(id);
+    final trackId = _trackId;
+    if (state && trackId != null) {
+      await ref.read(appDatabaseProvider).setTrackBikeProfile(trackId, id);
+    }
+  }
+
+  /// Advances to the next bike profile (wrapping). No-op with fewer than 2
+  /// profiles. See [setBikeProfile].
+  Future<void> cycleBikeProfile() async {
+    final profiles = ref.read(bikeProfilesProvider).profiles;
+    if (profiles.length < 2) return;
+    final activeId = ref.read(bikeProfilesProvider).activeId;
+    final i = profiles.indexWhere((p) => p.id == activeId);
+    final next = profiles[(i + 1) % profiles.length];
+    await setBikeProfile(next.id);
   }
 
   /// Resumes recording into an existing, interrupted ride — continues appending
