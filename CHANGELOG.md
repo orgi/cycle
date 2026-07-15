@@ -19,6 +19,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   are stamped with their bike; the Rides list gets a filter row ("All" + one chip
   per bike, only shown once you have 2+) that filters both the ride list and the
   week/month/year summary cards, plus a small colour dot on each row.
+  **Correcting past rides:** a ride's detail screen shows its bike (or
+  "Unassigned") — tap to change it via the same picker. To bulk-fix a whole ride
+  history at once (e.g. after renaming your first profile to your bike's real
+  name), **Settings → Bikes → Bike profiles → ⋮ → "Assign all rides to this
+  bike"** sets every recorded ride to that bike in one go.
 - **Import from OruxMaps** (Settings → Data) — bring in ride history recorded with
   OruxMaps, entirely on-device, no PC/adb. Bulk-import your whole ride history in one go by
   granting "All files access" (the same permission a file-manager app holds) — needed

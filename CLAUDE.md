@@ -416,6 +416,18 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     calling it gives per-bike or total summaries for free) — plus a small colour dot per
     row (also only shown with 2+ profiles, since a single bike's colour carries no
     distinguishing information).
+  * **Correcting past rides:** the picker bottom sheet is shared
+    (`lib/features/settings/presentation/widgets/bike_profile_picker.dart`,
+    `showBikeProfilePicker`) between the home-screen chip and a "Bike" row on
+    `track_detail_screen.dart` (shows the ride's current bike, or "Unassigned"; tap
+    to change — writes straight to `AppDatabase.setTrackBikeProfile` and invalidates
+    `trackProvider`/`tracksProvider`, since this is a past/finalised ride, not the
+    live one `RecordingController` owns). For fixing a whole history at once (e.g.
+    after renaming the auto-seeded "Bike 1" to your actual bike), each profile's
+    menu on `BikeProfilesScreen` has **"Assign all rides to this bike"** —
+    `AppDatabase.assignAllTracksToBikeProfile` (`update(tracks)` with no `where`)
+    unconditionally overwrites every ride's bike, behind a confirm dialog that
+    states the ride count.
 
 ## Known gotchas
 

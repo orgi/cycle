@@ -1,7 +1,10 @@
+import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/presentation/bike_profiles_screen.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,5 +157,40 @@ void main() {
 
     expect(container.read(bikeProfilesProvider).activeId, 'p2');
     expect(find.text('Active'), findsOneWidget); // now only on Gravel's row
+  });
+
+  testWidgets('assigns all rides to a bike after confirmation', (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.createTrack(DateTime.utc(2026, 1, 1)); // unassigned
+    await db.createTrack(DateTime.utc(2026, 1, 2), bikeProfileId: 'other');
+
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Cube', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+          appDatabaseProvider.overrideWithValue(db),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assign all rides to this bike'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('all 2 recorded rides'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assignAllRidesConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Assigned 2 rides to "Cube"'), findsOneWidget);
+    final tracks = await db.allTracks();
+    expect(tracks.every((t) => t.bikeProfileId == 'p1'), isTrue);
   });
 }

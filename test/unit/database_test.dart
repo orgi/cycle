@@ -87,4 +87,17 @@ void main() {
     await db.setTrackBikeProfile(id, null);
     expect((await db.track(id))!.bikeProfileId, isNull);
   });
+
+  test('assignAllTracksToBikeProfile overwrites every ride, returns the count',
+      () async {
+    final a = await db.createTrack(DateTime.utc(2026, 1, 1));
+    final b = await db.createTrack(DateTime.utc(2026, 1, 2), bikeProfileId: 'p1');
+    final c = await db.createTrack(DateTime.utc(2026, 1, 3), bikeProfileId: 'p2');
+
+    final n = await db.assignAllTracksToBikeProfile('cube');
+    expect(n, 3);
+    expect((await db.track(a))!.bikeProfileId, 'cube');
+    expect((await db.track(b))!.bikeProfileId, 'cube');
+    expect((await db.track(c))!.bikeProfileId, 'cube');
+  });
 }

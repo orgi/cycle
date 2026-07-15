@@ -110,11 +110,18 @@ class AppDatabase extends _$AppDatabase {
           .write(TracksCompanion(name: Value(name)));
 
   /// Sets (or clears, with null) which bike a ride is attributed to — used
-  /// both when starting a ride and to live-correct an in-progress one.
+  /// both when starting a ride and to live-correct an in-progress one, and
+  /// from the ride-detail screen to correct an already-finalised ride.
   Future<void> setTrackBikeProfile(int trackId, String? bikeProfileId) =>
       (update(tracks)..where((t) => t.id.equals(trackId))).write(
         TracksCompanion(bikeProfileId: Value(bikeProfileId)),
       );
+
+  /// Bulk-assigns every ride (no `where` — including ones already on another
+  /// bike) to [bikeProfileId], e.g. "put all my past rides on Cube". Returns
+  /// the number of rides updated.
+  Future<int> assignAllTracksToBikeProfile(String? bikeProfileId) =>
+      update(tracks).write(TracksCompanion(bikeProfileId: Value(bikeProfileId)));
 
   /// Most-recent rides first.
   Stream<List<Track>> watchTracks() => (select(tracks)

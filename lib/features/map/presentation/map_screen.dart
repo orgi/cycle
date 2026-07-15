@@ -26,6 +26,7 @@ import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
+import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../tracks/application/track_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
@@ -974,8 +975,6 @@ class _ScreenMarkerDatastore extends DefaultMarkerDatastore {
 class _BikeProfileChip extends ConsumerWidget {
   const _BikeProfileChip();
 
-  static const String _manageSentinel = '__manage__';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(bikeProfilesProvider);
@@ -1019,40 +1018,9 @@ class _BikeProfileChip extends ConsumerWidget {
 
   Future<void> _pick(
       BuildContext context, WidgetRef ref, BikeProfilesState data) async {
-    final chosen = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final p in data.profiles)
-              ListTile(
-                key: Key('bikeProfileOption_${p.id}'),
-                leading: CircleAvatar(
-                  radius: 10,
-                  backgroundColor: Color(p.colorArgb),
-                ),
-                title: Text(p.name),
-                trailing:
-                    p.id == data.activeId ? const Icon(Icons.check) : null,
-                onTap: () => Navigator.pop(ctx, p.id),
-              ),
-            const Divider(height: 1),
-            ListTile(
-              key: const Key('manageBikeProfilesTile'),
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Manage bike profiles'),
-              onTap: () => Navigator.pop(ctx, _manageSentinel),
-            ),
-          ],
-        ),
-      ),
-    );
+    final chosen = await showBikeProfilePicker(context,
+        profiles: data.profiles, currentId: data.activeId);
     if (chosen == null) return;
-    if (chosen == _manageSentinel) {
-      if (context.mounted) context.push('/bike-profiles');
-      return;
-    }
     await ref.read(recordingProvider.notifier).setBikeProfile(chosen);
   }
 }

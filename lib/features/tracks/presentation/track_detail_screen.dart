@@ -11,7 +11,9 @@ import '../../../core/services/upload/upload_models.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
+import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
 import '../application/track_repair.dart';
@@ -252,6 +254,44 @@ class _BodyState extends State<_Body> {
         children: [
         Text(formatDateTime(track.startedAt),
             style: const TextStyle(color: Colors.white54)),
+        const SizedBox(height: 6),
+        Consumer(builder: (context, ref, _) {
+          final profiles = ref.watch(bikeProfilesProvider).profiles;
+          final current =
+              profiles.where((p) => p.id == track.bikeProfileId).firstOrNull;
+          return InkWell(
+            key: const Key('trackBikeRow'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: () async {
+              final chosen = await showBikeProfilePicker(context,
+                  profiles: profiles, currentId: track.bikeProfileId);
+              if (chosen == null) return;
+              await ref
+                  .read(appDatabaseProvider)
+                  .setTrackBikeProfile(track.id, chosen);
+              ref.invalidate(trackProvider(track.id));
+              ref.invalidate(tracksProvider);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.pedal_bike,
+                      size: 18,
+                      color: current != null
+                          ? Color(current.colorArgb)
+                          : Colors.white38),
+                  const SizedBox(width: 8),
+                  Text(current?.name ?? 'Unassigned',
+                      style: const TextStyle(color: Colors.white70)),
+                  const Spacer(),
+                  const Icon(Icons.edit_outlined,
+                      size: 16, color: Colors.white38),
+                ],
+              ),
+            ),
+          );
+        }),
         const SizedBox(height: 12),
         for (var i = 0; i < tiles.length; i += 2) ...[
           SizedBox(

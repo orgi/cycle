@@ -107,6 +107,47 @@ void main() {
     expect(find.textContaining('ELEVATION'), findsOneWidget);
   });
 
+  testWidgets(
+      'ride detail: shows Unassigned, then assigns a bike via the picker',
+      (tester) async {
+    final (db, id) = await _seed();
+    addTearDown(db.close);
+    tester.view.physicalSize = const Size(1000, 2200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Cube', colorArgb: 1)],
+      activeId: 'p1',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(db),
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+          rideMapProvider.overrideWith((ref) async =>
+              throw StateError('no offline map in widget test')),
+        ],
+        child: MaterialApp(home: TrackDetailScreen(trackId: id)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unassigned'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('trackBikeRow')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bikeProfileOption_p1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cube'), findsOneWidget);
+    final track = await db.track(id);
+    expect(track!.bikeProfileId, 'p1');
+  });
+
   testWidgets('no filter row with a single bike profile', (tester) async {
     final (db, _) = await _seed();
     const oneProfile = BikeProfilesState(

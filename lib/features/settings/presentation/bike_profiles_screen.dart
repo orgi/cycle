@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/bike_profile.dart';
+import '../../dashboard/application/ride_providers.dart';
+import '../../tracks/application/track_providers.dart';
 import '../application/bike_profile_providers.dart';
 
 /// Manage bike profiles: add/rename/recolour/delete, and pick which is active.
@@ -49,12 +51,18 @@ class BikeProfilesScreen extends ConsumerWidget {
                         switch (action) {
                           case 'rename':
                             _rename(context, notifier, p);
+                          case 'assignAll':
+                            _assignAllRides(context, ref, p);
                           case 'delete':
                             _delete(context, notifier, p);
                         }
                       },
                       itemBuilder: (context) => const [
                         PopupMenuItem(value: 'rename', child: Text('Rename')),
+                        PopupMenuItem(
+                          value: 'assignAll',
+                          child: Text('Assign all rides to this bike'),
+                        ),
                         PopupMenuItem(value: 'delete', child: Text('Delete')),
                       ],
                     ),
@@ -138,6 +146,45 @@ class BikeProfilesScreen extends ConsumerWidget {
       ),
     );
     if (color != null) await notifier.setColor(p.id, color);
+  }
+
+  /// Sets every recorded ride's bike to [p] in one go — e.g. "put all my past
+  /// rides on Cube" — overwriting any bike each ride currently has.
+  Future<void> _assignAllRides(
+      BuildContext context, WidgetRef ref, BikeProfile p) async {
+    final db = ref.read(appDatabaseProvider);
+    final total = (await db.allTracks()).length;
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Assign all rides to "${p.name}"?'),
+        content: Text(
+          'Sets the bike on all $total recorded ride${total == 1 ? '' : 's'} '
+          'to "${p.name}", overwriting any bike currently assigned to each '
+          'one.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('assignAllRidesConfirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Assign'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final n = await db.assignAllTracksToBikeProfile(p.id);
+    ref.invalidate(tracksProvider);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Assigned $n ride${n == 1 ? '' : 's'} to "${p.name}"'),
+      ));
+    }
   }
 
   Future<void> _delete(BuildContext context, BikeProfilesController notifier,
