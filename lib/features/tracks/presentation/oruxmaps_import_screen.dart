@@ -29,6 +29,16 @@ class OruxMapsImportScreen extends ConsumerStatefulWidget {
 class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     with WidgetsBindingObserver {
   bool? _hasAccess;
+  // Guards against a second import starting while one is already running — a
+  // real device import can take minutes (hundreds of tracks/points), and
+  // without this a double-tap (or an impatient re-tap on a slow import)
+  // starts a second importFrom() concurrently. Both would read the same
+  // "already imported" snapshot before either had written anything back,
+  // so neither sees the other's in-flight inserts and every track in the
+  // overlap gets imported twice — confirmed on a real device (duplicate rows
+  // for the same ride, same start time, after tapping the picker more than
+  // once while an import was still running).
+  bool _isImporting = false;
 
   @override
   void initState() {
@@ -79,6 +89,26 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
           ),
           const SizedBox(height: 16),
           _buildAccessSection(),
+          if (_isImporting) ...[
+            const SizedBox(height: 12),
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 8),
+                    Text(
+                      'Importing — a full history can take a few minutes, '
+                      'please wait…',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const Divider(height: 32),
           const Text(
             'No adb, or the bulk import above can\'t find the database on '
@@ -102,7 +132,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
             key: const Key('pickOruxmapsFileButton'),
             icon: const Icon(Icons.folder_open),
             label: const Text('Pick database file'),
-            onPressed: () => _pickAndImport(context),
+            onPressed: _isImporting ? null : () => _pickAndImport(context),
           ),
           const Divider(height: 32),
           const Text(
@@ -117,7 +147,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
             key: const Key('checkOruxmapsImportButton'),
             icon: const Icon(Icons.refresh),
             label: const Text('Check for a shared database'),
-            onPressed: () => _checkShared(context),
+            onPressed: _isImporting ? null : () => _checkShared(context),
           ),
         ],
       ),
@@ -144,13 +174,14 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
           key: const Key('bulkImportButton'),
           icon: const Icon(Icons.download_outlined),
           label: const Text('Import OruxMaps database now'),
-          onPressed: () => _bulkImport(context),
+          onPressed: _isImporting ? null : () => _bulkImport(context),
         );
     }
   }
 
   Future<void> _bulkImport(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isImporting = true);
     try {
       final imported = await ref
           .read(oruxMapsImportServiceProvider)
@@ -168,6 +199,8 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
     }
   }
 
@@ -175,10 +208,11 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     final messenger = ScaffoldMessenger.of(context);
     final picked = await ref.read(documentPickerServiceProvider).pickDocument();
     if (picked == null) return; // cancelled, or no native handler
+    setState(() => _isImporting = true);
     try {
       final imported = await ref
           .read(oruxMapsImportServiceProvider)
-          .importIncomingBytes(picked.name, picked.bytes);
+          .importFrom(picked.path);
       if (!mounted) return;
       ref.invalidate(tracksProvider);
       messenger.showSnackBar(
@@ -192,11 +226,14 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
     }
   }
 
   Future<void> _checkShared(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
+    setState(() => _isImporting = true);
     int? imported;
     try {
       imported = await ref
@@ -205,6 +242,8 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
       return;
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
     }
     if (imported == null) {
       messenger.showSnackBar(

@@ -1,11 +1,15 @@
 import 'package:flutter/services.dart';
 
-/// A file picked via the system document picker (Storage Access Framework).
+/// A file picked via the system document picker (Storage Access Framework),
+/// already copied to a local cache-file [path] — not held in memory as bytes,
+/// since a multi-tens-of-MB file (e.g. an OruxMaps `oruxmapstracks.db`) sent
+/// as a single MethodChannel argument produced a silently truncated copy on a
+/// real device (see `MainActivity.kt`'s `onActivityResult` comment).
 class PickedDocument {
-  const PickedDocument({required this.name, required this.bytes});
+  const PickedDocument({required this.name, required this.path});
 
   final String name;
-  final Uint8List bytes;
+  final String path;
 }
 
 /// Opens the system Storage Access Framework picker (`ACTION_OPEN_DOCUMENT`)
@@ -25,12 +29,12 @@ class DocumentPickerService {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'pickDocument',
       );
-      final bytes = result?['bytes'] as Uint8List?;
-      if (bytes == null || bytes.isEmpty) return null;
+      final path = (result?['path'] as String?)?.trim();
+      if (path == null || path.isEmpty) return null;
       final name = (result?['name'] as String?)?.trim();
       return PickedDocument(
         name: (name == null || name.isEmpty) ? 'file' : name,
-        bytes: bytes,
+        path: path,
       );
     } on MissingPluginException {
       return null; // no native handler on this platform / in tests

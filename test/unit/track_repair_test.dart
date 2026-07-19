@@ -181,4 +181,43 @@ void main() {
     final track = await db.track(finished);
     expect(track!.distanceMeters, lessThan(100));
   });
+
+  group('removeDuplicateTracks', () {
+    test('deletes extra rides sharing a start time, keeps the lowest id', () async {
+      final first = await db.createTrack(t0, name: 'first');
+      final dup1 = await db.createTrack(t0, name: 'dup1');
+      final dup2 = await db.createTrack(t0, name: 'dup2');
+      final other = await db.createTrack(
+        t0.add(const Duration(days: 1)),
+        name: 'other',
+      );
+
+      final removed = await removeDuplicateTracks(db);
+
+      expect(removed, 2);
+      final remainingIds = (await db.allTracks()).map((t) => t.id).toSet();
+      expect(remainingIds, {first, other});
+      expect(remainingIds.contains(dup1), isFalse);
+      expect(remainingIds.contains(dup2), isFalse);
+    });
+
+    test('is a no-op when there are no duplicates', () async {
+      await db.createTrack(t0);
+      await db.createTrack(t0.add(const Duration(days: 1)));
+
+      expect(await removeDuplicateTracks(db), 0);
+      expect(await db.allTracks(), hasLength(2));
+    });
+
+    test('deleting a duplicate cascades to its points', () async {
+      final first = await db.createTrack(t0);
+      final dup = await db.createTrack(t0);
+      await addPoint(dup, 0, 0, 0);
+
+      await removeDuplicateTracks(db);
+
+      expect(await db.pointsFor(dup), isEmpty);
+      expect((await db.allTracks()).single.id, first);
+    });
+  });
 }

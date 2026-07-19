@@ -1,12 +1,15 @@
 import 'package:flutter/services.dart';
 
 /// An OruxMaps `oruxmapstracks.db` track database the app was opened/shared
-/// with.
+/// with, already copied to a local cache-file [path] — not held in memory as
+/// bytes, since a multi-tens-of-MB db sent as a single MethodChannel argument
+/// produced a silently truncated copy on a real device (see `MainActivity.kt`
+/// `handleIntent`'s comment).
 class IncomingOruxMapsDb {
-  const IncomingOruxMapsDb({required this.name, required this.bytes});
+  const IncomingOruxMapsDb({required this.name, required this.path});
 
   final String name;
-  final Uint8List bytes;
+  final String path;
 }
 
 /// Bridges an OruxMaps track database the app was opened/shared with ("Open
@@ -27,12 +30,12 @@ class IncomingOruxMapsService {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'consumePending',
       );
-      final bytes = result?['bytes'] as Uint8List?;
-      if (bytes == null || bytes.isEmpty) return null;
+      final path = (result?['path'] as String?)?.trim();
+      if (path == null || path.isEmpty) return null;
       final name = (result?['name'] as String?)?.trim();
       return IncomingOruxMapsDb(
         name: (name == null || name.isEmpty) ? 'oruxmapstracks.db' : name,
-        bytes: bytes,
+        path: path,
       );
     } on MissingPluginException {
       return null; // no native handler on this platform / in tests

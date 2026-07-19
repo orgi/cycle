@@ -124,6 +124,32 @@ Future<int> recalculateAllTrackStats(
   return updated;
 }
 
+/// Removes rides that are exact duplicates of another ride's start time — a
+/// one-off "fix my history" maintenance action (Settings → Data) for
+/// duplicates created by re-running (or double-tapping into overlapping) an
+/// OruxMaps import: two `importFrom` calls in flight at once both read the
+/// same "already imported" snapshot before either had written anything back,
+/// so every ride in the overlap got inserted twice (confirmed on a real
+/// device). For each group of rides sharing a start time, keeps the
+/// **lowest id** (the first one inserted) and deletes the rest. Returns the
+/// number of rides deleted.
+Future<int> removeDuplicateTracks(AppDatabase db) async {
+  final tracks = await db.allTracks();
+  final seenStarts = <DateTime>{};
+  final toDelete = <int>[];
+  // allTracks() is newest-first; sort by id ascending so "first seen" for a
+  // given start time is the lowest id (first ever inserted), not whichever
+  // happens to sort first by start time.
+  final byId = [...tracks]..sort((a, b) => a.id.compareTo(b.id));
+  for (final t in byId) {
+    if (!seenStarts.add(t.startedAt)) toDelete.add(t.id);
+  }
+  for (final id in toDelete) {
+    await db.deleteTrack(id);
+  }
+  return toDelete.length;
+}
+
 /// Removes GPS "spike" outliers from an already-recorded track and recomputes
 /// its distance / duration / average / max from the cleaned points — the same
 /// [GpsOutlierFilter] we now apply live, but run after the fact on a ride that

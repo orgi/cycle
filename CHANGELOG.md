@@ -40,6 +40,9 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   even with the permission granted), a "Pick database file" button opens the system file
   picker so you can import a copy you've moved somewhere ordinary yourself (e.g. via a PC/USB
   connection). Either way, already-imported rides are skipped, so re-importing is safe.
+- **Remove duplicate rides** (Settings → Data) — a one-tap maintenance action that removes
+  rides sharing the exact same start time as another ride, keeping the first-recorded copy.
+  For duplicates left behind by an OruxMaps import that ran twice at once (see "Fixed" below).
 - **Recalculate ride distances** (Settings → Data) — a one-tap maintenance action that
   recomputes every ride's distance/average/max from its recorded points using the current
   maths, for rides recorded before a distance-calculation fix (see "Fixed" below).
@@ -90,6 +93,22 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   restart to repaint already-cached tiles.)
 
 ### Fixed
+- **OruxMaps bulk import no longer silently misses newer rides, and no longer
+  double-imports on a re-tap** — a real multi-year ride history (hundreds of
+  tracks/hundreds of thousands of points) made the import commit to disk on
+  every single point instead of batching, taking well over an hour on a real
+  device — easily mistaken for "it silently stopped partway" (the actual
+  cause of newer, e.g. 2025/2026, rides appearing to be missing) when it was
+  simply still running. Now batches each ride's points into one transaction,
+  cutting a real-device import from 60+ minutes to a few minutes. Also
+  guarded against a second import starting while one is still running (which
+  otherwise imported the overlapping rides twice) — the import screen now
+  shows a progress state and disables its buttons while busy. See "Remove
+  duplicate rides" above for cleaning up rides a pre-fix import already
+  duplicated. Also fixed a related bug in the manual file-picker path where
+  an 80+ MB database sent as a single method-channel argument silently
+  truncated to a partial copy on a real device — it's now streamed to a
+  local file instead.
 - **Recorded distance no longer reads ~5% long from GPS jitter** — even with
   every fix passing the accuracy filter, summing the leg between *every*
   consecutive 1 Hz fix overcounted distance vs. a reference track (Komoot) with

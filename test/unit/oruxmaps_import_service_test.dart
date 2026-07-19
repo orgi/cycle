@@ -151,29 +151,6 @@ void main() {
     expect(points, hasLength(4));
   });
 
-  test(
-    'importIncomingBytes imports from raw bytes and cleans up the temp file',
-    () async {
-      final file = buildOruxFixture(tmp, withSpeedColumn: true);
-      final db = AppDatabase(NativeDatabase.memory());
-      addTearDown(db.close);
-      final service = OruxMapsImportService(
-        db,
-        const AppSettings(),
-        tempDir: () async => tmp,
-      );
-
-      final bytes = await file.readAsBytes();
-      final imported = await service.importIncomingBytes(
-        'oruxmapstracks.db',
-        bytes,
-      );
-
-      expect(imported, 1);
-      expect(await db.allTracks(), hasLength(1));
-    },
-  );
-
   test('importFrom is safe to run twice (dedups by start time)', () async {
     final file = buildOruxFixture(tmp, withSpeedColumn: true);
     final db = AppDatabase(NativeDatabase.memory());
@@ -187,6 +164,26 @@ void main() {
     expect(second, 0);
     expect(await db.allTracks(), hasLength(1));
   });
+
+  test(
+    'a second concurrent importFrom call is rejected, not run in parallel '
+    '(would otherwise double-import, since both read the same '
+    '"already imported" snapshot before either has written anything back)',
+    () async {
+      final file = buildOruxFixture(tmp, withSpeedColumn: true);
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final service = OruxMapsImportService(db, const AppSettings());
+
+      final first = service.importFrom(file.path);
+      await expectLater(
+        service.importFrom(file.path),
+        throwsA(isA<OruxMapsImportException>()),
+      );
+      expect(await first, 1);
+      expect(await db.allTracks(), hasLength(1));
+    },
+  );
 
   test(
     'importFromDeviceStorage throws a clear error when nothing is found',

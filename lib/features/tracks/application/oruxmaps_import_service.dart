@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:path_provider/path_provider.dart';
@@ -56,20 +55,42 @@ class OruxTrack {
 /// trusting OruxMaps' own segment stats, so imported rides are consistent
 /// with natively-recorded ones.
 class OruxMapsImportService {
-  OruxMapsImportService(
-    this._db,
-    this._settings, {
-    Future<Directory> Function()? tempDir,
-  }) : _tempDir = tempDir ?? getTemporaryDirectory;
+  OruxMapsImportService(this._db, this._settings);
 
   final AppDatabase _db;
   final AppSettings _settings;
-  final Future<Directory> Function() _tempDir;
+
+  // Guards against two importFrom() calls running concurrently on this
+  // instance. A full history import can take minutes (hundreds of
+  // tracks/points), and the dedup check below only reads "already imported"
+  // once per call — two overlapping calls both see the same pre-import
+  // snapshot and neither sees the other's in-flight inserts, so every track
+  // in the overlap gets imported twice. Confirmed on a real device (repeated
+  // taps on the import button while a previous import was still running
+  // produced duplicate rows for the same ride/start-time). The screen's own
+  // button-disabling is the primary defence; this is the backstop for any
+  // other caller.
+  bool _importing = false;
 
   /// Reads every track in [oruxDbPath] and merges the ones not already
   /// present (by computed start time) into the local database. Returns the
   /// number of rides imported.
   Future<int> importFrom(String oruxDbPath) async {
+    if (_importing) {
+      throw const OruxMapsImportException(
+        'An OruxMaps import is already in progress — wait for it to finish '
+        'before starting another.',
+      );
+    }
+    _importing = true;
+    try {
+      return await _importFrom(oruxDbPath);
+    } finally {
+      _importing = false;
+    }
+  }
+
+  Future<int> _importFrom(String oruxDbPath) async {
     final oruxTracks = readTracks(oruxDbPath);
     final existingStarts = (await _db.allTracks())
         .map((t) => t.startedAt)
@@ -80,30 +101,44 @@ class OruxMapsImportService {
       if (oruxTrack.points.isEmpty) continue;
       final startedAt = oruxTrack.points.first.time;
       if (existingStarts.contains(startedAt)) continue;
+      existingStarts.add(startedAt); // also guards duplicate rows within oruxDbPath itself
 
-      final id = await _db.createTrack(startedAt, name: oruxTrack.name);
-      for (final p in oruxTrack.points) {
-        await _db.addPoint(
-          TrackPointsCompanion.insert(
-            trackId: id,
-            time: p.time,
-            latitude: p.latitude,
-            longitude: p.longitude,
-            altitude: Value(p.altitudeMeters),
-            speedMps: Value(p.speedMps),
-          ),
+      // One transaction per track (not a per-point await, and not one giant
+      // transaction for the whole import): a real OruxMaps history can be
+      // hundreds of tracks/hundreds of thousands of points, and each
+      // individually-awaited insert commits (fsyncs) on its own — on a real
+      // device that made a several-hundred-track import take upwards of an
+      // hour, easily mistaken for "it silently stopped partway" when it was
+      // simply still running. Batching each track's points into one
+      // transaction cuts the commit count from one-per-point to one-per-track.
+      // Per-track (not one big transaction) so an interrupted import still
+      // keeps whatever tracks it already finished — dedup already makes
+      // re-running safe.
+      await _db.transaction(() async {
+        final id = await _db.createTrack(startedAt, name: oruxTrack.name);
+        for (final p in oruxTrack.points) {
+          await _db.addPoint(
+            TrackPointsCompanion.insert(
+              trackId: id,
+              time: p.time,
+              latitude: p.latitude,
+              longitude: p.longitude,
+              altitude: Value(p.altitudeMeters),
+              speedMps: Value(p.speedMps),
+            ),
+          );
+        }
+        final saved = await _db.pointsFor(id);
+        final metrics = computeStatsFromPoints(saved, _settings);
+        await _db.finalizeTrack(
+          id,
+          endedAt: oruxTrack.points.last.time,
+          distanceMeters: metrics.distanceMeters,
+          durationSeconds: metrics.elapsed.inSeconds,
+          avgSpeedMps: metrics.avgSpeedMps,
+          maxSpeedMps: metrics.maxSpeedMps,
         );
-      }
-      final saved = await _db.pointsFor(id);
-      final metrics = computeStatsFromPoints(saved, _settings);
-      await _db.finalizeTrack(
-        id,
-        endedAt: oruxTrack.points.last.time,
-        distanceMeters: metrics.distanceMeters,
-        durationSeconds: metrics.elapsed.inSeconds,
-        avgSpeedMps: metrics.avgSpeedMps,
-        maxSpeedMps: metrics.maxSpeedMps,
-      );
+      });
       imported++;
     }
     return imported;
@@ -213,21 +248,6 @@ class OruxMapsImportService {
       // permission denied on some subfolder — skip it
     }
     return null;
-  }
-
-  /// Imports the raw bytes of an OruxMaps track database (e.g. delivered by
-  /// "Open with Cycle" / "Share to Cycle" from a file manager) by writing them
-  /// to a temp file, importing, then deleting the temp copy. Returns the
-  /// number of rides imported.
-  Future<int> importIncomingBytes(String name, Uint8List bytes) async {
-    final dir = await _tempDir();
-    final file = File('${dir.path}/$name');
-    await file.writeAsBytes(bytes, flush: true);
-    try {
-      return await importFrom(file.path);
-    } finally {
-      if (await file.exists()) await file.delete();
-    }
   }
 
   /// Reads and parses every track from an OruxMaps db file, without touching

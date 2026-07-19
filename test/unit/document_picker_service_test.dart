@@ -13,12 +13,12 @@ void main() {
   test('returns the picked file from the native result', () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
       expect(call.method, 'pickDocument');
-      return {'name': 'oruxmapstracks.db', 'bytes': Uint8List.fromList([1, 2, 3])};
+      return {'name': 'oruxmapstracks.db', 'path': '/cache/picked_123_oruxmapstracks.db'};
     });
     final picked = await DocumentPickerService(channel).pickDocument();
     expect(picked, isNotNull);
     expect(picked!.name, 'oruxmapstracks.db');
-    expect(picked.bytes, [1, 2, 3]);
+    expect(picked.path, '/cache/picked_123_oruxmapstracks.db');
   });
 
   test('returns null when the user cancels (native returns null)', () async {
@@ -32,7 +32,7 @@ void main() {
 
   test('falls back to a default name when the native name is blank', () async {
     messenger.setMockMethodCallHandler(channel, (call) async {
-      return {'name': '', 'bytes': Uint8List.fromList([9])};
+      return {'name': '', 'path': '/cache/picked_123_file'};
     });
     final picked = await DocumentPickerService(channel).pickDocument();
     expect(picked!.name, 'file');

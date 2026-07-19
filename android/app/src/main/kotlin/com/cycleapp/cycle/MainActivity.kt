@@ -38,10 +38,11 @@ import java.io.File
  *    storage — Android 11+ otherwise blocks every other app, including file
  *    managers, from that path (see `OruxMapsImportService`'s doc comment).
  *  - `cycle/pick_document`: opens the system Storage Access Framework picker
- *    (`ACTION_OPEN_DOCUMENT`) and returns the picked file's name + bytes.
- *    Fallback for a manually-copied `oruxmapstracks.db` (e.g. pulled off
- *    OruxMaps' private folder via a PC/USB connection, since that folder is
- *    off-limits to every app including SAF itself on Android 11+) — no
+ *    (`ACTION_OPEN_DOCUMENT`) and returns the picked file's name + a path to a
+ *    cache-file copy (NOT the bytes themselves — see `onActivityResult`'s
+ *    comment). Fallback for a manually-copied `oruxmapstracks.db` (e.g. pulled
+ *    off OruxMaps' private folder via a PC/USB connection, since that folder
+ *    is off-limits to every app including SAF itself on Android 11+) — no
  *    plugin, since `file_picker` doesn't build on this project's AGP 9 setup
  *    (see CLAUDE.md's Known gotchas).
  */
@@ -63,7 +64,7 @@ class MainActivity : FlutterActivity() {
     private var pendingBackupName: String? = null
     private var pendingBackupBytes: ByteArray? = null
     private var pendingOruxName: String? = null
-    private var pendingOruxBytes: ByteArray? = null
+    private var pendingOruxPath: String? = null
     private var pendingPickResult: MethodChannel.Result? = null
 
     private var buttons: MethodChannel? = null
@@ -110,16 +111,16 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(messenger, oruxmapsChannel).setMethodCallHandler { call, result ->
             if (call.method == "consumePending") {
-                val bytes = pendingOruxBytes
-                if (bytes == null) {
+                val path = pendingOruxPath
+                if (path == null) {
                     result.success(null)
                 } else {
                     val map = mapOf(
                         "name" to (pendingOruxName ?: "oruxmapstracks.db"),
-                        "bytes" to bytes,
+                        "path" to path,
                     )
                     pendingOruxName = null
-                    pendingOruxBytes = null
+                    pendingOruxPath = null
                     result.success(map)
                 }
             } else {
@@ -304,11 +305,22 @@ class MainActivity : FlutterActivity() {
         }
         try {
             val name = displayName(uri)
-            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            if (bytes == null) {
+            // Stream straight to a cache file instead of returning bytes over the
+            // MethodChannel: a oruxmapstracks.db can be 80+ MB, and marshalling
+            // that as a single channel argument silently produced a truncated
+            // (partial) copy on a real device — the import "succeeded" but only
+            // covered the file's early portion (oldest rides), silently dropping
+            // everything after. Handing back a path lets Dart read the file
+            // directly with no size-limited transfer in between.
+            val dest = File(cacheDir, "picked_${System.currentTimeMillis()}_$name")
+            val copied = contentResolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+                true
+            } ?: false
+            if (!copied) {
                 result?.success(null)
             } else {
-                result?.success(mapOf("name" to name, "bytes" to bytes))
+                result?.success(mapOf("name" to name, "path" to dest.absolutePath))
             }
         } catch (e: Exception) {
             Log.w(TAG, "pickDocument failed to read $uri", e)
@@ -337,15 +349,30 @@ class MainActivity : FlutterActivity() {
         Log.i(TAG, "handleIntent action=${intent.action} uri=$uri")
         val name = displayName(uri)
         try {
+            if (name.endsWith(".db", ignoreCase = true)) {
+                // Stream straight to a cache file rather than reading into a
+                // ByteArray for the MethodChannel: a shared OruxMaps
+                // oruxmapstracks.db can be 80+ MB, and marshalling that as a
+                // single channel argument silently truncated the copy on a
+                // real device (see cycle/pick_document's onActivityResult
+                // comment — same root cause, same fix).
+                val dest = File(cacheDir, "incoming_${System.currentTimeMillis()}_$name")
+                val copied = contentResolver.openInputStream(uri)?.use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                    true
+                } ?: false
+                if (copied) {
+                    pendingOruxName = name
+                    pendingOruxPath = dest.absolutePath
+                    Log.i(TAG, "handleIntent copied oruxmaps db name=$name to ${dest.absolutePath}")
+                }
+                return
+            }
             val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return
             if (name.endsWith(".sqlite", ignoreCase = true)) {
                 pendingBackupName = name
                 pendingBackupBytes = bytes
                 Log.i(TAG, "handleIntent read ${bytes.size} bytes backup name=$name")
-            } else if (name.endsWith(".db", ignoreCase = true)) {
-                pendingOruxName = name
-                pendingOruxBytes = bytes
-                Log.i(TAG, "handleIntent read ${bytes.size} bytes oruxmaps db name=$name")
             } else {
                 pendingXml = String(bytes, Charsets.UTF_8)
                 pendingName = name.replace(Regex("\\.gpx$", RegexOption.IGNORE_CASE), "")

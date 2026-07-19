@@ -143,6 +143,40 @@ void main() {
     expect(track!.distanceMeters, lessThan(200));
   });
 
+  testWidgets('removes duplicate rides after confirmation', (tester) async {
+    final store = FakeSettingsStore();
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final startedAt = DateTime(2026, 1, 1);
+    final kept = await db.createTrack(startedAt);
+    await db.createTrack(startedAt); // duplicate, same start time
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+          appDatabaseProvider.overrideWithValue(db),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('removeDuplicatesTile')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('removeDuplicatesTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('removeDuplicatesConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Removed 1 duplicate ride'), findsOneWidget);
+    final remaining = await db.allTracks();
+    expect(remaining.map((t) => t.id), [kept]);
+  });
+
   testWidgets('bike profiles tile summarises the active profile', (tester) async {
     final store = FakeSettingsStore();
     const seeded = BikeProfilesState(

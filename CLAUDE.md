@@ -378,19 +378,52 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     plugin-free SAF (`ACTION_OPEN_DOCUMENT`) picker is wired natively: `cycle/pick_document`
     in `MainActivity.kt` (`startActivityForResult`/`onActivityResult`, no plugin) →
     `lib/core/services/document_picker_service.dart` → a **"Pick database file"** button on
-    the import screen feeding the already-existing `importIncomingBytes`. The screen's
-    instructions tell users to copy `oruxmapstracks.db` out via a PC/USB connection (or any
-    file manager that *can* browse it) into an ordinary folder like Downloads, then pick that
-    copy — verified end-to-end on a real device (Galaxy A33) by simulating exactly that:
-    `adb`-pulling the on-device db (via its group-readable `.backup` file — the live db is
-    owner-only 600, the rotating `.backup`/`.backup2` are 660 — since even `adb shell`'s
-    `cat` was blocked on the primary file by the same OS-level restriction as the app itself,
-    though `ls` still listed it) to the host, `adb push`ing it back into `/sdcard/Download/`
-    to stand in for a manual copy, then driving the actual picker UI (`am start` +
-    `input tap`/`swipe`, bounds read via `uiautomator dump` — screenshot pixel coords need
-    ×1.2 to map to real device coords, `uiautomator` bounds don't) through the system Files
-    app to select it; the imported rides (dated back to 2023, matching the source db) showed
-    up correctly in the Rides list afterward.
+    the import screen. The screen's instructions tell users to copy `oruxmapstracks.db` out
+    via a PC/USB connection (or any file manager that *can* browse it) into an ordinary
+    folder like Downloads, then pick that copy. Both this and the share-intent path
+    (`cycle/incoming_oruxmaps`) hand Dart a **path to a native cache-file copy, not raw
+    bytes** — an early version returned the picked file's bytes as a single MethodChannel
+    argument, which for an 80+ MB `oruxmapstracks.db` produced a **silently truncated**
+    in-memory copy on a real device (the import "succeeded" but only covered the file's
+    oldest rides, since it only got partway through before the transfer broke down);
+    streaming straight to a cache file on the native side and handing back the path avoids
+    marshalling the whole file through the channel at all.
+  * **Import performance: one transaction per track, not one commit per point.**
+    `OruxMapsImportService.importFrom`'s per-track/per-point insert loop originally awaited
+    each `createTrack`/`addPoint`/`finalizeTrack` call individually, with **no transaction**
+    wrapping them — every insert commits (fsyncs) on its own. A real multi-year OruxMaps
+    history (hundreds of tracks, hundreds of thousands of points) made this take **well over
+    an hour** on a real device, which looked indistinguishable from "the import silently
+    stopped partway" if you checked before it finished (this is what actually produced the
+    apparent "missing 2025/2026 rides" bug report — the import hadn't stopped, it just
+    hadn't gotten there yet). Wrapping each **track's** inserts in one `_db.transaction()`
+    (not one giant transaction for the whole import, so an interrupted run still keeps
+    whatever it already finished) cut the same real-device import from 60+ minutes to
+    ~3.5 minutes.
+  * **Concurrent imports double-insert — guarded at both the UI and service layer.**
+    `importFrom`'s dedup reads "already imported" once per call; two overlapping calls (e.g.
+    a double-tap, or an impatient re-tap on the several-minutes-long import before it
+    finishes) both see the same pre-import snapshot and neither sees the other's in-flight
+    inserts, so every track in the overlap gets imported twice — confirmed on a real device
+    (duplicate rows, same ride/start-time, after re-triggering the picker while a previous
+    import was still running). `OruxMapsImportScreen` now shows a progress indicator and
+    disables its import buttons while `_isImporting`; `OruxMapsImportService` itself also
+    throws if a second `importFrom` is called while one is already in flight, as a backstop
+    for any other caller. See "Remove duplicate rides" below for cleaning up duplicates a
+    pre-fix import already left behind.
+    Verified end-to-end on a real device (Galaxy A33) by simulating a user's manual-copy
+    workflow: `adb`-pulling the on-device OruxMaps db (via its group-readable `.backup`
+    file — the live db is owner-only 600, the rotating `.backup`/`.backup2` are 660, and
+    even `adb shell`'s `cat` was blocked on the primary file by the same OS-level
+    restriction as the app itself, though `ls` still listed it) to the host, `adb push`ing
+    it back into `/sdcard/Download/` to stand in for a manual copy, then driving the actual
+    picker UI (`am start` + `input tap`/`swipe`, bounds read via `uiautomator dump` —
+    screenshot pixel coords need ×1.2 to map to real device coords, `uiautomator` bounds
+    don't) through the system Files app to select it, and cross-checking the result via a
+    fresh **Backup & restore → Export backup** pulled and inspected directly (`sqlite3`) —
+    confirming the full 746/746 tracks (2023 through 2026) landed with zero duplicates
+    after the fix, versus a silently-still-running partial import and later duplicate rows
+    before it.
   * **Per-track GPX (no permission needed).** OruxMaps' own Track Manager can Export/Share a
     single ride as a `.gpx`, which — since OruxMaps owns that file — it can share directly
     regardless of the storage restriction above. `lib/features/tracks/application/gpx_ride_import_service.dart`
@@ -406,6 +439,11 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   the result, without touching the points. For rides recorded before a change to
   `RideMetricsAccumulator`'s maths (e.g. the speed-integration distance fix above) so old
   rides read consistently with new ones — a one-tap, on-device fix, no adb/DB surgery needed.
+* **Remove duplicate rides** (Settings → Data): `removeDuplicateTracks` (`track_repair.dart`)
+  groups rides by exact start time and deletes every copy but the first-inserted (lowest id)
+  one. Added alongside the OruxMaps import concurrency fix above, to clean up duplicates a
+  pre-fix (or a future double-tapped) import already left behind — a one-tap, on-device fix,
+  no adb/DB surgery needed. Safe to run any time; a no-op with no duplicates present.
 * **Bike profiles** — record against different bicycles and view stats per bike or in
   total, without a pop-up on every ride. `BikeProfile` (`lib/core/models/bike_profile.dart`,
   `id`/`name`/`colorArgb`, colours from `kBikeProfileColors`) + `BikeProfilesState`

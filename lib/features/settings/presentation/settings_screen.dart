@@ -169,6 +169,15 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _recalculateDistances(context, ref),
           ),
+          ListTile(
+            key: const Key('removeDuplicatesTile'),
+            leading: const Icon(Icons.content_copy),
+            title: const Text('Remove duplicate rides'),
+            subtitle: const Text(
+              'Fixes rides imported twice by an overlapping OruxMaps import',
+            ),
+            onTap: () => _removeDuplicates(context, ref),
+          ),
           const Divider(),
           const _Header('About'),
           const ListTile(
@@ -219,6 +228,45 @@ class SettingsScreen extends ConsumerWidget {
     ref.invalidate(tracksProvider);
     messenger.showSnackBar(
       SnackBar(content: Text('Recalculated $n ride${n == 1 ? '' : 's'}')),
+    );
+  }
+
+  Future<void> _removeDuplicates(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove duplicate rides?'),
+        content: const Text(
+          'Removes rides that share the exact same start time as another '
+          'ride, keeping the first-recorded copy of each — safe to run any '
+          'time, and a no-op if you have no duplicates. Use this if an '
+          'OruxMaps import ran twice at once (e.g. tapped again before a '
+          'slow import finished) and left duplicate rides behind.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('removeDuplicatesConfirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final n = await removeDuplicateTracks(ref.read(appDatabaseProvider));
+    ref.invalidate(tracksProvider);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          n == 0 ? 'No duplicates found' : 'Removed $n duplicate ride${n == 1 ? '' : 's'}',
+        ),
+      ),
     );
   }
 

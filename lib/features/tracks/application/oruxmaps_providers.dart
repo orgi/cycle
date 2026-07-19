@@ -61,8 +61,6 @@ class OruxMapsImportController extends Notifier<void> {
         .read(incomingOruxMapsServiceProvider)
         .consumePending();
     if (incoming == null) return null;
-    return ref
-        .read(oruxMapsImportServiceProvider)
-        .importIncomingBytes(incoming.name, incoming.bytes);
+    return ref.read(oruxMapsImportServiceProvider).importFrom(incoming.path);
   }
 }

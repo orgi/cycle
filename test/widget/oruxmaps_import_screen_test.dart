@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:cycle/core/services/document_picker_service.dart';
 import 'package:cycle/core/services/file_access_service.dart';
 import 'package:cycle/core/services/incoming_oruxmaps_service.dart';
@@ -28,17 +26,14 @@ class _FakeOruxMapsImportService implements OruxMapsImportService {
   _FakeOruxMapsImportService(this._result, {this.deviceStorageError});
   final int _result;
   final Object? deviceStorageError;
-  int incomingCalls = 0;
+  int importFromCalls = 0;
   int deviceStorageCalls = 0;
 
   @override
-  Future<int> importIncomingBytes(String name, Uint8List bytes) async {
-    incomingCalls++;
+  Future<int> importFrom(String oruxDbPath) async {
+    importFromCalls++;
     return _result;
   }
-
-  @override
-  Future<int> importFrom(String oruxDbPath) async => _result;
 
   @override
   Future<int> importFromDeviceStorage() async {
@@ -187,7 +182,7 @@ void main() {
           oruxMapsImportServiceProvider.overrideWithValue(importer),
           documentPickerServiceProvider.overrideWithValue(
             _FakeDocumentPickerService(
-              PickedDocument(name: 'oruxmapstracks.db', bytes: Uint8List(0)),
+              PickedDocument(name: 'oruxmapstracks.db', path: '/tmp/oruxmapstracks.db'),
             ),
           ),
         ],
@@ -203,7 +198,7 @@ void main() {
     await tester.tap(find.byKey(const Key('pickOruxmapsFileButton')));
     await tester.pumpAndSettle();
 
-    expect(importer.incomingCalls, 1);
+    expect(importer.importFromCalls, 1);
     expect(find.text('Imported 4 rides from OruxMaps'), findsOneWidget);
   });
 
@@ -232,12 +227,12 @@ void main() {
     await tester.tap(find.byKey(const Key('pickOruxmapsFileButton')));
     await tester.pumpAndSettle();
 
-    expect(importer.incomingCalls, 0);
+    expect(importer.importFromCalls, 0);
   });
 
   testWidgets('a shared db is imported via the manual check', (tester) async {
     final incoming = _FakeIncomingOruxMapsService(
-      IncomingOruxMapsDb(name: 'oruxmapstracks.db', bytes: Uint8List(0)),
+      IncomingOruxMapsDb(name: 'oruxmapstracks.db', path: '/tmp/oruxmapstracks.db'),
     );
     final importer = _FakeOruxMapsImportService(2);
 
@@ -262,7 +257,7 @@ void main() {
     await tester.tap(find.byKey(const Key('checkOruxmapsImportButton')));
     await tester.pumpAndSettle();
 
-    expect(importer.incomingCalls, 1);
+    expect(importer.importFromCalls, 1);
     expect(find.text('Imported 2 rides from OruxMaps'), findsOneWidget);
   });
 }
