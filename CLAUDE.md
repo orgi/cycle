@@ -26,6 +26,11 @@ Target use case:
   * Possible to start/stop track using physical buttons (where possible)
   * Local database for storing all tracks
 
+## Versioning
+
+For all builds that will be installed on the device, make sure to strictly follow semantic versioning. Also, every build MUST ALWAYS increase the build number.
+Also, a changelog has to be maintained.
+
 ## Testing
 
 Every feature, bugfix other other changes to the source code ALWAYS needs to be tested.
