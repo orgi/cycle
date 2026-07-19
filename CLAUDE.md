@@ -345,9 +345,10 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).
 * **OruxMaps import** (Settings → Data → "Import from OruxMaps",
   `oruxmaps_import_screen.dart`). `lib/features/tracks/application/oruxmaps_import_service.dart`
-  reads OruxMaps' `oruxmapstracks.db` (SQLite, `tracks`/`segments`/`trackpoints`, schema
-  unverified against a real device export — built against the one confirmed by
-  github.com/wolfgangasdf/oruxtool; see the file's doc comment) and merges its rides into
+  reads OruxMaps' `oruxmapstracks.db` (SQLite, `tracks`/`segments`/`trackpoints`; the
+  position/time columns match the schema confirmed by github.com/wolfgangasdf/oruxtool, but
+  heart rate/cadence/speed are packed into a `trkptsen` BLOB that reader doesn't document —
+  see the sensor-decoding bullet below, and the file's doc comment) and merges its rides into
   Cycle's own database with the same "safe to run twice" start-time dedup as
   `BackupService.importBackup`. Distance/duration/avg/max are **recomputed** with
   `computeStatsFromPoints` rather than trusting OruxMaps' own segment stats. Entirely on-device,
@@ -424,6 +425,32 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     confirming the full 746/746 tracks (2023 through 2026) landed with zero duplicates
     after the fix, versus a silently-still-running partial import and later duplicate rows
     before it.
+  * **Heart rate/cadence: packed into a `trkptsen` BLOB, not named columns.** A real device
+    export's `trackpoints` table has no `heartrate`/`cadence`/`power` columns at all — an
+    earlier version of this importer only looked for named columns (plus a doc comment
+    claiming it read them "opportunistically", which was aspirational text that was never
+    actually implemented) and so silently imported zero sensor data, even though the source
+    had plenty. Reverse engineered against a real 746-track/420k-point export
+    (`_decodeSensorBlob`): `trkptsen` is always exactly 16 bytes, four **big-endian
+    float32s** `[heartRateBpm, cadenceRpm, temperatureCelsius, speedMps]`, `-1.0` as the "no
+    data" sentinel (confirmed against real ranges: heart rate 56–181 with never exactly 0,
+    cadence 0–~90 with genuine zeros while coasting) and thermodynamic absolute zero
+    (-273.15°C) as temperature's sentinel (never populated in this export — no temperature
+    sensor was ever paired). The blob's own speed is preferred over any named speed column
+    too, since the real export had no separate speed column either (so speed was *also*
+    silently never imported before this). Power isn't present in this blob at all — may
+    simply not have been recorded for a rider with no power meter, unconfirmed either way.
+    **Backfill for rides imported before this fix:** `importFrom` no longer just skips a
+    track it's already seen — for an existing match (same start time) it now runs
+    `_backfillSensorData`, filling in heart rate/cadence on that ride's already-saved points
+    (matched 1:1 by position, existing non-null values left alone) via a new
+    `AppDatabase.updatePointSensor`. So re-running "Pick database file" / "Import OruxMaps
+    database now" after upgrading past this fix repairs already-imported rides too, not just
+    new ones — `importFrom`'s return changed from a plain `int` to `({int imported, int
+    backfilledRides})`, and `summarizeOruxImport` (shared by the import screen and the
+    incoming-share auto-import) surfaces both counts, so a re-run that finds nothing new to
+    import but fixes 746 existing rides doesn't read as "No new rides" with no other
+    indication anything happened.
   * **Per-track GPX (no permission needed).** OruxMaps' own Track Manager can Export/Share a
     single ride as a `.gpx`, which — since OruxMaps owns that file — it can share directly
     regardless of the storage restriction above. `lib/features/tracks/application/gpx_ride_import_service.dart`

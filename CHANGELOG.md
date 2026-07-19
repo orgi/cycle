@@ -109,6 +109,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   an 80+ MB database sent as a single method-channel argument silently
   truncated to a partial copy on a real device — it's now streamed to a
   local file instead.
+- **OruxMaps import now actually brings in heart rate and cadence** —
+  OruxMaps packs those into a binary blob the importer wasn't reading at
+  all (it only looked for named columns, which don't exist for these on a
+  real export), so every previous import silently added zero sensor data
+  even though the source had it. Re-running the import (Settings →
+  "Import from OruxMaps") after updating backfills heart rate/cadence onto
+  rides you already imported, not just new ones — you don't need to
+  re-import from scratch.
 - **Recorded distance no longer reads ~5% long from GPS jitter** — even with
   every fix passing the accuracy filter, summing the leg between *every*
   consecutive 1 Hz fix overcounted distance vs. a reference track (Komoot) with

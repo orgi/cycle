@@ -54,9 +54,9 @@ class OruxMapsImportController extends Notifier<void> {
   @override
   void build() {}
 
-  /// Returns the number of rides imported, or null when there was nothing
+  /// Returns the import/backfill result, or null when there was nothing
   /// pending (no incoming db / no native handler on this platform).
-  Future<int?> importIncomingIfAny() async {
+  Future<({int imported, int backfilledRides})?> importIncomingIfAny() async {
     final incoming = await ref
         .read(incomingOruxMapsServiceProvider)
         .consumePending();

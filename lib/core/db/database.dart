@@ -93,6 +93,21 @@ class AppDatabase extends _$AppDatabase {
   Future<void> addPoint(TrackPointsCompanion point) =>
       into(trackPoints).insert(point);
 
+  /// Backfills a single point's heart rate/cadence — used to add sensor data
+  /// to already-imported OruxMaps rides (see `OruxMapsImportService`'s
+  /// backfill pass) without touching position/altitude/speed or re-importing
+  /// the whole ride.
+  Future<void> updatePointSensor(
+    int pointId, {
+    int? heartRate,
+    double? cadenceRpm,
+  }) => (update(trackPoints)..where((p) => p.id.equals(pointId))).write(
+    TrackPointsCompanion(
+      heartRate: Value(heartRate),
+      cadenceRpm: Value(cadenceRpm),
+    ),
+  );
+
   Future<void> finalizeTrack(
     int trackId, {
     required DateTime endedAt,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/oruxmaps_import_service.dart';
 import '../application/oruxmaps_providers.dart';
 import '../application/track_providers.dart';
 
@@ -183,7 +184,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _isImporting = true);
     try {
-      final imported = await ref
+      final result = await ref
           .read(oruxMapsImportServiceProvider)
           .importFromDeviceStorage();
       if (!mounted) return;
@@ -191,9 +192,10 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            imported == 0
-                ? 'No new rides in that OruxMaps database'
-                : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+            summarizeOruxImport(
+              imported: result.imported,
+              backfilledRides: result.backfilledRides,
+            ),
           ),
         ),
       );
@@ -210,7 +212,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     if (picked == null) return; // cancelled, or no native handler
     setState(() => _isImporting = true);
     try {
-      final imported = await ref
+      final result = await ref
           .read(oruxMapsImportServiceProvider)
           .importFrom(picked.path);
       if (!mounted) return;
@@ -218,9 +220,10 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            imported == 0
-                ? 'No new rides in that OruxMaps database'
-                : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+            summarizeOruxImport(
+              imported: result.imported,
+              backfilledRides: result.backfilledRides,
+            ),
           ),
         ),
       );
@@ -234,9 +237,9 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
   Future<void> _checkShared(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _isImporting = true);
-    int? imported;
+    ({int imported, int backfilledRides})? result;
     try {
-      imported = await ref
+      result = await ref
           .read(oruxMapsImportControllerProvider.notifier)
           .importIncomingIfAny();
     } catch (e) {
@@ -245,7 +248,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     } finally {
       if (mounted) setState(() => _isImporting = false);
     }
-    if (imported == null) {
+    if (result == null) {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
@@ -259,9 +262,10 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          imported == 0
-              ? 'No new rides in that OruxMaps database'
-              : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+          summarizeOruxImport(
+            imported: result.imported,
+            backfilledRides: result.backfilledRides,
+          ),
         ),
       ),
     );

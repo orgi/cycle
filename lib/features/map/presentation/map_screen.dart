@@ -16,6 +16,7 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../tracks/application/oruxmaps_import_service.dart';
 import '../../tracks/application/oruxmaps_providers.dart';
 import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
@@ -233,21 +234,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
   /// (e.g. "Open with Cycle" from a file manager — no PC/adb needed).
   Future<void> _checkIncomingOruxMaps() async {
     if (!mounted) return;
-    int? imported;
+    ({int imported, int backfilledRides})? result;
     try {
-      imported = await ref
+      result = await ref
           .read(oruxMapsImportControllerProvider.notifier)
           .importIncomingIfAny();
     } on Object catch (_) {
       return;
     }
-    if (imported != null && mounted) {
+    if (result != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            imported == 0
-                ? 'No new rides in that OruxMaps database'
-                : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+            summarizeOruxImport(
+              imported: result.imported,
+              backfilledRides: result.backfilledRides,
+            ),
           ),
         ),
       );

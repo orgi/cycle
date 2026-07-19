@@ -1,13 +1,36 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 import '../../../core/db/database.dart';
-import '../../../core/models/geo_sample.dart';
 import '../../../core/services/settings/app_settings.dart';
 import 'track_repair.dart';
+
+/// Human-readable summary of an [OruxMapsImportService.importFrom] result —
+/// surfaces backfilled rides too, not just newly-imported ones, since a
+/// re-run after upgrading past the sensor-data-decoding fix reports 0 newly
+/// imported (everything was already there) but may have just fixed missing
+/// heart rate/cadence on every existing ride. Shared between the import
+/// screen and the incoming-share auto-import on the map screen.
+String summarizeOruxImport({
+  required int imported,
+  required int backfilledRides,
+}) {
+  if (imported == 0 && backfilledRides == 0) {
+    return 'No new rides in that OruxMaps database';
+  }
+  if (backfilledRides == 0) {
+    return 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps';
+  }
+  final parts = [
+    if (imported > 0) '$imported ride${imported == 1 ? '' : 's'}',
+    '$backfilledRides existing ride${backfilledRides == 1 ? '' : 's'} updated with sensor data',
+  ];
+  return 'Imported ${parts.join(', ')}';
+}
 
 /// Raised on a file/schema problem reading an OruxMaps export.
 class OruxMapsImportException implements Exception {
@@ -17,12 +40,37 @@ class OruxMapsImportException implements Exception {
   String toString() => 'OruxMapsImportException: $message';
 }
 
+/// One GPS+sensor sample from an OruxMaps track, before it's been merged
+/// into Cycle's database. Not [GeoSample] — that type is shared with the
+/// live-recording path and deliberately carries no sensor fields, whereas
+/// OruxMaps points can (see [OruxTrack]'s doc comment on the `trkptsen`
+/// blob format).
+class OruxTrackPoint {
+  const OruxTrackPoint({
+    required this.latitude,
+    required this.longitude,
+    required this.time,
+    this.altitudeMeters,
+    this.speedMps,
+    this.heartRate,
+    this.cadenceRpm,
+  });
+
+  final double latitude;
+  final double longitude;
+  final DateTime time;
+  final double? altitudeMeters;
+  final double? speedMps;
+  final int? heartRate;
+  final double? cadenceRpm;
+}
+
 /// One track read from an OruxMaps `oruxmapstracks.db` export, before it's
 /// been merged into Cycle's database.
 class OruxTrack {
   const OruxTrack({required this.name, required this.points});
   final String name;
-  final List<GeoSample> points;
+  final List<OruxTrackPoint> points;
 }
 
 /// Reads OruxMaps' SQLite track database and merges its rides into Cycle's
@@ -46,11 +94,24 @@ class OruxTrack {
 /// how drift returns already-stored timestamps — a UTC-tagged and a
 /// local-tagged `DateTime` for the same instant are not `==` in Dart, which
 /// would silently break the Set-based dedup in [importFrom]. That reader's
-/// schema has no heart
-/// rate/cadence/power/speed columns at the trackpoint level — this importer
-/// reads them opportunistically (by trying a short list of plausible column
-/// names via `PRAGMA table_info`) in case a newer OruxMaps version added
-/// them, but that hasn't been confirmed either. Distance/duration/avg/max are
+/// schema has no heart rate/cadence/power/speed *columns* at the trackpoint
+/// level, but a real device export does carry them — packed into a
+/// `trkptsen` (`BLOB`) column the oruxtool reader doesn't document. Reverse
+/// engineered from a real 746-track, 420k-point export (`_decodeSensorBlob`):
+/// always exactly 16 bytes, four **big-endian 32-bit floats**
+/// `[heartRateBpm, cadenceRpm, temperatureCelsius, speedMps]`, with `-1.0` as
+/// the "no data" sentinel for the first/second/fourth fields (confirmed
+/// against real ranges: heart rate 56–181 with zero occurrences of exactly
+/// 0, cadence 0–~90 with genuine zeros while coasting) and (thermodynamic)
+/// absolute zero (-273.15°C) as temperature's sentinel — this device's
+/// export never has a real temperature reading, so it's decoded but unused.
+/// A handful (6 of 420k) of implausible cadence spikes (sensor glitches) are
+/// passed through as-is, same as any other sensor noise. Power isn't present
+/// in this blob at all — OruxMaps may simply not have recorded it for a
+/// rider with no power meter, or a newer/older export version could differ;
+/// unconfirmed either way. Altitude and speed *also* still fall back to
+/// plausibly-named columns (`trkptalt`/`trkptspeed`/…) if present, for
+/// exports that predate or don't use the blob. Distance/duration/avg/max are
 /// **recomputed** with Cycle's own [computeStatsFromPoints] rather than
 /// trusting OruxMaps' own segment stats, so imported rides are consistent
 /// with natively-recorded ones.
@@ -73,9 +134,16 @@ class OruxMapsImportService {
   bool _importing = false;
 
   /// Reads every track in [oruxDbPath] and merges the ones not already
-  /// present (by computed start time) into the local database. Returns the
-  /// number of rides imported.
-  Future<int> importFrom(String oruxDbPath) async {
+  /// present (by computed start time) into the local database; for a track
+  /// that's already present, backfills any heart rate/cadence the original
+  /// import missed instead of skipping it outright (see
+  /// [_backfillSensorData]) — so re-running this after upgrading past the
+  /// fix for that gap fixes already-imported rides too, not just new ones.
+  /// [imported] is the number of new rides added; [backfilledRides] is the
+  /// number of already-present rides that got sensor data filled in.
+  Future<({int imported, int backfilledRides})> importFrom(
+    String oruxDbPath,
+  ) async {
     if (_importing) {
       throw const OruxMapsImportException(
         'An OruxMaps import is already in progress — wait for it to finish '
@@ -90,18 +158,51 @@ class OruxMapsImportService {
     }
   }
 
-  Future<int> _importFrom(String oruxDbPath) async {
+  Future<({int imported, int backfilledRides})> _importFrom(
+    String oruxDbPath,
+  ) async {
     final oruxTracks = readTracks(oruxDbPath);
-    final existingStarts = (await _db.allTracks())
-        .map((t) => t.startedAt)
-        .toSet();
+    // Keyed by second-truncated time: drift's DateTimeColumn stores as a
+    // unix-seconds integer, silently dropping the millisecond component —
+    // so a track already round-tripped through the database always comes
+    // back with :000ms, while OruxMaps' own timestamps are genuinely
+    // sub-second. Comparing untruncated caused every dedup/backfill match to
+    // miss (confirmed on a real device: a backfill run against an
+    // already-imported 746-track history matched 0 of them and re-inserted
+    // all 741 non-already-round rides as brand-new duplicates instead).
+    // Only the matching *key* is truncated — points keep their real
+    // timestamps for distance/duration math.
+    final existingByStart = {
+      for (final t in await _db.allTracks())
+        _truncateToSeconds(t.startedAt): t,
+    };
+    // Guards duplicate rows within oruxDbPath itself, and against
+    // re-processing a track this same run already handled (insert or
+    // backfill) — existingByStart alone isn't enough for that second case,
+    // since a freshly-inserted track's id isn't known until after its own
+    // transaction commits.
+    final claimedThisRun = <DateTime>{};
 
     var imported = 0;
+    var backfilledRides = 0;
     for (final oruxTrack in oruxTracks) {
       if (oruxTrack.points.isEmpty) continue;
       final startedAt = oruxTrack.points.first.time;
-      if (existingStarts.contains(startedAt)) continue;
-      existingStarts.add(startedAt); // also guards duplicate rows within oruxDbPath itself
+      final startedAtKey = _truncateToSeconds(startedAt);
+      if (claimedThisRun.contains(startedAtKey)) continue;
+      claimedThisRun.add(startedAtKey);
+
+      // Already imported (by a run before this fix added sensor decoding,
+      // or just a normal re-run): backfill any heart rate/cadence the
+      // earlier import missed, rather than skipping outright. Existing
+      // non-null values are left alone — this only fills gaps.
+      final existingTrack = existingByStart[startedAtKey];
+      if (existingTrack != null) {
+        if (await _backfillSensorData(existingTrack.id, oruxTrack.points)) {
+          backfilledRides++;
+        }
+        continue;
+      }
 
       // One transaction per track (not a per-point await, and not one giant
       // transaction for the whole import): a real OruxMaps history can be
@@ -125,6 +226,8 @@ class OruxMapsImportService {
               longitude: p.longitude,
               altitude: Value(p.altitudeMeters),
               speedMps: Value(p.speedMps),
+              heartRate: Value(p.heartRate),
+              cadenceRpm: Value(p.cadenceRpm),
             ),
           );
         }
@@ -141,7 +244,46 @@ class OruxMapsImportService {
       });
       imported++;
     }
-    return imported;
+    return (imported: imported, backfilledRides: backfilledRides);
+  }
+
+  /// Fills in missing heart rate/cadence on an already-imported track's
+  /// points, matched 1:1 by position against [oruxPoints] (both lists are
+  /// ordered by time, and were the same length when first imported since
+  /// they came from the same source rows) — existing non-null values are
+  /// left untouched. Silently skips if the point counts don't match (e.g.
+  /// the ride was hand-edited since import); this is a best-effort backfill,
+  /// not something to fail the whole import over. Returns whether anything
+  /// was actually updated.
+  Future<bool> _backfillSensorData(
+    int trackId,
+    List<OruxTrackPoint> oruxPoints,
+  ) async {
+    final dbPoints = await _db.pointsFor(trackId);
+    if (dbPoints.length != oruxPoints.length) return false;
+
+    final updates = <(int id, int? heartRate, double? cadenceRpm)>[];
+    for (var i = 0; i < dbPoints.length; i++) {
+      final dbPoint = dbPoints[i];
+      final oruxPoint = oruxPoints[i];
+      final heartRate = dbPoint.heartRate ?? oruxPoint.heartRate;
+      final cadenceRpm = dbPoint.cadenceRpm ?? oruxPoint.cadenceRpm;
+      if (heartRate != dbPoint.heartRate || cadenceRpm != dbPoint.cadenceRpm) {
+        updates.add((dbPoint.id, heartRate, cadenceRpm));
+      }
+    }
+    if (updates.isEmpty) return false;
+
+    await _db.transaction(() async {
+      for (final (id, heartRate, cadenceRpm) in updates) {
+        await _db.updatePointSensor(
+          id,
+          heartRate: heartRate,
+          cadenceRpm: cadenceRpm,
+        );
+      }
+    });
+    return true;
   }
 
   /// Searches this device's storage volumes for OruxMaps' own track
@@ -189,7 +331,7 @@ class OruxMapsImportService {
   /// (no share-sheet round trip) — needs "All files access" granted first
   /// (`FileAccessService`). Throws [OruxMapsImportException] if the database
   /// can't be found.
-  Future<int> importFromDeviceStorage() async {
+  Future<({int imported, int backfilledRides})> importFromDeviceStorage() async {
     final file = await findDatabaseOnDevice();
     if (file == null) {
       throw const OruxMapsImportException(
@@ -300,6 +442,7 @@ class OruxMapsImportService {
       'speed',
       'ptspeed',
     ]);
+    final sensorCol = _firstPresent(pointColumns, ['trkptsen']);
 
     final tracks = db.select(
       'SELECT _id, trackname, trackfechaini FROM tracks ORDER BY trackfechaini ASC',
@@ -314,13 +457,14 @@ class OruxMapsImportService {
         'SELECT _id FROM segments WHERE segtrack = ? ORDER BY segfechaini ASC',
         [trackId],
       );
-      final points = <GeoSample>[];
+      final points = <OruxTrackPoint>[];
       for (final segment in segmentRows) {
         final segId = segment['_id'] as int;
         final ptRows = db.select(
           'SELECT trkptlat, trkptlon'
           '${altCol != null ? ', $altCol AS alt' : ''}'
           '${speedCol != null ? ', $speedCol AS spd' : ''}'
+          '${sensorCol != null ? ', $sensorCol AS sen' : ''}'
           ', trkpttime FROM trackpoints WHERE trkptseg = ? ORDER BY trkpttime ASC',
           [segId],
         );
@@ -329,8 +473,11 @@ class OruxMapsImportService {
           final lon = p['trkptlon'] as num?;
           final timeMs = p['trkpttime'] as int?;
           if (lat == null || lon == null || timeMs == null) continue;
+          final sensor = sensorCol != null
+              ? _decodeSensorBlob(p['sen'] as Uint8List?)
+              : null;
           points.add(
-            GeoSample(
+            OruxTrackPoint(
               latitude: lat.toDouble(),
               longitude: lon.toDouble(),
               // Local, not UTC: matches how drift returns stored DateTimes
@@ -342,9 +489,15 @@ class OruxMapsImportService {
               altitudeMeters: altCol != null
                   ? (p['alt'] as num?)?.toDouble()
                   : null,
-              speedMps: speedCol != null
-                  ? (p['spd'] as num?)?.toDouble()
-                  : null,
+              // The blob's own speed (when present) is preferred over a
+              // named column: on a real device export there was no separate
+              // speed column at all (speedCol stayed null), so without this
+              // no speed was ever imported despite the data existing.
+              speedMps:
+                  sensor?.speedMps ??
+                  (speedCol != null ? (p['spd'] as num?)?.toDouble() : null),
+              heartRate: sensor?.heartRateBpm,
+              cadenceRpm: sensor?.cadenceRpm,
             ),
           );
         }
@@ -370,4 +523,38 @@ class OruxMapsImportService {
     }
     return null;
   }
+
+  /// Decodes a `trkptsen` blob — always exactly 16 bytes on a real device
+  /// export, four big-endian float32s `[heartRateBpm, cadenceRpm,
+  /// temperatureCelsius, speedMps]`, `-1.0`/absolute-zero as "no data" — see
+  /// this class's doc comment for how that was reverse engineered. Returns
+  /// null for a missing/malformed blob (e.g. wrong length, an older/newer
+  /// OruxMaps export using a different sensor-blob format).
+  static _OruxSensorReading? _decodeSensorBlob(Uint8List? blob) {
+    if (blob == null || blob.length != 16) return null;
+    final data = ByteData.sublistView(blob);
+    final heartRate = data.getFloat32(0, Endian.big);
+    final cadence = data.getFloat32(4, Endian.big);
+    final speed = data.getFloat32(12, Endian.big);
+    return _OruxSensorReading(
+      heartRateBpm: heartRate == -1.0 ? null : heartRate.round(),
+      cadenceRpm: cadence == -1.0 ? null : cadence,
+      speedMps: speed == -1.0 ? null : speed,
+    );
+  }
+
+  /// Drops the millisecond component to match drift's `DateTimeColumn`
+  /// storage precision (unix seconds) — see [_importFrom]'s comment on why
+  /// this matters for dedup/backfill matching.
+  static DateTime _truncateToSeconds(DateTime dt) =>
+      DateTime.fromMillisecondsSinceEpoch(
+        (dt.millisecondsSinceEpoch ~/ 1000) * 1000,
+      );
+}
+
+class _OruxSensorReading {
+  const _OruxSensorReading({this.heartRateBpm, this.cadenceRpm, this.speedMps});
+  final int? heartRateBpm;
+  final double? cadenceRpm;
+  final double? speedMps;
 }

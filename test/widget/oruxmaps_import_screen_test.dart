@@ -23,20 +23,27 @@ class _FakeIncomingOruxMapsService implements IncomingOruxMapsService {
 }
 
 class _FakeOruxMapsImportService implements OruxMapsImportService {
-  _FakeOruxMapsImportService(this._result, {this.deviceStorageError});
-  final int _result;
+  _FakeOruxMapsImportService(
+    int imported, {
+    this.backfilledRides = 0,
+    this.deviceStorageError,
+  }) : _result = (imported: imported, backfilledRides: backfilledRides);
+  final ({int imported, int backfilledRides}) _result;
+  final int backfilledRides;
   final Object? deviceStorageError;
   int importFromCalls = 0;
   int deviceStorageCalls = 0;
 
   @override
-  Future<int> importFrom(String oruxDbPath) async {
+  Future<({int imported, int backfilledRides})> importFrom(
+    String oruxDbPath,
+  ) async {
     importFromCalls++;
     return _result;
   }
 
   @override
-  Future<int> importFromDeviceStorage() async {
+  Future<({int imported, int backfilledRides})> importFromDeviceStorage() async {
     deviceStorageCalls++;
     final err = deviceStorageError;
     if (err != null) throw err;
@@ -260,4 +267,47 @@ void main() {
     expect(importer.importFromCalls, 1);
     expect(find.text('Imported 2 rides from OruxMaps'), findsOneWidget);
   });
+
+  testWidgets(
+    're-picking an already-imported database reports backfilled rides, '
+    'not "no new rides"',
+    (tester) async {
+      final importer = _FakeOruxMapsImportService(0, backfilledRides: 5);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            fileAccessServiceProvider.overrideWithValue(
+              _FakeFileAccessService(true),
+            ),
+            oruxMapsImportServiceProvider.overrideWithValue(importer),
+            documentPickerServiceProvider.overrideWithValue(
+              _FakeDocumentPickerService(
+                PickedDocument(
+                  name: 'oruxmapstracks.db',
+                  path: '/tmp/oruxmapstracks.db',
+                ),
+              ),
+            ),
+          ],
+          child: const MaterialApp(home: OruxMapsImportScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('pickOruxmapsFileButton')),
+        200,
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('pickOruxmapsFileButton')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('pickOruxmapsFileButton')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Imported 5 existing rides updated with sensor data'),
+        findsOneWidget,
+      );
+    },
+  );
 }
