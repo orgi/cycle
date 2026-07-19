@@ -1,5 +1,6 @@
 package com.cycleapp.cycle
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -36,6 +37,13 @@ import java.io.File
  *    `oruxmapstracks.db` import can read it straight from OruxMaps' own
  *    storage — Android 11+ otherwise blocks every other app, including file
  *    managers, from that path (see `OruxMapsImportService`'s doc comment).
+ *  - `cycle/pick_document`: opens the system Storage Access Framework picker
+ *    (`ACTION_OPEN_DOCUMENT`) and returns the picked file's name + bytes.
+ *    Fallback for a manually-copied `oruxmapstracks.db` (e.g. pulled off
+ *    OruxMaps' private folder via a PC/USB connection, since that folder is
+ *    off-limits to every app including SAF itself on Android 11+) — no
+ *    plugin, since `file_picker` doesn't build on this project's AGP 9 setup
+ *    (see CLAUDE.md's Known gotchas).
  */
 class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
@@ -46,6 +54,8 @@ class MainActivity : FlutterActivity() {
     private val oauthChannel = "cycle/oauth"
     private val buttonsChannel = "cycle/hardware_buttons"
     private val fileAccessChannel = "cycle/file_access"
+    private val pickDocumentChannel = "cycle/pick_document"
+    private val PICK_DOCUMENT_REQUEST = 4201
 
     private var pendingName: String? = null
     private var pendingXml: String? = null
@@ -54,6 +64,7 @@ class MainActivity : FlutterActivity() {
     private var pendingBackupBytes: ByteArray? = null
     private var pendingOruxName: String? = null
     private var pendingOruxBytes: ByteArray? = null
+    private var pendingPickResult: MethodChannel.Result? = null
 
     private var buttons: MethodChannel? = null
     private var buttonsEnabled = false
@@ -214,6 +225,25 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        MethodChannel(messenger, pickDocumentChannel).setMethodCallHandler { call, result ->
+            if (call.method == "pickDocument") {
+                pendingPickResult = result
+                try {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                    }
+                    @Suppress("DEPRECATION")
+                    startActivityForResult(intent, PICK_DOCUMENT_REQUEST)
+                } catch (e: Exception) {
+                    pendingPickResult = null
+                    result.error("pick_failed", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
         MethodChannel(messenger, "cycle/battery").setMethodCallHandler { call, result ->
             if (call.method == "getLevel") {
                 val bm = getSystemService(android.content.Context.BATTERY_SERVICE)
@@ -259,6 +289,31 @@ class MainActivity : FlutterActivity() {
             return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PICK_DOCUMENT_REQUEST) return
+        val result = pendingPickResult
+        pendingPickResult = null
+        val uri = data?.data
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            result?.success(null)
+            return
+        }
+        try {
+            val name = displayName(uri)
+            val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes == null) {
+                result?.success(null)
+            } else {
+                result?.success(mapOf("name" to name, "bytes" to bytes))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pickDocument failed to read $uri", e)
+            result?.error("read_failed", e.message, null)
+        }
     }
 
     private fun handleIntent(intent: Intent?) {

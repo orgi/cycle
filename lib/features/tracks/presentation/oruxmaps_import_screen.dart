@@ -81,6 +81,31 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
           _buildAccessSection(),
           const Divider(height: 32),
           const Text(
+            'No adb, or the bulk import above can\'t find the database on '
+            'your device? Some Android versions block even a granted app '
+            'from OruxMaps\' private folder. Copy the file out manually, '
+            'then pick it here:',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '1. Connect your phone to a computer by USB (or use any file '
+            'manager that can browse it) and copy oruxmapstracks.db — under '
+            'Android/data/com.orux.oruxmaps/files/oruxmaps/tracklogs/ (or '
+            '…oruxmapsDonate… for the paid version) — to somewhere ordinary, '
+            'like the Downloads folder.\n'
+            '2. Tap "Pick database file" below and choose that copy.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('pickOruxmapsFileButton'),
+            icon: const Icon(Icons.folder_open),
+            label: const Text('Pick database file'),
+            onPressed: () => _pickAndImport(context),
+          ),
+          const Divider(height: 32),
+          const Text(
             'Alternative: import a single ride without granting anything — '
             'in OruxMaps, Track Manager → long-press a ride → Export/Share → '
             'GPX → choose Cycle. Cycle detects it\'s a recorded ride and '
@@ -130,6 +155,30 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
       final imported = await ref
           .read(oruxMapsImportServiceProvider)
           .importFromDeviceStorage();
+      if (!mounted) return;
+      ref.invalidate(tracksProvider);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            imported == 0
+                ? 'No new rides in that OruxMaps database'
+                : 'Imported $imported ride${imported == 1 ? '' : 's'} from OruxMaps',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  Future<void> _pickAndImport(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final picked = await ref.read(documentPickerServiceProvider).pickDocument();
+    if (picked == null) return; // cancelled, or no native handler
+    try {
+      final imported = await ref
+          .read(oruxMapsImportServiceProvider)
+          .importIncomingBytes(picked.name, picked.bytes);
       if (!mounted) return;
       ref.invalidate(tracksProvider);
       messenger.showSnackBar(

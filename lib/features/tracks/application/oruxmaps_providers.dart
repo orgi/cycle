@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/services/document_picker_service.dart';
 import '../../../core/services/file_access_service.dart';
 import '../../../core/services/incoming_oruxmaps_service.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -11,6 +12,13 @@ import 'oruxmaps_import_service.dart';
 /// oruxmapstracks.db import. Overridable in tests.
 final fileAccessServiceProvider = Provider<FileAccessService>(
   (ref) => FileAccessService(),
+);
+
+/// Opens the system document picker, for manually selecting a
+/// oruxmapstracks.db copied out of OruxMaps' private storage. Overridable in
+/// tests.
+final documentPickerServiceProvider = Provider<DocumentPickerService>(
+  (ref) => DocumentPickerService(),
 );
 
 final oruxMapsImportServiceProvider = Provider<OruxMapsImportService>(

@@ -364,6 +364,28 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     separate Android package ids** — `com.orux.oruxmaps` (free) and `com.orux.oruxmapsDonate`
     (paid "Donate" version, same app) — each with its own storage folder; verified on a real
     device with the Donate variant installed (`_knownPackageIds` checks both).
+  * **Manual pick, for when bulk still can't reach the file.** Some Android versions/OEM
+    skins block `Android/data/<pkg>/…` from every app, including a granted one — confirmed
+    on a real device where `File.exists()` returned false for the exact verified path even
+    with "All files access" granted (`appops` showing `allow`), and Samsung's own file
+    manager failed identically on the same folder with an explicit "only viewable from a
+    computer" message. Since `file_picker` doesn't build here (AGP 9, see Known gotchas), a
+    plugin-free SAF (`ACTION_OPEN_DOCUMENT`) picker is wired natively: `cycle/pick_document`
+    in `MainActivity.kt` (`startActivityForResult`/`onActivityResult`, no plugin) →
+    `lib/core/services/document_picker_service.dart` → a **"Pick database file"** button on
+    the import screen feeding the already-existing `importIncomingBytes`. The screen's
+    instructions tell users to copy `oruxmapstracks.db` out via a PC/USB connection (or any
+    file manager that *can* browse it) into an ordinary folder like Downloads, then pick that
+    copy — verified end-to-end on a real device (Galaxy A33) by simulating exactly that:
+    `adb`-pulling the on-device db (via its group-readable `.backup` file — the live db is
+    owner-only 600, the rotating `.backup`/`.backup2` are 660 — since even `adb shell`'s
+    `cat` was blocked on the primary file by the same OS-level restriction as the app itself,
+    though `ls` still listed it) to the host, `adb push`ing it back into `/sdcard/Download/`
+    to stand in for a manual copy, then driving the actual picker UI (`am start` +
+    `input tap`/`swipe`, bounds read via `uiautomator dump` — screenshot pixel coords need
+    ×1.2 to map to real device coords, `uiautomator` bounds don't) through the system Files
+    app to select it; the imported rides (dated back to 2023, matching the source db) showed
+    up correctly in the Rides list afterward.
   * **Per-track GPX (no permission needed).** OruxMaps' own Track Manager can Export/Share a
     single ride as a `.gpx`, which — since OruxMaps owns that file — it can share directly
     regardless of the storage restriction above. `lib/features/tracks/application/gpx_ride_import_service.dart`

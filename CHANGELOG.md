@@ -36,8 +36,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   granting "All files access" (the same permission a file-manager app holds) — needed
   because Android 11+ otherwise blocks every other app from OruxMaps' storage entirely.
   Alternatively, share a single track's GPX export from OruxMaps' own Track Manager, no
-  permission required. Either way, already-imported rides are skipped, so re-importing is
-  safe.
+  permission required. If bulk import still can't reach the database (some devices block it
+  even with the permission granted), a "Pick database file" button opens the system file
+  picker so you can import a copy you've moved somewhere ordinary yourself (e.g. via a PC/USB
+  connection). Either way, already-imported rides are skipped, so re-importing is safe.
 - **Recalculate ride distances** (Settings → Data) — a one-tap maintenance action that
   recomputes every ride's distance/average/max from its recorded points using the current
   maths, for rides recorded before a distance-calculation fix (see "Fixed" below).

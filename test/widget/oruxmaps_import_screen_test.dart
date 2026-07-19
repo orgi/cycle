@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cycle/core/services/document_picker_service.dart';
 import 'package:cycle/core/services/file_access_service.dart';
 import 'package:cycle/core/services/incoming_oruxmaps_service.dart';
 import 'package:cycle/features/tracks/application/oruxmaps_import_service.dart';
@@ -46,6 +47,14 @@ class _FakeOruxMapsImportService implements OruxMapsImportService {
     if (err != null) throw err;
     return _result;
   }
+}
+
+class _FakeDocumentPickerService implements DocumentPickerService {
+  _FakeDocumentPickerService(this._result);
+  final PickedDocument? _result;
+
+  @override
+  Future<PickedDocument?> pickDocument() async => _result;
 }
 
 class _FakeFileAccessService implements FileAccessService {
@@ -152,6 +161,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.byKey(const Key('checkOruxmapsImportButton')), 200);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('checkOruxmapsImportButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('checkOruxmapsImportButton')));
     await tester.pumpAndSettle();
 
@@ -161,6 +174,65 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('picking a file imports it', (tester) async {
+    final importer = _FakeOruxMapsImportService(4);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fileAccessServiceProvider.overrideWithValue(
+            _FakeFileAccessService(true),
+          ),
+          oruxMapsImportServiceProvider.overrideWithValue(importer),
+          documentPickerServiceProvider.overrideWithValue(
+            _FakeDocumentPickerService(
+              PickedDocument(name: 'oruxmapstracks.db', bytes: Uint8List(0)),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: OruxMapsImportScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const Key('pickOruxmapsFileButton')), 200);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('pickOruxmapsFileButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pickOruxmapsFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(importer.incomingCalls, 1);
+    expect(find.text('Imported 4 rides from OruxMaps'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the file picker does nothing', (tester) async {
+    final importer = _FakeOruxMapsImportService(4);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          fileAccessServiceProvider.overrideWithValue(
+            _FakeFileAccessService(true),
+          ),
+          oruxMapsImportServiceProvider.overrideWithValue(importer),
+          documentPickerServiceProvider.overrideWithValue(
+            _FakeDocumentPickerService(null),
+          ),
+        ],
+        child: const MaterialApp(home: OruxMapsImportScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const Key('pickOruxmapsFileButton')), 200);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('pickOruxmapsFileButton')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('pickOruxmapsFileButton')));
+    await tester.pumpAndSettle();
+
+    expect(importer.incomingCalls, 0);
   });
 
   testWidgets('a shared db is imported via the manual check', (tester) async {
@@ -183,6 +255,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.byKey(const Key('checkOruxmapsImportButton')), 200);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('checkOruxmapsImportButton')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('checkOruxmapsImportButton')));
     await tester.pumpAndSettle();
 
