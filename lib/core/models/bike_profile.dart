@@ -52,4 +52,6 @@ const List<int> kBikeProfileColors = [
   0xFFFFCA28, // yellow
   0xFF8D6E63, // brown
   0xFF26C6DA, // cyan
+  0xFFFFFFFF, // white
+  0xFFB0BEC5, // silver / grey
 ];

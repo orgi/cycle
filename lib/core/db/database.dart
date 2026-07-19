@@ -38,6 +38,11 @@ class TrackPoints extends Table {
   IntColumn get heartRate => integer().nullable()();
   RealColumn get cadenceRpm => real().nullable()();
   IntColumn get power => integer().nullable()();
+  // Whether speedMps at this point came from a BLE wheel-speed sensor (true)
+  // or GPS (false). Null for points recorded before this was tracked — those
+  // can't be retroactively classified, since the source itself wasn't stored,
+  // only the resulting number.
+  BoolColumn get speedFromSensor => boolean().nullable()();
 }
 
 @DriftDatabase(tables: [Tracks, TrackPoints])
@@ -45,7 +50,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -56,6 +61,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.addColumn(tracks, tracks.bikeProfileId);
+          }
+          if (from < 4) {
+            await m.addColumn(trackPoints, trackPoints.speedFromSensor);
           }
         },
         beforeOpen: (_) async {
@@ -122,6 +130,60 @@ class AppDatabase extends _$AppDatabase {
   /// the number of rides updated.
   Future<int> assignAllTracksToBikeProfile(String? bikeProfileId) =>
       update(tracks).write(TracksCompanion(bikeProfileId: Value(bikeProfileId)));
+
+  /// Bulk-assigns exactly [trackIds] (e.g. a filtered subset from the ride
+  /// classifier) to [bikeProfileId]. Returns the number of rides updated.
+  Future<int> assignTracksToBikeProfile(
+      List<int> trackIds, String? bikeProfileId) {
+    if (trackIds.isEmpty) return Future.value(0);
+    return (update(tracks)..where((t) => t.id.isIn(trackIds)))
+        .write(TracksCompanion(bikeProfileId: Value(bikeProfileId)));
+  }
+
+  /// Track-level candidates for the ride classifier — the criteria that live
+  /// directly on [Tracks] (cheap, done in SQL). Cadence/HR/power-presence
+  /// filtering happens afterwards at the point level (`ride_classifier.dart`),
+  /// since that data only exists on [TrackPoints].
+  Future<List<Track>> tracksMatching({
+    bool onlyUnassigned = false,
+    double? minDistanceMeters,
+    double? maxDistanceMeters,
+    double? minAvgSpeedMps,
+    double? maxAvgSpeedMps,
+    double? minMaxSpeedMps,
+    double? maxMaxSpeedMps,
+    DateTime? startedAfter,
+    DateTime? startedBefore,
+  }) {
+    final q = select(tracks)
+      ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]);
+    if (onlyUnassigned) q.where((t) => t.bikeProfileId.isNull());
+    if (minDistanceMeters != null) {
+      q.where((t) => t.distanceMeters.isBiggerOrEqualValue(minDistanceMeters));
+    }
+    if (maxDistanceMeters != null) {
+      q.where((t) => t.distanceMeters.isSmallerOrEqualValue(maxDistanceMeters));
+    }
+    if (minAvgSpeedMps != null) {
+      q.where((t) => t.avgSpeedMps.isBiggerOrEqualValue(minAvgSpeedMps));
+    }
+    if (maxAvgSpeedMps != null) {
+      q.where((t) => t.avgSpeedMps.isSmallerOrEqualValue(maxAvgSpeedMps));
+    }
+    if (minMaxSpeedMps != null) {
+      q.where((t) => t.maxSpeedMps.isBiggerOrEqualValue(minMaxSpeedMps));
+    }
+    if (maxMaxSpeedMps != null) {
+      q.where((t) => t.maxSpeedMps.isSmallerOrEqualValue(maxMaxSpeedMps));
+    }
+    if (startedAfter != null) {
+      q.where((t) => t.startedAt.isBiggerOrEqualValue(startedAfter));
+    }
+    if (startedBefore != null) {
+      q.where((t) => t.startedAt.isSmallerOrEqualValue(startedBefore));
+    }
+    return q.get();
+  }
 
   /// Most-recent rides first.
   Stream<List<Track>> watchTracks() => (select(tracks)

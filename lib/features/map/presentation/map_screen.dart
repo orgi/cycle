@@ -26,6 +26,7 @@ import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/hardware_button_providers.dart';
 import '../../settings/application/settings_providers.dart';
+import '../../settings/presentation/widgets/bike_color_dot.dart';
 import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../tracks/application/track_providers.dart';
 import '../application/map_providers.dart';
@@ -995,11 +996,7 @@ class _BikeProfileChip extends ConsumerWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
+            BikeColorDot(colorArgb: active.colorArgb, radius: 4),
             const SizedBox(width: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 52),

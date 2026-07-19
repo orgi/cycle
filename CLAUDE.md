@@ -428,6 +428,29 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     `AppDatabase.assignAllTracksToBikeProfile` (`update(tracks)` with no `where`)
     unconditionally overwrites every ride's bike, behind a confirm dialog that
     states the ride count.
+  * **Classify rides** (`RideClassifierScreen`, `/classify-rides`, reached via the
+    filter icon on `TracksScreen` — the Rides/trip-history list, not Settings) —
+    finds old rides matching a combination
+    of criteria and bulk-assigns just the matches to a bike, for classifying a
+    ride history recorded before profiles existed. `RideClassifierFilter` +
+    `filterTracksForClassification` (`lib/features/tracks/application/
+    ride_classifier.dart`) split the work in two: cheap criteria that live
+    directly on `Tracks` (only-unassigned, distance/avg-speed/max-speed/date
+    range) run as SQL via `AppDatabase.tracksMatching`; criteria that only exist
+    on `TrackPoints` (has cadence/heart-rate/power data) then narrow that result
+    by loading points **only for the already-filtered candidates** — not the whole
+    ride history — checking `points.any((p) => p.<field> != null)`. Matches are
+    bulk-assigned via `AppDatabase.assignTracksToBikeProfile(ids, bikeProfileId)`
+    (distinct from `assignAllTracksToBikeProfile` — this one takes a specific id
+    list rather than unconditionally touching every ride).
+    **"Had a speed sensor" is deliberately not offered** as a criterion: unlike
+    cadence/HR/power, the recorded `speedMps` never distinguished GPS from a BLE
+    sensor — only the resulting number was stored, not its source — so it can't be
+    reconstructed for rides recorded before this shipped. `TrackPoints` gained a
+    nullable `speedFromSensor` `BoolColumn` (schema v4, plain `addColumn`
+    migration) fed from `RideController`'s already-computed `_fusion.isUsingBle`
+    through `RecordingController.recordPoint`, so **new** rides going forward can
+    be classified by it; old points stay `null` (unknown, not "false").
 
 ## Known gotchas
 

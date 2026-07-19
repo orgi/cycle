@@ -100,4 +100,123 @@ void main() {
     expect((await db.track(b))!.bikeProfileId, 'cube');
     expect((await db.track(c))!.bikeProfileId, 'cube');
   });
+
+  test('assignTracksToBikeProfile updates exactly the given ids', () async {
+    final a = await db.createTrack(DateTime.utc(2026, 1, 1));
+    final b = await db.createTrack(DateTime.utc(2026, 1, 2));
+    final c = await db.createTrack(DateTime.utc(2026, 1, 3));
+
+    final n = await db.assignTracksToBikeProfile([a, c], 'cube');
+    expect(n, 2);
+    expect((await db.track(a))!.bikeProfileId, 'cube');
+    expect((await db.track(b))!.bikeProfileId, isNull);
+    expect((await db.track(c))!.bikeProfileId, 'cube');
+  });
+
+  test('assignTracksToBikeProfile with an empty list is a no-op', () async {
+    expect(await db.assignTracksToBikeProfile(const [], 'cube'), 0);
+  });
+
+  Future<int> seedTrack({
+    required DateTime startedAt,
+    String? bikeProfileId,
+    double distanceMeters = 0,
+    double avgSpeedMps = 0,
+    double maxSpeedMps = 0,
+  }) =>
+      db.createTrack(startedAt, bikeProfileId: bikeProfileId).then((id) async {
+        await db.finalizeTrack(
+          id,
+          endedAt: startedAt,
+          distanceMeters: distanceMeters,
+          durationSeconds: 1,
+          avgSpeedMps: avgSpeedMps,
+          maxSpeedMps: maxSpeedMps,
+        );
+        return id;
+      });
+
+  group('tracksMatching', () {
+    test('onlyUnassigned filters out rides with a bike', () async {
+      final a = await seedTrack(startedAt: DateTime.utc(2026, 1, 1));
+      await seedTrack(startedAt: DateTime.utc(2026, 1, 2), bikeProfileId: 'p1');
+
+      final result = await db.tracksMatching(onlyUnassigned: true);
+      expect(result.map((t) => t.id), [a]);
+    });
+
+    test('distance range filters both ends', () async {
+      final short =
+          await seedTrack(startedAt: DateTime.utc(2026, 1, 1), distanceMeters: 5000);
+      final mid =
+          await seedTrack(startedAt: DateTime.utc(2026, 1, 2), distanceMeters: 20000);
+      await seedTrack(startedAt: DateTime.utc(2026, 1, 3), distanceMeters: 50000);
+
+      final result = await db.tracksMatching(
+          minDistanceMeters: 10000, maxDistanceMeters: 30000);
+      expect(result.map((t) => t.id), [mid]);
+      expect(result.any((t) => t.id == short), isFalse);
+    });
+
+    test('avg/max speed ranges filter independently', () async {
+      final a = await seedTrack(
+          startedAt: DateTime.utc(2026, 1, 1), avgSpeedMps: 5, maxSpeedMps: 8);
+      await seedTrack(
+          startedAt: DateTime.utc(2026, 1, 2), avgSpeedMps: 15, maxSpeedMps: 20);
+
+      final byAvg = await db.tracksMatching(maxAvgSpeedMps: 10);
+      expect(byAvg.map((t) => t.id), [a]);
+
+      final byMax = await db.tracksMatching(minMaxSpeedMps: 15);
+      expect(byMax.map((t) => t.id), isNot(contains(a)));
+    });
+
+    test('date range filters startedAt', () async {
+      await seedTrack(startedAt: DateTime.utc(2026, 1, 1));
+      final mid = await seedTrack(startedAt: DateTime.utc(2026, 6, 1));
+      await seedTrack(startedAt: DateTime.utc(2026, 12, 1));
+
+      final result = await db.tracksMatching(
+        startedAfter: DateTime.utc(2026, 3, 1),
+        startedBefore: DateTime.utc(2026, 9, 1),
+      );
+      expect(result.map((t) => t.id), [mid]);
+    });
+
+    test('combines multiple criteria (AND)', () async {
+      final match = await seedTrack(
+        startedAt: DateTime.utc(2026, 6, 1),
+        distanceMeters: 20000,
+        avgSpeedMps: 6,
+      );
+      // Right distance, wrong date.
+      await seedTrack(
+        startedAt: DateTime.utc(2026, 1, 1),
+        distanceMeters: 20000,
+        avgSpeedMps: 6,
+      );
+      // Right date, wrong distance.
+      await seedTrack(
+        startedAt: DateTime.utc(2026, 6, 2),
+        distanceMeters: 1000,
+        avgSpeedMps: 6,
+      );
+
+      final result = await db.tracksMatching(
+        minDistanceMeters: 10000,
+        startedAfter: DateTime.utc(2026, 3, 1),
+        startedBefore: DateTime.utc(2026, 9, 1),
+      );
+      expect(result.map((t) => t.id), [match]);
+    });
+
+    test('no criteria returns every ride, newest first', () async {
+      await seedTrack(startedAt: DateTime.utc(2026, 1, 1));
+      await seedTrack(startedAt: DateTime.utc(2026, 1, 2));
+
+      final result = await db.tracksMatching();
+      expect(result.length, 2);
+      expect(result.first.startedAt.isAfter(result.last.startedAt), isTrue);
+    });
+  });
 }

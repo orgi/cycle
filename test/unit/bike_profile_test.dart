@@ -1,5 +1,7 @@
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/features/settings/presentation/widgets/bike_color_dot.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -42,5 +44,17 @@ void main() {
       activeId: 'missing',
     );
     expect(s.active, isNull);
+  });
+
+  test('the colour palette includes white and a silver/grey, all distinct', () {
+    expect(kBikeProfileColors, contains(0xFFFFFFFF));
+    expect(kBikeProfileColors, contains(0xFFB0BEC5));
+    expect(kBikeProfileColors.toSet().length, kBikeProfileColors.length);
+  });
+
+  test('bikeColorContrast picks a readable icon colour for light vs dark',
+      () {
+    expect(bikeColorContrast(0xFFFFFFFF), Colors.black); // white swatch
+    expect(bikeColorContrast(0xFF000000), Colors.white); // near-black swatch
   });
 }

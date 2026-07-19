@@ -5,8 +5,12 @@ import '../../../core/models/bike_profile.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../tracks/application/track_providers.dart';
 import '../application/bike_profile_providers.dart';
+import 'widgets/bike_color_dot.dart';
 
 /// Manage bike profiles: add/rename/recolour/delete, and pick which is active.
+/// Finding/classifying old rides by criteria lives on the Rides screen instead
+/// (`TracksScreen`'s filter icon) — that's where you browse ride history, not
+/// here.
 class BikeProfilesScreen extends ConsumerWidget {
   const BikeProfilesScreen({super.key});
 
@@ -40,7 +44,7 @@ class BikeProfilesScreen extends ConsumerWidget {
                     leading: GestureDetector(
                       key: Key('bikeProfileColor_${p.id}'),
                       onTap: () => _pickColor(context, notifier, p),
-                      child: CircleAvatar(backgroundColor: Color(p.colorArgb)),
+                      child: BikeColorDot(colorArgb: p.colorArgb, radius: 20),
                     ),
                     title: Text(p.name),
                     subtitle:
@@ -133,11 +137,11 @@ class BikeProfilesScreen extends ConsumerWidget {
               GestureDetector(
                 key: Key('bikeProfileColorOption_${c.toRadixString(16)}'),
                 onTap: () => Navigator.pop(ctx, c),
-                child: CircleAvatar(
+                child: BikeColorDot(
+                  colorArgb: c,
                   radius: 16,
-                  backgroundColor: Color(c),
                   child: c == p.colorArgb
-                      ? const Icon(Icons.check, color: Colors.white)
+                      ? Icon(Icons.check, color: bikeColorContrast(c))
                       : null,
                 ),
               ),

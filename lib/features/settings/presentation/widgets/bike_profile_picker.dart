@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/models/bike_profile.dart';
+import 'bike_color_dot.dart';
 
 /// Shows a bottom sheet to pick a bike profile from [profiles] (a checkmark
 /// marks [currentId]), with a trailing "Manage bike profiles" entry.
@@ -26,10 +27,7 @@ Future<String?> showBikeProfilePicker(
           for (final p in profiles)
             ListTile(
               key: Key('bikeProfileOption_${p.id}'),
-              leading: CircleAvatar(
-                radius: 10,
-                backgroundColor: Color(p.colorArgb),
-              ),
+              leading: BikeColorDot(colorArgb: p.colorArgb, radius: 10),
               title: Text(p.name),
               trailing: p.id == currentId ? const Icon(Icons.check) : null,
               onTap: () => Navigator.pop(ctx, p.id),

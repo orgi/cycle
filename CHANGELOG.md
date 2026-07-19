@@ -24,6 +24,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   history at once (e.g. after renaming your first profile to your bike's real
   name), **Settings → Bikes → Bike profiles → ⋮ → "Assign all rides to this
   bike"** sets every recorded ride to that bike in one go.
+  **Classify rides** (Settings → Bikes → Bike profiles → filter icon) — find old
+  rides matching a combination of criteria (only-unassigned, has cadence/heart-rate/
+  power data, distance/average-speed/max-speed range, date range) and bulk-assign
+  just the matches to a bike. ("Had a speed sensor" isn't offered as a criterion —
+  unlike cadence/HR/power, that wasn't stored per point for rides recorded before
+  this release, so it can't be reconstructed; new rides now record it, so it'll be
+  available for those going forward.)
 - **Import from OruxMaps** (Settings → Data) — bring in ride history recorded with
   OruxMaps, entirely on-device, no PC/adb. Bulk-import your whole ride history in one go by
   granting "All files access" (the same permission a file-manager app holds) — needed

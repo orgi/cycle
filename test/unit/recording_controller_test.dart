@@ -1,6 +1,7 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
@@ -141,6 +142,39 @@ void main() {
     final points = await db.pointsFor(trackId);
     expect(points.length, 2);
     expect(points.last.latitude, closeTo(0, 0.0001));
+  });
+
+  test('recorded points flag whether their speed came from a BLE sensor',
+      () async {
+    final notifier = container.read(recordingProvider.notifier);
+    container.listen(rideControllerProvider, (_, _) {});
+    await notifier.start();
+    final trackId = notifier.currentTrackId!;
+
+    final t0 = DateTime.utc(2026, 1, 1, 12);
+    // No sensor yet: GPS-derived speed.
+    location.emit(GeoSample(latitude: 0, longitude: 0, time: t0, speedMps: 5));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    // A wheel-speed sensor comes online; subsequent points use it.
+    sensors.emitSnapshot(const SensorSnapshot(wheelSpeedMps: 9));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    location.emit(
+      GeoSample(
+        latitude: 0,
+        longitude: 0.00089932,
+        time: t0.add(const Duration(seconds: 10)),
+        speedMps: 10,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    await notifier.stop();
+
+    final points = await db.pointsFor(trackId);
+    expect(points.length, 2);
+    expect(points.first.speedFromSensor, isFalse);
+    expect(points.last.speedFromSensor, isTrue);
   });
 
   test('start() stamps the ride with the active bike profile', () async {

@@ -7,10 +7,13 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/ride_summary.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
+import '../../settings/presentation/widgets/bike_color_dot.dart';
 import '../application/track_providers.dart';
 
 /// List of recorded rides, newest first. When 2+ bike profiles exist, a filter
-/// row lets you view a single bike's rides/summary or "All" (total).
+/// row lets you view a single bike's rides/summary or "All" (total). The
+/// app-bar filter icon opens the ride classifier (find old rides by criteria
+/// and bulk-assign them to a bike).
 class TracksScreen extends ConsumerWidget {
   const TracksScreen({super.key});
 
@@ -24,6 +27,12 @@ class TracksScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Rides'),
         actions: [
+          IconButton(
+            key: const Key('classifyRidesButton'),
+            icon: const Icon(Icons.filter_alt_outlined),
+            tooltip: 'Classify rides',
+            onPressed: () => context.push('/classify-rides'),
+          ),
           IconButton(
             key: const Key('uploadAccountsButton'),
             icon: const Icon(Icons.cloud_outlined),
@@ -83,10 +92,10 @@ class TracksScreen extends ConsumerWidget {
                 child: ListTile(
                   key: Key('trackTile_${t.id}'),
                   leading: (showFilter && profileColor != null)
-                      ? CircleAvatar(
+                      ? BikeColorDot(
                           key: Key('trackBikeDot_${t.id}'),
+                          colorArgb: profileColor,
                           radius: 6,
-                          backgroundColor: Color(profileColor),
                         )
                       : null,
                   title: Text(t.name),
@@ -150,7 +159,7 @@ class _BikeFilterRow extends ConsumerWidget {
               const SizedBox(width: 6),
               ChoiceChip(
                 key: Key('bikeFilter_${p.id}'),
-                avatar: CircleAvatar(backgroundColor: Color(p.colorArgb)),
+                avatar: BikeColorDot(colorArgb: p.colorArgb, radius: 10),
                 label: Text(p.name),
                 selected: selected == p.id,
                 onSelected: (_) => ref

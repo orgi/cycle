@@ -140,6 +140,7 @@ class RecordingController extends Notifier<bool> {
     GeoSample sample,
     SensorSnapshot? snapshot,
     double speedMps,
+    bool speedFromSensor,
   ) async {
     final id = _trackId;
     if (!state || id == null) return;
@@ -154,6 +155,7 @@ class RecordingController extends Notifier<bool> {
             heartRate: Value(snapshot?.heartRate),
             cadenceRpm: Value(snapshot?.cadenceRpm),
             power: Value(snapshot?.power),
+            speedFromSensor: Value(speedFromSensor),
           ),
         );
   }
@@ -226,13 +228,14 @@ class RideController extends Notifier<RideMetrics> {
     _fusion.updateGps(metrics.currentSpeedMps);
     final now = DateTime.now();
     final fused = _fusedSpeed(now);
+    final fromSensor = _fusion.isUsingBle(now);
     state = metrics.copyWith(
         currentSpeedMps: fused,
         maxSpeedMps: _maxSpeedMps,
-        speedFromSensor: _fusion.isUsingBle(now));
+        speedFromSensor: fromSensor);
     unawaited(ref
         .read(recordingProvider.notifier)
-        .recordPoint(sample, _latestSnapshot, fused));
+        .recordPoint(sample, _latestSnapshot, fused, fromSensor));
   }
 
   void _onSnapshot(SensorSnapshot snapshot) {
