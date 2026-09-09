@@ -2,6 +2,7 @@ import 'package:cycle/core/sensors/gatt.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/sensors/presentation/sensors_screen.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +23,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [sensorServiceProvider.overrideWithValue(fake)],
+        overrides: [
+          sensorServiceProvider.overrideWithValue(fake),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SensorsScreen()),
       ),
     );

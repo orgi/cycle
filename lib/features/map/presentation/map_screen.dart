@@ -9,6 +9,8 @@ import 'package:mapsforge_flutter/marker.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../core/models/geo_sample.dart';
+import '../../../core/sensors/gatt.dart';
+import '../../../core/sensors/sensor_visibility.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
 import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
@@ -583,7 +585,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     ref.watch(hardwareButtonControllerProvider);
     ref.watch(sensorSettingsSyncProvider);
     // Reconnect previously-paired BLE sensors on launch.
-    ref.watch(sensorConnectionProvider);
+    final pairedSensors = ref.watch(sensorConnectionProvider);
+    final activeBike = ref.watch(bikeProfilesProvider).active;
+    final visibleSensors = visibleSensorKinds(
+      paired: pairedSensors,
+      allowedSensorIds: activeBike?.sensorIds,
+    );
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -773,36 +780,37 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Live BLE sensor values — always shown ("—" with no data).
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _MapStat(
-                              label: 'HR',
-                              value: sensor?.heartRate?.toString() ?? '—',
-                              unit: 'bpm',
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: _MapStat(
-                              label: 'CAD',
-                              value:
-                                  sensor?.cadenceRpm?.round().toString() ?? '—',
-                              unit: 'rpm',
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: _MapStat(
-                              label: 'PWR',
-                              value: sensor?.power?.toString() ?? '—',
-                              unit: 'W',
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
+                      // Live BLE sensor values — shown for paired sensors the
+                      // active bike is configured to use, regardless of
+                      // whether they're currently connected ("—" while no
+                      // data/reconnecting, so a mid-ride drop doesn't make the
+                      // tile disappear).
+                      if (visibleSensors.isNotEmpty) ...[
+                        Row(
+                          children: _statTiles([
+                            if (visibleSensors.contains(SensorKind.heartRate))
+                              _MapStat(
+                                label: 'HR',
+                                value: sensor?.heartRate?.toString() ?? '—',
+                                unit: 'bpm',
+                              ),
+                            if (visibleSensors.contains(SensorKind.speedCadence))
+                              _MapStat(
+                                label: 'CAD',
+                                value: sensor?.cadenceRpm?.round().toString() ??
+                                    '—',
+                                unit: 'rpm',
+                              ),
+                            if (visibleSensors.contains(SensorKind.power))
+                              _MapStat(
+                                label: 'PWR',
+                                value: sensor?.power?.toString() ?? '—',
+                                unit: 'W',
+                              ),
+                          ]),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
                       Row(
                         children: [
                           Expanded(
@@ -864,6 +872,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
   }
 }
+
+/// Lays out a variable-length list of stat tiles evenly (each in an
+/// [Expanded], with gaps only between the ones actually present) — so hiding
+/// a tile (e.g. no cadence sensor for this bike) doesn't leave a blank gap.
+List<Widget> _statTiles(List<Widget> tiles) => [
+      for (var i = 0; i < tiles.length; i++) ...[
+        if (i > 0) const SizedBox(width: 6),
+        Expanded(child: tiles[i]),
+      ],
+    ];
 
 /// A compact, semi-transparent live stat drawn over the map. Fills the width
 /// it is given (use inside an Expanded).

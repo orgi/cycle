@@ -73,6 +73,18 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
     await _persist();
   }
 
+  /// Sets which paired sensors this bike should actively pursue. `null`
+  /// resets it to "all paired sensors".
+  Future<void> setSensorIds(String id, Set<String>? sensorIds) async {
+    state = state.copyWith(profiles: [
+      for (final p in state.profiles)
+        p.id == id
+            ? p.copyWith(sensorIds: sensorIds, clearSensorIds: sensorIds == null)
+            : p,
+    ]);
+    await _persist();
+  }
+
   Future<void> setColor(String id, int colorArgb) async {
     state = state.copyWith(profiles: [
       for (final p in state.profiles)

@@ -19,6 +19,27 @@ void main() {
     expect(renamed.colorArgb, 0xFFFFA726);
   });
 
+  test('BikeProfile.sensorIds defaults to null (all paired sensors)', () {
+    const p = BikeProfile(id: 'p1', name: 'Road bike', colorArgb: 1);
+    expect(p.sensorIds, isNull);
+    final back = BikeProfile.fromJson(p.toJson());
+    expect(back.sensorIds, isNull);
+  });
+
+  test('BikeProfile.sensorIds round-trips through JSON', () {
+    const p = BikeProfile(
+        id: 'p1', name: 'Road bike', colorArgb: 1, sensorIds: {'hr1', 'cad2'});
+    final back = BikeProfile.fromJson(p.toJson());
+    expect(back, p);
+    expect(back.sensorIds, {'hr1', 'cad2'});
+  });
+
+  test('copyWith(clearSensorIds: true) resets to null', () {
+    const p = BikeProfile(
+        id: 'p1', name: 'Road bike', colorArgb: 1, sensorIds: {'hr1'});
+    expect(p.copyWith(clearSensorIds: true).sensorIds, isNull);
+  });
+
   test('BikeProfilesState JSON round-trips (profiles + active id)', () {
     const s = BikeProfilesState(
       profiles: [

@@ -8,7 +8,27 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Fixed
+- **BLE sensor reconnection.** Reconnecting a paired sensor (on app launch or after a
+  mid-ride drop) previously relied entirely on Android's native `autoConnect=true` GATT
+  mode with no app-level retry, timeout, or fallback — on real devices with 2-3 sensors
+  paired at once this was wildly non-deterministic (one sensor reconnecting instantly,
+  another sitting for 20+ minutes with no error and no indication anything was stuck).
+  `BleSensorService` now runs its own scan-and-connect retry loop: a short targeted scan
+  (`withRemoteIds`) for whichever paired sensors aren't yet linked, connecting the moment
+  one is seen, retrying on a backoff (10s → 20s → 40s → 60s) if it isn't found, with the
+  passive `autoConnect=true` link kept as a low-cost backstop between rounds.
+
 ### Added
+- **Per-bike sensor selection.** Each bike profile can now be restricted to a subset of
+  paired sensors (Settings → Bikes → Bike profiles → ⋮ → "Sensors for this bike") — e.g. a
+  second bike with no cadence/speed sensor won't have the app endlessly retry connecting
+  ones that only exist on another bike. Left unconfigured (the default), a profile keeps
+  today's behaviour of pursuing every paired sensor. Switching the active bike disconnects
+  now out-of-scope sensors and starts pursuing newly in-scope ones automatically. The home
+  screen's HR/cadence/power tiles are shown based purely on "paired and selected for this
+  bike", independent of live connection state — a sensor that's temporarily disconnected or
+  reconnecting keeps its tile instead of disappearing.
 - **Bike profiles** — record against different bicycles and see stats per bike or
   in total. A coloured chip in the top-left of the home screen shows the active
   profile; tap it to switch, or manage profiles (add/rename/recolour/delete) from

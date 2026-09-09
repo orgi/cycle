@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/bike_profile.dart';
+import '../../../core/sensors/gatt.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../sensors/application/sensor_providers.dart';
 import '../../tracks/application/track_providers.dart';
 import '../application/bike_profile_providers.dart';
 import 'widgets/bike_color_dot.dart';
@@ -55,6 +57,8 @@ class BikeProfilesScreen extends ConsumerWidget {
                         switch (action) {
                           case 'rename':
                             _rename(context, notifier, p);
+                          case 'sensors':
+                            _pickSensors(context, ref, p);
                           case 'assignAll':
                             _assignAllRides(context, ref, p);
                           case 'delete':
@@ -63,6 +67,10 @@ class BikeProfilesScreen extends ConsumerWidget {
                       },
                       itemBuilder: (context) => const [
                         PopupMenuItem(value: 'rename', child: Text('Rename')),
+                        PopupMenuItem(
+                          value: 'sensors',
+                          child: Text('Sensors for this bike'),
+                        ),
                         PopupMenuItem(
                           value: 'assignAll',
                           child: Text('Assign all rides to this bike'),
@@ -189,6 +197,72 @@ class BikeProfilesScreen extends ConsumerWidget {
         content: Text('Assigned $n ride${n == 1 ? '' : 's'} to "${p.name}"'),
       ));
     }
+  }
+
+  /// Which paired sensors this bike should actively pursue. Unchecking a
+  /// sensor here stops it being scanned/connected for while this bike is
+  /// active (e.g. a cadence sensor mounted on a different bike) — it stays
+  /// paired, just not pursued for this one.
+  Future<void> _pickSensors(
+      BuildContext context, WidgetRef ref, BikeProfile p) async {
+    final paired = ref.read(sensorConnectionProvider).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    if (paired.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No sensors paired yet — pair some on the Sensors screen first.'),
+      ));
+      return;
+    }
+    var selected = p.sensorIds ?? paired.map((s) => s.id).toSet();
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text('Sensors for "${p.name}"'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final s in paired)
+                  CheckboxListTile(
+                    key: Key('bikeSensorOption_${s.id}'),
+                    value: selected.contains(s.id),
+                    title: Text(s.name),
+                    subtitle: Text(s.kinds.map((k) => k.label).join(' • ')),
+                    onChanged: (checked) => setState(() {
+                      selected = {...selected};
+                      if (checked == true) {
+                        selected.add(s.id);
+                      } else {
+                        selected.remove(s.id);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: const Key('bikeSensorsSave'),
+              onPressed: () => Navigator.pop(ctx, selected),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    final allPairedIds = paired.map((s) => s.id).toSet();
+    // Selecting every paired sensor is the same as "all" (null) — keeps a
+    // freshly-paired future sensor included by default instead of silently
+    // excluded from a bike that was meant to use "everything".
+    await ref.read(bikeProfilesProvider.notifier).setSensorIds(
+        p.id, result.length == allPairedIds.length ? null : result);
   }
 
   Future<void> _delete(BuildContext context, BikeProfilesController notifier,

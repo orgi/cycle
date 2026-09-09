@@ -77,11 +77,17 @@ class FakeSensorService implements SensorService {
 
   @override
   Future<void> connect(String deviceId, {bool autoConnect = false}) async {
-    final d = discoverable.firstWhere((s) => s.id == deviceId);
+    // A device reconnected from persisted pairing (not this session's scan)
+    // may not be in [discoverable] — fall back to a bare entry, same as the
+    // real service falling back to a generic name until it actually connects.
+    final d = discoverable.where((s) => s.id == deviceId).firstOrNull;
     _connected
       ..removeWhere((c) => c.id == deviceId)
       ..add(ConnectedSensor(
-          id: d.id, name: d.name, kinds: d.kinds, connected: true));
+          id: deviceId,
+          name: d?.name ?? deviceId,
+          kinds: d?.kinds ?? const {},
+          connected: true));
     _connectedCtrl.add(List.of(_connected));
   }
 
@@ -102,6 +108,16 @@ class FakeSensorService implements SensorService {
 
   @override
   Stream<SensorSnapshot> snapshots() => _snapshots.stream;
+
+  @override
+  Future<void> setActiveTargets(Set<String> ids) async {
+    for (final c in _connected.map((c) => c.id).toList()) {
+      if (!ids.contains(c)) await disconnect(c);
+    }
+    for (final id in ids) {
+      if (!_connected.any((c) => c.id == id)) await connect(id);
+    }
+  }
 }
 
 /// A [RouteImportService] driven by the test: [filesXml] maps a route file name

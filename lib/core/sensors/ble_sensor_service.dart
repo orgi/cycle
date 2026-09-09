@@ -11,6 +11,17 @@ import 'sensor_service.dart';
 /// cycling GATT services, connects, subscribes to the measurement
 /// characteristics and feeds the (separately unit-tested) parsers + CSC
 /// calculator. Hardware-verified on a physical device (emulators have no BLE).
+///
+/// Reconnection is driven by our own scan-and-connect retry loop, not by
+/// Android's native `autoConnect=true` GATT mode alone: that mode is a
+/// low-priority background op, and on real devices it was observed to be
+/// wildly non-deterministic with 2-3 sensors registered at once — one sensor
+/// reconnecting instantly while another sat for 20+ minutes with no error, no
+/// timeout, and no way to tell "still trying" from "stuck". Instead, for every
+/// active target we do a short *targeted* active scan (`withRemoteIds`) and
+/// connect the moment it's seen, retrying on a backoff if it isn't found,
+/// while also registering the passive `autoConnect=true` link as a low-cost
+/// backstop in case active scanning is paused.
 class BleSensorService implements SensorService {
   final StreamController<SensorSnapshot> _snapshots =
       StreamController<SensorSnapshot>.broadcast();
@@ -22,9 +33,26 @@ class BleSensorService implements SensorService {
   final Map<String, CscCalculator> _csc = {};
   final Map<String, List<StreamSubscription<dynamic>>> _subs = {};
   // Persistent per-device connection-state listeners (survive drop/reconnect
-  // cycles so autoConnect can re-establish without re-pairing).
+  // cycles so the retry loop doesn't need to re-wire anything).
   final Map<String, StreamSubscription<dynamic>> _connSubs = {};
   double _wheelCircumferenceMeters = 2.105;
+
+  /// Device ids we're actively pursuing right now (the active bike profile's
+  /// allow-listed paired sensors). A sensor that's paired but out of scope
+  /// for the current bike simply isn't in here — its pairing is remembered
+  /// by the caller, not by this service.
+  final Set<String> _targets = {};
+  final Set<String> _autoConnectRegistered = {};
+  bool _retryLoopRunning = false;
+  int _consecutiveEmptyRounds = 0;
+
+  static const _scanWindow = Duration(seconds: 8);
+  static const _backoffSteps = [
+    Duration(seconds: 10),
+    Duration(seconds: 20),
+    Duration(seconds: 40),
+    Duration(seconds: 60),
+  ];
 
   @override
   void setWheelCircumference(double meters) {
@@ -77,34 +105,134 @@ class BleSensorService implements SensorService {
 
   @override
   Future<void> connect(String deviceId, {bool autoConnect = false}) async {
+    _targets.add(deviceId);
+    _connected[deviceId] ??= ConnectedSensor(
+      id: deviceId,
+      name: _nameOf(BluetoothDevice.fromId(deviceId)),
+      kinds: const {},
+      connected: false,
+      reconnecting: true,
+    );
+    _emitConnected();
+    _ensureConnSub(deviceId);
+    _kickRetryLoop();
+  }
+
+  @override
+  Future<void> disconnect(String deviceId) => _removeTarget(deviceId);
+
+  @override
+  Future<void> setActiveTargets(Set<String> ids) async {
+    for (final id in _targets.difference(ids).toList()) {
+      await _removeTarget(id);
+    }
+    for (final id in ids.difference(_targets).toList()) {
+      await connect(id);
+    }
+  }
+
+  void _ensureConnSub(String deviceId) {
+    if (_connSubs.containsKey(deviceId)) return;
     final device = BluetoothDevice.fromId(deviceId);
-    // Keep ONE persistent connection-state listener per device: it discovers
-    // services on every (re)connect and tears down on every drop. With
-    // [autoConnect] the OS re-establishes the link whenever the sensor reappears
-    // (wakes from standby / back in range) — that's how auto-reconnect survives
-    // a sensor that was idle too long. License.nonprofit covers personal/OSS use.
-    await _connSubs[deviceId]?.cancel();
     _connSubs[deviceId] = device.connectionState.listen((st) {
       if (st == BluetoothConnectionState.connected) {
         unawaited(_onConnected(device, deviceId));
       } else if (st == BluetoothConnectionState.disconnected) {
         _onDisconnected(deviceId);
+        if (_targets.contains(deviceId)) _kickRetryLoop();
       }
     });
-    // List the sensor immediately (as not-yet-connected) so the UI shows it.
-    _connected[deviceId] ??= ConnectedSensor(
-        id: deviceId, name: _nameOf(device), kinds: const {}, connected: false);
-    _emitConnected();
-    await device.connect(
-      license: License.nonprofit,
-      autoConnect: autoConnect,
-      mtu: autoConnect ? null : 512,
-    );
+  }
+
+  void _kickRetryLoop() {
+    if (_retryLoopRunning) return;
+    unawaited(_retryLoop());
+  }
+
+  /// Repeatedly scans for whichever targets aren't linked yet, connecting
+  /// each the instant it's seen; backs off between rounds for any that stay
+  /// missing, until every target is connected (or de-targeted).
+  Future<void> _retryLoop() async {
+    _retryLoopRunning = true;
+    try {
+      while (true) {
+        final missing = _missingTargets();
+        if (missing.isEmpty) return;
+        await _scanRound(missing);
+        final stillMissing = _missingTargets();
+        if (stillMissing.isEmpty) return;
+        for (final id in stillMissing) {
+          unawaited(_registerAutoConnect(id));
+        }
+        final step = _backoffSteps[
+            _consecutiveEmptyRounds.clamp(0, _backoffSteps.length - 1)];
+        _consecutiveEmptyRounds++;
+        await Future<void>.delayed(step);
+      }
+    } finally {
+      _retryLoopRunning = false;
+      _consecutiveEmptyRounds = 0;
+    }
+  }
+
+  Set<String> _missingTargets() =>
+      _targets.where((id) => _connected[id]?.connected != true).toSet();
+
+  Future<void> _scanRound(Set<String> missing) async {
+    final found = <String>{};
+    late final StreamSubscription<List<ScanResult>> sub;
+    sub = FlutterBluePlus.onScanResults.listen((results) {
+      for (final r in results) {
+        final id = r.device.remoteId.str;
+        if (missing.contains(id) && found.add(id)) {
+          unawaited(_directConnect(r.device, id));
+        }
+      }
+    });
+    try {
+      await FlutterBluePlus.startScan(
+          withRemoteIds: missing.toList(), timeout: _scanWindow);
+      await Future<void>.delayed(_scanWindow);
+    } catch (_) {
+      // Scan failure (adapter off, etc.) — the next round/backstop retries.
+    } finally {
+      await sub.cancel();
+      try {
+        await FlutterBluePlus.stopScan();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _directConnect(BluetoothDevice device, String deviceId) async {
+    _ensureConnSub(deviceId);
+    try {
+      await device.connect(
+        license: License.nonprofit,
+        autoConnect: false,
+        mtu: 512,
+        timeout: _scanWindow,
+      );
+    } catch (_) {
+      // Left for the next scan round / autoConnect backstop to retry.
+    }
+  }
+
+  /// Cheap, passive backstop while we're between active scan rounds: Android
+  /// reconnects opportunistically if the sensor happens to reappear.
+  Future<void> _registerAutoConnect(String deviceId) async {
+    if (_autoConnectRegistered.contains(deviceId)) return;
+    _autoConnectRegistered.add(deviceId);
+    _ensureConnSub(deviceId);
+    try {
+      await BluetoothDevice.fromId(deviceId)
+          .connect(license: License.nonprofit, autoConnect: true, mtu: null);
+    } catch (_) {}
   }
 
   /// Discover services + subscribe to measurements after a (re)connect.
   Future<void> _onConnected(BluetoothDevice device, String deviceId) async {
     try {
+      _autoConnectRegistered.remove(deviceId);
       final services = await device.discoverServices();
       for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
         await s.cancel(); // drop any stale subs from a previous connection
@@ -132,12 +260,13 @@ class BleSensorService implements SensorService {
           id: deviceId, name: _nameOf(device), kinds: kinds, connected: true);
       _emitConnected();
     } catch (_) {
-      // A quick re-drop can race discovery; the next connected event retries.
+      // A quick re-drop can race discovery; the retry loop/next event retries.
     }
   }
 
-  /// A drop (sensor out of range / standby). Keep the pairing so autoConnect can
-  /// re-establish it; just tear down the live subscriptions and mark it offline.
+  /// A drop (sensor out of range / standby). Keep it as a target so the retry
+  /// loop re-establishes it; just tear down the live subscriptions and mark
+  /// it offline.
   void _onDisconnected(String deviceId) {
     for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
       unawaited(s.cancel());
@@ -147,27 +276,33 @@ class BleSensorService implements SensorService {
     final existing = _connected[deviceId];
     if (existing != null) {
       _connected[deviceId] = ConnectedSensor(
-          id: existing.id,
-          name: existing.name,
-          kinds: existing.kinds,
-          connected: false);
+        id: existing.id,
+        name: existing.name,
+        kinds: existing.kinds,
+        connected: false,
+        reconnecting: _targets.contains(deviceId),
+      );
       _emitConnected();
     }
   }
 
-  @override
-  Future<void> disconnect(String deviceId) async {
-    // User-initiated: stop autoConnect and forget the device entirely.
-    await _connSubs[deviceId]?.cancel();
-    _connSubs.remove(deviceId);
-    for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
+  /// Stops pursuing [deviceId]: tears down the live connection/subscriptions
+  /// and forgets its live status. Used both for a user-initiated unpair and
+  /// for a bike-profile switch taking a sensor out of scope — the caller
+  /// decides which of those it is and whether the pairing itself is kept.
+  Future<void> _removeTarget(String deviceId) async {
+    _targets.remove(deviceId);
+    _autoConnectRegistered.remove(deviceId);
+    await _connSubs.remove(deviceId)?.cancel();
+    for (final s in _subs.remove(deviceId) ?? const <StreamSubscription>[]) {
       await s.cancel();
     }
-    _subs.remove(deviceId);
     _csc.remove(deviceId);
     _connected.remove(deviceId);
     _emitConnected();
-    await BluetoothDevice.fromId(deviceId).disconnect();
+    try {
+      await BluetoothDevice.fromId(deviceId).disconnect();
+    } catch (_) {}
   }
 
   @override

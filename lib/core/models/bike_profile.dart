@@ -5,6 +5,7 @@ class BikeProfile {
     required this.id,
     required this.name,
     required this.colorArgb,
+    this.sensorIds,
   });
 
   /// Stable id (not the display name, so renaming doesn't orphan past rides).
@@ -12,22 +13,42 @@ class BikeProfile {
   final String name;
   final int colorArgb;
 
-  BikeProfile copyWith({String? name, int? colorArgb}) => BikeProfile(
+  /// Paired sensor ids to actively pursue for this bike. `null` means "all
+  /// paired sensors" — the default for a profile that hasn't been configured,
+  /// so this feature is opt-in and doesn't change behaviour for anyone who
+  /// hasn't set it.
+  final Set<String>? sensorIds;
+
+  /// [clearSensorIds] explicitly resets [sensorIds] to `null` ("all paired
+  /// sensors") — needed because `copyWith(sensorIds: null)` alone can't be
+  /// told apart from "leave unchanged".
+  BikeProfile copyWith({
+    String? name,
+    int? colorArgb,
+    Set<String>? sensorIds,
+    bool clearSensorIds = false,
+  }) =>
+      BikeProfile(
         id: id,
         name: name ?? this.name,
         colorArgb: colorArgb ?? this.colorArgb,
+        sensorIds: clearSensorIds ? null : (sensorIds ?? this.sensorIds),
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'color': colorArgb,
+        if (sensorIds != null) 'sensor_ids': sensorIds!.toList(),
       };
 
   factory BikeProfile.fromJson(Map<String, dynamic> json) => BikeProfile(
         id: json['id'] as String,
         name: json['name'] as String,
         colorArgb: json['color'] as int,
+        sensorIds: (json['sensor_ids'] as List?)
+            ?.map((e) => e as String)
+            .toSet(),
       );
 
   @override
@@ -35,10 +56,21 @@ class BikeProfile {
       other is BikeProfile &&
       other.id == id &&
       other.name == name &&
-      other.colorArgb == colorArgb;
+      other.colorArgb == colorArgb &&
+      _sensorIdsEqual(other.sensorIds, sensorIds);
 
   @override
-  int get hashCode => Object.hash(id, name, colorArgb);
+  int get hashCode => Object.hash(
+        id,
+        name,
+        colorArgb,
+        sensorIds == null ? null : Object.hashAllUnordered(sensorIds!),
+      );
+}
+
+bool _sensorIdsEqual(Set<String>? a, Set<String>? b) {
+  if (a == null || b == null) return a == b;
+  return a.length == b.length && a.containsAll(b);
 }
 
 /// Preset colours assigned to new profiles round-robin, chosen to read clearly

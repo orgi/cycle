@@ -89,6 +89,26 @@ void main() {
     expect(p.colorArgb, 0xFF123456);
   });
 
+  test('setSensorIds updates only the targeted profile, null resets it',
+      () async {
+    final store = FakeBikeProfilesStore();
+    final container =
+        ProviderContainer(overrides: [bikeProfilesStoreProvider.overrideWithValue(store)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(bikeProfilesProvider.notifier);
+    container.listen(bikeProfilesProvider, (_, _) {});
+    await settle();
+    final id = container.read(bikeProfilesProvider).profiles.single.id;
+
+    await notifier.setSensorIds(id, {'hr1', 'cad2'});
+    expect(container.read(bikeProfilesProvider).profiles.single.sensorIds,
+        {'hr1', 'cad2'});
+
+    await notifier.setSensorIds(id, null);
+    expect(
+        container.read(bikeProfilesProvider).profiles.single.sensorIds, isNull);
+  });
+
   test('setActive switches the active profile', () async {
     final store = FakeBikeProfilesStore();
     final container =

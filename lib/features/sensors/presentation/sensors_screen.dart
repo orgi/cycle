@@ -13,8 +13,12 @@ class SensorsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final discovered = ref.watch(scanResultsProvider);
     final scanning = ref.watch(scanResultsProvider.notifier).scanning;
-    final connected = ref.watch(connectedSensorsProvider).value ?? const [];
-    final connectedIds = connected.map((c) => c.id).toSet();
+    final paired = ref.watch(sensorConnectionProvider);
+    final live = {
+      for (final c in ref.watch(connectedSensorsProvider).value ?? const [])
+        c.id: c,
+    };
+    final pairedIds = paired.map((p) => p.id).toSet();
 
     return Scaffold(
       appBar: AppBar(
@@ -41,21 +45,24 @@ class SensorsScreen extends ConsumerWidget {
       ),
       body: ListView(
         children: [
-          if (connected.isNotEmpty) ...[
-            const _SectionHeader('CONNECTED'),
-            for (final sensor in connected)
+          if (paired.isNotEmpty) ...[
+            const _SectionHeader('PAIRED'),
+            for (final p in paired)
               ListTile(
-                key: Key('connected_${sensor.id}'),
+                key: Key('connected_${p.id}'),
                 leading: Icon(
-                  sensor.connected ? Icons.bluetooth_connected : Icons.bluetooth,
-                  color: sensor.connected ? Colors.cyanAccent : Colors.white38,
+                  live[p.id]?.connected == true
+                      ? Icons.bluetooth_connected
+                      : Icons.bluetooth,
+                  color: live[p.id]?.connected == true
+                      ? Colors.cyanAccent
+                      : Colors.white38,
                 ),
-                title: Text(sensor.name),
-                subtitle: Text(_kindsLabel(sensor.kinds)),
+                title: Text(p.name),
+                subtitle: Text(_kindsLabel(live[p.id]?.kinds ?? p.kinds)),
                 trailing: TextButton(
-                  onPressed: () => ref
-                      .read(sensorConnectionProvider.notifier)
-                      .disconnect(sensor.id),
+                  onPressed: () =>
+                      ref.read(sensorConnectionProvider.notifier).disconnect(p.id),
                   child: const Text('Disconnect'),
                 ),
               ),
@@ -68,7 +75,7 @@ class SensorsScreen extends ConsumerWidget {
                   style: TextStyle(color: Colors.white54)),
             ),
           for (final sensor in discovered)
-            if (!connectedIds.contains(sensor.id))
+            if (!pairedIds.contains(sensor.id))
               ListTile(
                 key: Key('discovered_${sensor.id}'),
                 leading: const Icon(Icons.sensors),
@@ -77,7 +84,7 @@ class SensorsScreen extends ConsumerWidget {
                 trailing: TextButton(
                   onPressed: () => ref
                       .read(sensorConnectionProvider.notifier)
-                      .connect(sensor.id),
+                      .connect(sensor),
                   child: const Text('Connect'),
                 ),
               ),

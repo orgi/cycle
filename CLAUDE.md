@@ -135,6 +135,21 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
   `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
   `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
+  **Reconnection is app-driven, not left to Android's native `autoConnect=true` alone** —
+  real-device field use (2-3 sensors paired at once) showed that mode is a low-priority,
+  non-deterministic background op: one sensor could reconnect instantly while another sat
+  for 20+ minutes with no error, no timeout, and no way to tell "still trying" from "stuck".
+  `BleSensorService` instead runs its own scan-and-connect retry loop per active target: a
+  short targeted scan (`startScan(withRemoteIds: …)`) for whichever paired sensors aren't
+  linked yet, connecting the instant one is seen, backing off (10s → 20s → 40s → 60s cap)
+  between rounds if it isn't found, while still registering the passive `autoConnect=true`
+  link as a free backstop. Pairing now persists each sensor's `SensorKind`s alongside its id
+  (`PairedSensorsStore`, migrated from the old id-only list) so callers — e.g. which
+  dashboard tiles to show — know what a paired sensor *is* without needing a live connection.
+  A bike profile can restrict which paired sensors it actively pursues
+  (`BikeProfile.sensorIds`, `null` = all paired — see bike profiles below); `SensorService`
+  exposes this as `setActiveTargets(ids)`, and `SensorConnectionController` recomputes/applies
+  it whenever the active bike or its sensor selection changes.
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`
@@ -500,6 +515,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     bottom sheet to explicitly pick a profile (works without hardware buttons too, e.g.
     iOS) or jump to **Settings → Bikes → Bike profiles** (`/bike-profiles`,
     `BikeProfilesScreen`) to add/rename/recolour/delete profiles and set the active one.
+  * **Per-bike sensor selection:** each profile's ⋮ menu has "Sensors for this bike" — a
+    checklist (sourced from `sensorConnectionProvider`'s full paired-sensor list) that sets
+    `BikeProfile.sensorIds` (`null` = all paired sensors, the default). Only sensors checked
+    for the *active* bike are actively pursued (see the BLE sensors reconnection note above)
+    and shown as dashboard tiles — so a second bike with no cadence/speed sensor doesn't
+    endlessly retry connecting ones that live on a different bike, and doesn't show empty
+    tiles for them either. Pairing a new sensor from the Sensors screen adds it to the active
+    profile's selection too (if that profile has a restrictive one), so it isn't immediately
+    dropped as out-of-scope.
   * **Rides list filtering:** `TracksScreen` gets an "All" + per-bike `ChoiceChip` row
     (`selectedBikeProfileFilterProvider`, a plain in-memory `Notifier`, not persisted —
     only shown once you have 2+ profiles, since one bike has nothing to filter), which

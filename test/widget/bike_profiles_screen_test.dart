@@ -1,7 +1,11 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/sensors/gatt.dart';
+import 'package:cycle/core/sensors/paired_sensors_store.dart';
+import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/presentation/bike_profiles_screen.dart';
 import 'package:drift/native.dart';
@@ -193,4 +197,55 @@ void main() {
     final tracks = await db.allTracks();
     expect(tracks.every((t) => t.bikeProfileId == 'p1'), isTrue);
   });
+
+  testWidgets('restricts a bike to a subset of paired sensors',
+      (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Gravel', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    final pairedStore = _MemPairedSensorsStore([
+      const PairedSensor(id: 'hr1', name: 'HR strap', kinds: {SensorKind.heartRate}),
+      const PairedSensor(id: 'cad2', name: 'Cadence', kinds: {SensorKind.speedCadence}),
+    ]);
+    final container = ProviderContainer(overrides: [
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(seeded)),
+      sensorServiceProvider.overrideWithValue(FakeSensorService()),
+      pairedSensorsStoreProvider.overrideWithValue(pairedStore),
+    ]);
+    addTearDown(container.dispose);
+    container.read(sensorConnectionProvider); // pre-load the paired sensors
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensors for this bike'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('HR strap'), findsOneWidget);
+    expect(find.text('Cadence'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bikeSensorOption_cad2')));
+    await tester.tap(find.byKey(const Key('bikeSensorsSave')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(bikeProfilesProvider).profiles.single.sensorIds,
+        {'hr1'});
+  });
+}
+
+class _MemPairedSensorsStore implements PairedSensorsStore {
+  _MemPairedSensorsStore([List<PairedSensor> initial = const []])
+      : saved = List.of(initial);
+  List<PairedSensor> saved;
+  @override
+  Future<List<PairedSensor>> load() async => List.of(saved);
+  @override
+  Future<void> save(List<PairedSensor> sensors) async =>
+      saved = List.of(sensors);
 }
