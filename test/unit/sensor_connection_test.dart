@@ -102,6 +102,54 @@ void main() {
         {SensorKind.speedCadence});
   });
 
+  test('backfills kinds from a scan advertisement alone, without ever connecting',
+      () async {
+    // The reported bug: a cadence sensor paired under the old id-only format
+    // (empty kinds) that is NOT a target of the active bike — so it never
+    // connects — must still learn its kind from merely being seen in a scan,
+    // so its dashboard tile can show.
+    final fake = FakeSensorService(discoverable: const [cad]);
+    final store = _MemStore([
+      const PairedSensor(id: 'hr1', name: 'HR', kinds: {SensorKind.heartRate}),
+      const PairedSensor(id: 'cad2', name: 'cad2', kinds: {}),
+    ]);
+    const bikeState = BikeProfilesState(
+      profiles: [
+        // Only HR is pursued; cadence is paired but not a target for this bike.
+        BikeProfile(id: 'b1', name: 'Road', colorArgb: 1, sensorIds: {'hr1'}),
+      ],
+      activeId: 'b1',
+    );
+    final container = ProviderContainer(overrides: [
+      sensorServiceProvider.overrideWithValue(fake),
+      pairedSensorsStoreProvider.overrideWithValue(store),
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikeState)),
+    ]);
+    addTearDown(container.dispose);
+
+    var connectedIds = <String>{};
+    final sub = fake
+        .connectedSensors()
+        .listen((list) => connectedIds = list.map((c) => c.id).toSet());
+    addTearDown(sub.cancel);
+
+    container.read(sensorConnectionProvider);
+    await pumpEventQueue();
+
+    // cadence never connected (not a target) …
+    expect(connectedIds.contains('cad2'), isFalse);
+
+    // … but a scan reveals its kind, which gets absorbed + persisted.
+    await container.read(scanResultsProvider.notifier).startScan();
+    await pumpEventQueue();
+
+    final cadence =
+        container.read(sensorConnectionProvider).firstWhere((p) => p.id == 'cad2');
+    expect(cadence.kinds, {SensorKind.speedCadence});
+    expect(store.saved.firstWhere((p) => p.id == 'cad2').kinds,
+        {SensorKind.speedCadence});
+  });
+
   test('a bike profile with a restrictive sensor selection only pursues its own',
       () async {
     final fake = FakeSensorService(discoverable: const [hr, cad]);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/sensors/ble_sensor_service.dart';
+import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/paired_sensors_store.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../settings/application/bike_profile_providers.dart';
@@ -41,7 +42,10 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
     // synchronously — going through the StreamProvider risks subscribing
     // after a connect that happens fast enough to already have fired, which
     // a broadcast stream never replays.
-    final sub = service.connectedSensors().listen(_backfillKinds);
+    final sub = service.connectedSensors().listen((connected) {
+      _absorbKinds(
+          connected.map((c) => (id: c.id, name: c.name, kinds: c.kinds)));
+    });
     ref.onDispose(sub.cancel);
     // Load paired sensors and start pursuing the active bike's selection, off
     // the build path so startup never blocks (a failed reconnect — sensor out
@@ -62,20 +66,46 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
         _applyActiveTargets();
       }
     });
+    // A scan (manual, from the Sensors screen) reveals a paired sensor's kinds
+    // from its advertisement without ever connecting — the other half of the
+    // backfill below.
+    ref.listen(scanResultsProvider, (_, found) {
+      _absorbKinds(found.map((d) => (id: d.id, name: d.name, kinds: d.kinds)));
+    });
     return const {};
   }
 
-  void _backfillKinds(List<ConnectedSensor> connected) {
+  /// Records the sensor *kinds* (HR / cadence / power) for already-paired
+  /// sensors as soon as we learn them — whether from a full connection or
+  /// merely from seeing the sensor advertise during a scan. This is what a
+  /// dashboard tile's visibility keys off, and a sensor paired under the old
+  /// id-only format (migrated with empty kinds) would otherwise never light up
+  /// a tile until it happened to fully connect. Now merely being *seen* by the
+  /// phone once — which the reconnect scan does on its own while a bike that
+  /// lists the sensor is active — is enough, so the tile then shows even while
+  /// the sensor is disconnected, exactly as configured.
+  void _absorbKinds(
+      Iterable<({String id, String name, Set<SensorKind> kinds})> seen) {
+    final kindsById = <String, Set<SensorKind>>{};
+    final nameById = <String, String>{};
+    for (final s in seen) {
+      if (s.kinds.isEmpty) continue;
+      kindsById.update(s.id, (existing) => {...existing, ...s.kinds},
+          ifAbsent: () => {...s.kinds});
+      if (s.name.isNotEmpty) nameById[s.id] = s.name;
+    }
+    if (kindsById.isEmpty) return;
     var changed = false;
     final updated = <PairedSensor>{};
     for (final p in state) {
-      final live = connected.where((c) => c.id == p.id).firstOrNull;
-      final knowsMore = live != null &&
-          live.kinds.isNotEmpty &&
-          (live.kinds.length != p.kinds.length ||
-              !live.kinds.containsAll(p.kinds));
-      if (knowsMore) {
-        updated.add(PairedSensor(id: p.id, name: live.name, kinds: live.kinds));
+      final learned = kindsById[p.id];
+      final merged = learned == null ? p.kinds : {...p.kinds, ...learned};
+      // Also upgrade a migrated placeholder name (which is just the device id)
+      // to the real one once a scan/connection reveals it.
+      final learnedName = nameById[p.id];
+      final name = (learnedName != null && p.name == p.id) ? learnedName : p.name;
+      if (merged.length != p.kinds.length || name != p.name) {
+        updated.add(PairedSensor(id: p.id, name: name, kinds: merged));
         changed = true;
       } else {
         updated.add(p);

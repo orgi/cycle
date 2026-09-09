@@ -184,14 +184,33 @@ class BleSensorService implements SensorService {
     sub = FlutterBluePlus.onScanResults.listen((results) {
       for (final r in results) {
         final id = r.device.remoteId.str;
-        if (missing.contains(id) && found.add(id)) {
+        if (!missing.contains(id)) continue;
+        // Record the advertised kinds even if we never manage to fully
+        // connect: merely being seen tells us what the sensor *is*, which is
+        // all a dashboard tile's visibility needs.
+        _noteAdvertisedKinds(id, _nameOf(r.device),
+            _kindsFromServices(r.advertisementData.serviceUuids));
+        if (found.add(id)) {
           unawaited(_directConnect(r.device, id));
         }
       }
     });
     try {
+      // Filter by our known cycling services (the same filter [scan] uses for
+      // manual pairing, and proven to work) and match the target ids
+      // ourselves in Dart above, rather than the native `withRemoteIds`
+      // device-address filter — that path is far less exercised and, unlike
+      // the service filter, isn't what's already known-good for pairing.
+      // lowPower (not the default lowLatency): an aggressive scan competes
+      // for radio time with an already-connected sensor's notifications —
+      // e.g. HR data visibly stalling while this loop keeps hunting for a
+      // still-missing cadence/power sensor. We're a background retry, not a
+      // user-initiated one-shot scan, so it's fine for this to take longer.
       await FlutterBluePlus.startScan(
-          withRemoteIds: missing.toList(), timeout: _scanWindow);
+        withServices: _serviceGuids,
+        timeout: _scanWindow,
+        androidScanMode: AndroidScanMode.lowPower,
+      );
       await Future<void>.delayed(_scanWindow);
     } catch (_) {
       // Scan failure (adapter off, etc.) — the next round/backstop retries.
@@ -201,6 +220,27 @@ class BleSensorService implements SensorService {
         await FlutterBluePlus.stopScan();
       } catch (_) {}
     }
+  }
+
+  /// Merge kinds learned from a scan advertisement into the sensor's known
+  /// entry and emit, so listeners (and thus the paired-sensor store) pick up
+  /// the sensor's type without needing a full GATT connection.
+  void _noteAdvertisedKinds(
+      String deviceId, String name, Set<SensorKind> kinds) {
+    if (kinds.isEmpty) return;
+    final existing = _connected[deviceId];
+    final merged = existing == null ? kinds : {...existing.kinds, ...kinds};
+    if (existing != null && merged.length == existing.kinds.length) {
+      return; // nothing new
+    }
+    _connected[deviceId] = ConnectedSensor(
+      id: deviceId,
+      name: (existing?.name.isNotEmpty ?? false) ? existing!.name : name,
+      kinds: merged,
+      connected: existing?.connected ?? false,
+      reconnecting: existing?.reconnecting ?? _targets.contains(deviceId),
+    );
+    _emitConnected();
   }
 
   Future<void> _directConnect(BluetoothDevice device, String deviceId) async {

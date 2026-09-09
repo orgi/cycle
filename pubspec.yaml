@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # Semantic version (https://semver.org). The +N build number = Android
 # versionCode; bump it every release. Keep CHANGELOG.md in step, then run
 # `tool/fl python3 tool/gen_version.py` to refresh lib/core/app_version.dart.
-version: 0.1.0+2015
+version: 0.1.0+2018
 
 environment:
   sdk: ^3.12.0
