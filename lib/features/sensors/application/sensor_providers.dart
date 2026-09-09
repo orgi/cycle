@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/sensors/ble_sensor_service.dart';
@@ -30,13 +32,23 @@ final sensorConnectionProvider =
 class SensorConnectionController extends Notifier<Set<PairedSensor>> {
   @override
   Set<PairedSensor> build() {
+    final service = ref.read(sensorServiceProvider);
+    // A sensor paired under the pre-kinds format (migrated from the old
+    // id-only list) has no persisted kinds, so it never lit up a dashboard
+    // tile even once connected and selected for the active bike. Backfill the
+    // real kinds the moment a connection actually reveals them. Subscribed
+    // directly (not via connectedSensorsProvider) so this is armed
+    // synchronously — going through the StreamProvider risks subscribing
+    // after a connect that happens fast enough to already have fired, which
+    // a broadcast stream never replays.
+    final sub = service.connectedSensors().listen(_backfillKinds);
+    ref.onDispose(sub.cancel);
     // Load paired sensors and start pursuing the active bike's selection, off
     // the build path so startup never blocks (a failed reconnect — sensor out
     // of range — is ignored).
     ref.read(pairedSensorsStoreProvider).load().then((sensors) async {
       if (sensors.isEmpty) return;
       state = sensors.toSet();
-      final service = ref.read(sensorServiceProvider);
       try {
         await service.ensureReady();
       } catch (_) {}
@@ -51,6 +63,28 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
       }
     });
     return const {};
+  }
+
+  void _backfillKinds(List<ConnectedSensor> connected) {
+    var changed = false;
+    final updated = <PairedSensor>{};
+    for (final p in state) {
+      final live = connected.where((c) => c.id == p.id).firstOrNull;
+      final knowsMore = live != null &&
+          live.kinds.isNotEmpty &&
+          (live.kinds.length != p.kinds.length ||
+              !live.kinds.containsAll(p.kinds));
+      if (knowsMore) {
+        updated.add(PairedSensor(id: p.id, name: live.name, kinds: live.kinds));
+        changed = true;
+      } else {
+        updated.add(p);
+      }
+    }
+    if (changed) {
+      state = updated;
+      unawaited(_persist());
+    }
   }
 
   Future<void> connect(DiscoveredSensor sensor) async {

@@ -77,6 +77,31 @@ void main() {
         {'cad2'});
   });
 
+  test('backfills kinds for a sensor paired under the pre-kinds format once connected',
+      () async {
+    // Simulates a sensor paired before kinds were persisted (migrated from
+    // the old id-only list): known by id, but with no recorded kinds.
+    final fake = FakeSensorService(discoverable: const [cad]);
+    final store = _MemStore([const PairedSensor(id: 'cad2', name: 'cad2', kinds: {})]);
+    final container = ProviderContainer(overrides: [
+      sensorServiceProvider.overrideWithValue(fake),
+      pairedSensorsStoreProvider.overrideWithValue(store),
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+    ]);
+    addTearDown(container.dispose);
+
+    container.read(sensorConnectionProvider);
+    await pumpEventQueue();
+
+    final updated =
+        container.read(sensorConnectionProvider).firstWhere((p) => p.id == 'cad2');
+    expect(updated.kinds, {SensorKind.speedCadence});
+    expect(updated.name, 'CAD');
+    // The fix persists too, not just the in-memory state.
+    expect(store.saved.firstWhere((p) => p.id == 'cad2').kinds,
+        {SensorKind.speedCadence});
+  });
+
   test('a bike profile with a restrictive sensor selection only pursues its own',
       () async {
     final fake = FakeSensorService(discoverable: const [hr, cad]);

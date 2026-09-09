@@ -786,29 +786,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       // data/reconnecting, so a mid-ride drop doesn't make the
                       // tile disappear).
                       if (visibleSensors.isNotEmpty) ...[
-                        Row(
-                          children: _statTiles([
-                            if (visibleSensors.contains(SensorKind.heartRate))
-                              _MapStat(
-                                label: 'HR',
-                                value: sensor?.heartRate?.toString() ?? '—',
-                                unit: 'bpm',
-                              ),
-                            if (visibleSensors.contains(SensorKind.speedCadence))
-                              _MapStat(
-                                label: 'CAD',
-                                value: sensor?.cadenceRpm?.round().toString() ??
-                                    '—',
-                                unit: 'rpm',
-                              ),
-                            if (visibleSensors.contains(SensorKind.power))
-                              _MapStat(
-                                label: 'PWR',
-                                value: sensor?.power?.toString() ?? '—',
-                                unit: 'W',
-                              ),
-                          ]),
-                        ),
+                        _CenteredThirdWidthStats([
+                          if (visibleSensors.contains(SensorKind.heartRate))
+                            _MapStat(
+                              label: 'HR',
+                              value: sensor?.heartRate?.toString() ?? '—',
+                              unit: 'bpm',
+                            ),
+                          if (visibleSensors.contains(SensorKind.speedCadence))
+                            _MapStat(
+                              label: 'CAD',
+                              value: sensor?.cadenceRpm?.round().toString() ??
+                                  '—',
+                              unit: 'rpm',
+                            ),
+                          if (visibleSensors.contains(SensorKind.power))
+                            _MapStat(
+                              label: 'PWR',
+                              value: sensor?.power?.toString() ?? '—',
+                              unit: 'W',
+                            ),
+                        ]),
                         const SizedBox(height: 6),
                       ],
                       Row(
@@ -873,15 +871,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 }
 
-/// Lays out a variable-length list of stat tiles evenly (each in an
-/// [Expanded], with gaps only between the ones actually present) — so hiding
-/// a tile (e.g. no cadence sensor for this bike) doesn't leave a blank gap.
-List<Widget> _statTiles(List<Widget> tiles) => [
-      for (var i = 0; i < tiles.length; i++) ...[
-        if (i > 0) const SizedBox(width: 6),
-        Expanded(child: tiles[i]),
-      ],
-    ];
+/// Lays out 1-3 stat tiles at a fixed 1/3-of-row width each, centered — so
+/// showing fewer than 3 (e.g. only HR paired for this bike) doesn't stretch a
+/// tile to fill the whole row; the freed-up space becomes side gaps instead.
+class _CenteredThirdWidthStats extends StatelessWidget {
+  const _CenteredThirdWidthStats(this.tiles);
+  final List<Widget> tiles;
+
+  static const _gap = 6.0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tiles.isEmpty) return const SizedBox.shrink();
+    return LayoutBuilder(builder: (context, constraints) {
+      final slotWidth = (constraints.maxWidth - _gap * 2) / 3;
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const SizedBox(width: _gap),
+            SizedBox(width: slotWidth, child: tiles[i]),
+          ],
+        ],
+      );
+    });
+  }
+}
 
 /// A compact, semi-transparent live stat drawn over the map. Fills the width
 /// it is given (use inside an Expanded).
