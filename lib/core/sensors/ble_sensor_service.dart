@@ -43,6 +43,15 @@ class BleSensorService implements SensorService {
   /// by the caller, not by this service.
   final Set<String> _targets = {};
   final Set<String> _autoConnectRegistered = {};
+  // Targets that have connected at least once this session. A drop of one of
+  // these is handled by passive autoConnect only — we do NOT re-arm the active
+  // scan loop for it. Sustained active BLE scanning competes with GNSS for the
+  // radio on combined Wi-Fi/BT/GPS chips (degrades the GPS fix mid-ride), and
+  // the reliability problem the active scan solves — a sensor that never links
+  // at all — only happens before the first connect. So active scanning is
+  // bounded to the pre-first-connect phase; after that it's passive, like the
+  // original implementation, keeping the GPS fix clean during a ride.
+  final Set<String> _everConnected = {};
   bool _retryLoopRunning = false;
   int _consecutiveEmptyRounds = 0;
 
@@ -149,21 +158,25 @@ class BleSensorService implements SensorService {
     unawaited(_retryLoop());
   }
 
-  /// Repeatedly scans for whichever targets aren't linked yet, connecting
-  /// each the instant it's seen; backs off between rounds for any that stay
-  /// missing, until every target is connected (or de-targeted).
+  /// Actively scans for targets that have never connected yet, connecting each
+  /// the instant it's seen; backs off between rounds. Registers a passive
+  /// autoConnect backstop for every disconnected target (including
+  /// previously-connected ones), but does NOT actively scan for a target that
+  /// has already connected once — that's left to passive autoConnect so the
+  /// active radio is quiet during a ride (see [_everConnected]). Ends once no
+  /// never-connected target remains.
   Future<void> _retryLoop() async {
     _retryLoopRunning = true;
     try {
       while (true) {
-        final missing = _missingTargets();
-        if (missing.isEmpty) return;
-        await _scanRound(missing);
-        final stillMissing = _missingTargets();
-        if (stillMissing.isEmpty) return;
-        for (final id in stillMissing) {
+        // Passive backstop for anything disconnected — cheap, no radio scan.
+        for (final id in _missingTargets()) {
           unawaited(_registerAutoConnect(id));
         }
+        final toScan = _scanTargets();
+        if (toScan.isEmpty) return;
+        await _scanRound(toScan);
+        if (_scanTargets().isEmpty) return;
         final step = _backoffSteps[
             _consecutiveEmptyRounds.clamp(0, _backoffSteps.length - 1)];
         _consecutiveEmptyRounds++;
@@ -177,6 +190,12 @@ class BleSensorService implements SensorService {
 
   Set<String> _missingTargets() =>
       _targets.where((id) => _connected[id]?.connected != true).toSet();
+
+  /// Disconnected targets that warrant an *active* scan: only those never yet
+  /// connected this session. Once connected, a later drop relies on passive
+  /// autoConnect instead, to keep active scanning off the radio during a ride.
+  Set<String> _scanTargets() =>
+      _missingTargets().where((id) => !_everConnected.contains(id)).toSet();
 
   Future<void> _scanRound(Set<String> missing) async {
     final found = <String>{};
@@ -273,6 +292,10 @@ class BleSensorService implements SensorService {
   Future<void> _onConnected(BluetoothDevice device, String deviceId) async {
     try {
       _autoConnectRegistered.remove(deviceId);
+      // Mark it linked at least once this session: from here on a drop is
+      // handled by passive autoConnect, not a fresh active scan (see
+      // [_everConnected]).
+      _everConnected.add(deviceId);
       final services = await device.discoverServices();
       for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
         await s.cancel(); // drop any stale subs from a previous connection
@@ -333,6 +356,7 @@ class BleSensorService implements SensorService {
   Future<void> _removeTarget(String deviceId) async {
     _targets.remove(deviceId);
     _autoConnectRegistered.remove(deviceId);
+    _everConnected.remove(deviceId);
     await _connSubs.remove(deviceId)?.cancel();
     for (final s in _subs.remove(deviceId) ?? const <StreamSubscription>[]) {
       await s.cancel();
