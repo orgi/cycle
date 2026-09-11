@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -19,8 +21,8 @@ abstract class LocationService {
 class GeolocatorLocationService implements LocationService {
   GeolocatorLocationService();
 
-  // One shared polling loop feeds all listeners (metrics + map), so they never
-  // desync and we don't poll the GPS twice.
+  // One shared location stream feeds all listeners (metrics + map), so they
+  // never desync and we don't open the GPS twice.
   Stream<GeoSample>? _shared;
 
   @override
@@ -37,13 +39,24 @@ class GeolocatorLocationService implements LocationService {
   }
 
   @override
-  Stream<GeoSample> positions() => _shared ??= _poll().asBroadcastStream();
+  Stream<GeoSample> positions() => _shared ??= _stream().asBroadcastStream();
 
-  Stream<GeoSample> _poll() async* {
+  /// Holds ONE continuous location stream open, so the GPS chip keeps a lock
+  /// instead of cold-cycling. The previous design polled the one-shot
+  /// `getCurrentPosition` at 1 Hz — each call powered the GPS up for a single
+  /// fix and released it, so the GPS visibly toggled on/off every ~1-2s in the
+  /// status bar and never settled into a solid lock (poor fixes on a moving
+  /// bike). A held-open `getPositionStream` on the raw `LocationManager`
+  /// provider is the same continuous `requestLocationUpdates` OruxMaps uses.
+  ///
+  /// geolocator's stream on the *fused* provider was historically flaky on
+  /// Android 14 (connected but never emitted). We use the raw provider
+  /// (`forceLocationManager: true`), and guard the "never emits" case with a
+  /// per-gap timeout that falls back to the assisted provider so a location
+  /// still comes through indoors / on a cold start, then returns to raw GPS.
+  Stream<GeoSample> _stream() async* {
     // Seed immediately with the last known position so the map centres and the
-    // location dot appear at once — even before a fresh fix. Without this the
-    // raw GPS provider (below) can take a long time to lock, or never lock
-    // indoors/under cover, leaving the map stuck on its default centre.
+    // location dot appear at once — even before a fresh fix.
     try {
       final last = await Geolocator.getLastKnownPosition();
       if (last != null) {
@@ -52,63 +65,67 @@ class GeolocatorLocationService implements LocationService {
       }
     } catch (_) {}
 
-    // geolocator 14's getPositionStream binds a foreground service that, on
-    // Android 14 (incl. the emulator), often connects but never starts
-    // requestLocationUpdates — yielding no fixes and no error. Polling the
-    // one-shot getCurrentPosition at ~1 Hz uses a different, reliable code path
-    // and is exactly the cadence a bike computer needs.
-    //
-    // We prefer the raw GPS provider (accurate, unsmoothed), but it needs sky
-    // view. If it can't get a fix for a few tries, fall back to the fused
-    // provider (wifi/cell-assisted) for one try so a location still arrives
-    // indoors / on a cold start; any success resets us to GPS.
-    var gpsFailures = 0;
+    var useFused = false;
     while (true) {
-      final useFused = gpsFailures >= 4;
+      final settings = useFused ? _fusedStreamSettings() : _rawStreamSettings();
+      var gotFix = false;
       try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: useFused ? _fusedSettings() : _settings(),
-        );
-        final sample = _toSample(position);
-        if (isAccurateEnough(sample)) yield sample;
-        gpsFailures = 0;
+        // If no fix arrives for a while the raw provider may be silently stuck
+        // (no sky view, or the Android-14 no-emit case) — close the stream so
+        // we drop to the assisted provider for a round instead of hanging.
+        final stream = Geolocator.getPositionStream(locationSettings: settings)
+            .timeout(const Duration(seconds: 12),
+                onTimeout: (sink) => sink.close());
+        await for (final position in stream) {
+          final sample = _toSample(position);
+          if (isAccurateEnough(sample)) {
+            gotFix = true;
+            yield sample;
+          }
+        }
       } catch (e) {
-        // Transient (e.g. no fix within timeLimit); retry on the next tick.
-        if (kDebugMode) debugPrint('[cycle] getCurrentPosition: $e');
-        if (!useFused) gpsFailures++;
+        // Stream error (permission revoked mid-ride, provider disabled, …) —
+        // resubscribe below.
+        if (kDebugMode) debugPrint('[cycle] positionStream(fused=$useFused): $e');
       }
-      await Future<void>.delayed(const Duration(seconds: 1));
+      // Raw produced nothing this round → try the assisted provider next;
+      // otherwise always prefer raw GPS.
+      useFused = !gotFix && !useFused;
+      // Only reached when the stream ended/errored — during normal operation
+      // the await-for above never returns, so the GPS stays continuously on.
+      await Future<void>.delayed(const Duration(seconds: 2));
     }
   }
 
-  /// Fused/assisted provider (wifi/cell), used only as a fallback when the raw
-  /// GPS provider can't get a fix — so a location still comes through indoors.
-  LocationSettings _fusedSettings() {
+  /// Assisted (fused, wifi/cell) provider, used only as a fallback when the raw
+  /// GPS stream goes silent — so a location still comes through indoors.
+  LocationSettings _fusedStreamSettings() {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 0,
         forceLocationManager: false,
-        timeLimit: const Duration(seconds: 8),
+        intervalDuration: const Duration(seconds: 1),
       );
     }
-    return _settings();
+    return _rawStreamSettings();
   }
 
-  /// Platform-specific location settings. On Android we force the raw
+  /// Continuous-stream location settings. On Android we force the raw
   /// `LocationManager` (GPS) provider instead of the fused provider: it gives
-  /// unsmoothed positions (better for cycling speed/distance, no road-snapping)
-  /// and is the provider the emulator's `geo fix` feeds, so GPS works there too.
-  LocationSettings _settings() {
+  /// unsmoothed positions (better for cycling speed/distance, no road-snapping),
+  /// keeps the GPS continuously on, and is the provider the emulator's
+  /// `geo fix` feeds. No `timeLimit` — a held-open stream must survive gaps
+  /// under cover (the [_stream] timeout handles a truly stuck provider).
+  LocationSettings _rawStreamSettings() {
     const accuracy = LocationAccuracy.bestForNavigation;
-    const timeLimit = Duration(seconds: 8);
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return AndroidSettings(
           accuracy: accuracy,
           distanceFilter: 0,
           forceLocationManager: true,
-          timeLimit: timeLimit,
+          intervalDuration: const Duration(seconds: 1),
         );
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
@@ -117,13 +134,11 @@ class GeolocatorLocationService implements LocationService {
           distanceFilter: 0,
           activityType: ActivityType.fitness,
           pauseLocationUpdatesAutomatically: false,
-          timeLimit: timeLimit,
         );
       default:
         return const LocationSettings(
           accuracy: accuracy,
           distanceFilter: 0,
-          timeLimit: timeLimit,
         );
     }
   }

@@ -68,9 +68,22 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     (~hundreds of m) at a time while the marker/track followed correctly. The patch
     re-stamps every emitted tileset to `mapModel.lastPosition` (cheap re-projection of
     already-loaded tiles) so the map pans smoothly. Drop the override if fixed upstream.
-* **GPS:** `geolocator` — note we **poll `getCurrentPosition` at 1 Hz** (not
-  `getPositionStream`, which is broken on Android 14) with `forceLocationManager: true`
-  (raw GPS). See `lib/core/services/location_service.dart`.
+* **GPS:** `geolocator` — we hold **one continuous `getPositionStream`** open on the
+  raw `LocationManager` provider (`forceLocationManager: true`), the same continuous
+  `requestLocationUpdates` OruxMaps uses. See `lib/core/services/location_service.dart`.
+  * **Why a held-open stream, not 1 Hz polling.** An earlier design polled the one-shot
+    `getCurrentPosition` at 1 Hz (chosen because geolocator's stream on the *fused*
+    provider was flaky on Android 14 — connected but never emitted). Real-device field
+    use exposed the cost: each `getCurrentPosition` powers the GPS up for a single fix
+    and releases it, so on a Galaxy A33 the GPS **visibly toggled on/off every ~1-2s in
+    the status bar** and never held a lock — poor, cold-restarted fixes on a moving bike
+    (OruxMaps running its continuous stream alongside had a rock-solid fix). We now hold
+    a stream open so the chip keeps its lock. The Android-14 no-emit case is avoided by
+    using the **raw** provider (not fused) and guarded by a per-gap `.timeout(12s)` that
+    falls back to the assisted/fused provider for a round if the raw stream goes silent
+    (indoors / no sky view), then returns to raw GPS. No `timeLimit` on the stream
+    settings — a held-open stream must survive gaps under cover. Only re-subscribes on a
+    stream error/end, so during normal riding the GPS stays continuously on.
   * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
     at the source when the GPS chip's own accuracy estimate is worse than 10 m
     (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
