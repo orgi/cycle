@@ -166,15 +166,22 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
   `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
   `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
-  **Reconnection is app-driven, not left to Android's native `autoConnect=true` alone** —
-  real-device field use (2-3 sensors paired at once) showed that mode is a low-priority,
-  non-deterministic background op: one sensor could reconnect instantly while another sat
-  for 20+ minutes with no error, no timeout, and no way to tell "still trying" from "stuck".
-  `BleSensorService` instead runs its own scan-and-connect retry loop per active target: a
-  short targeted scan (`startScan(withRemoteIds: …)`) for whichever paired sensors aren't
-  linked yet, connecting the instant one is seen, backing off (10s → 20s → 40s → 60s cap)
-  between rounds if it isn't found, while still registering the passive `autoConnect=true`
-  link as a free backstop. Pairing now persists each sensor's `SensorKind`s alongside its id
+  **Reconnection is PASSIVE — Android's native `autoConnect=true` only, no app-level BLE
+  scanning.** `BleSensorService.connect()`/`setActiveTargets()` register `device.connect(
+  autoConnect: true)` per target and let the OS re-link whenever the sensor reappears; a
+  drop is handled by that same registration (it survives disconnects), not by any app
+  retry. **Do NOT reintroduce an app-driven active-scan retry loop.** An earlier version
+  did exactly that (a periodic `startScan` — targeted `withRemoteIds`, then service-filtered
+  — backing off 10s→60s while a paired sensor was missing) to make reconnection fast/
+  deterministic. It **wrecked the GPS fix**: on the Galaxy A33's shared Wi-Fi/BT/GPS radio,
+  an 8s BLE scan every 60s (which ran the whole ride whenever a profile listed a sensor the
+  rider wasn't carrying) competed with the GNSS receiver — confirmed on-device via
+  `dumpsys location` (Cycle's GPS request cold-restarting) and `logcat` (`BluetoothLeScanner
+  Start/Stop Scan` every minute) next to OruxMaps holding a rock-solid continuous fix with
+  zero scanning. GPS is the priority sensor; passive autoConnect is quiet on the radio. The
+  trade-off — autoConnect can be slow/non-deterministic to re-link a sensor that went idle —
+  is accepted; revisit sensor-reconnect speed only with an approach that does not actively
+  scan during a ride. Pairing persists each sensor's `SensorKind`s alongside its id
   (`PairedSensorsStore`, migrated from the old id-only list) so callers — e.g. which
   dashboard tiles to show — know what a paired sensor *is* without needing a live connection.
   A bike profile can restrict which paired sensors it actively pursues

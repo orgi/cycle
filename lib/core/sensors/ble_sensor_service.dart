@@ -43,25 +43,6 @@ class BleSensorService implements SensorService {
   /// by the caller, not by this service.
   final Set<String> _targets = {};
   final Set<String> _autoConnectRegistered = {};
-  // Targets that have connected at least once this session. A drop of one of
-  // these is handled by passive autoConnect only — we do NOT re-arm the active
-  // scan loop for it. Sustained active BLE scanning competes with GNSS for the
-  // radio on combined Wi-Fi/BT/GPS chips (degrades the GPS fix mid-ride), and
-  // the reliability problem the active scan solves — a sensor that never links
-  // at all — only happens before the first connect. So active scanning is
-  // bounded to the pre-first-connect phase; after that it's passive, like the
-  // original implementation, keeping the GPS fix clean during a ride.
-  final Set<String> _everConnected = {};
-  bool _retryLoopRunning = false;
-  int _consecutiveEmptyRounds = 0;
-
-  static const _scanWindow = Duration(seconds: 8);
-  static const _backoffSteps = [
-    Duration(seconds: 10),
-    Duration(seconds: 20),
-    Duration(seconds: 40),
-    Duration(seconds: 60),
-  ];
 
   @override
   void setWheelCircumference(double meters) {
@@ -124,7 +105,13 @@ class BleSensorService implements SensorService {
     );
     _emitConnected();
     _ensureConnSub(deviceId);
-    _kickRetryLoop();
+    // Passive reconnection ONLY: register Android's native autoConnect and let
+    // the OS re-link whenever the sensor reappears. We deliberately do NOT run
+    // an app-level active BLE scan loop — a periodic startScan competes with
+    // the GPS receiver for the shared radio on the A33 and wrecked the GPS fix
+    // (dumpsys/logcat confirmed an 8s scan every 60s while a paired sensor was
+    // absent, i.e. the whole ride). autoConnect is quiet on the radio.
+    unawaited(_registerAutoConnect(deviceId));
   }
 
   @override
@@ -148,136 +135,15 @@ class BleSensorService implements SensorService {
         unawaited(_onConnected(device, deviceId));
       } else if (st == BluetoothConnectionState.disconnected) {
         _onDisconnected(deviceId);
-        if (_targets.contains(deviceId)) _kickRetryLoop();
+        // No app-level retry: the native autoConnect registration survives a
+        // drop and re-links on its own when the sensor reappears.
       }
     });
   }
 
-  void _kickRetryLoop() {
-    if (_retryLoopRunning) return;
-    unawaited(_retryLoop());
-  }
-
-  /// Actively scans for targets that have never connected yet, connecting each
-  /// the instant it's seen; backs off between rounds. Registers a passive
-  /// autoConnect backstop for every disconnected target (including
-  /// previously-connected ones), but does NOT actively scan for a target that
-  /// has already connected once — that's left to passive autoConnect so the
-  /// active radio is quiet during a ride (see [_everConnected]). Ends once no
-  /// never-connected target remains.
-  Future<void> _retryLoop() async {
-    _retryLoopRunning = true;
-    try {
-      while (true) {
-        // Passive backstop for anything disconnected — cheap, no radio scan.
-        for (final id in _missingTargets()) {
-          unawaited(_registerAutoConnect(id));
-        }
-        final toScan = _scanTargets();
-        if (toScan.isEmpty) return;
-        await _scanRound(toScan);
-        if (_scanTargets().isEmpty) return;
-        final step = _backoffSteps[
-            _consecutiveEmptyRounds.clamp(0, _backoffSteps.length - 1)];
-        _consecutiveEmptyRounds++;
-        await Future<void>.delayed(step);
-      }
-    } finally {
-      _retryLoopRunning = false;
-      _consecutiveEmptyRounds = 0;
-    }
-  }
-
-  Set<String> _missingTargets() =>
-      _targets.where((id) => _connected[id]?.connected != true).toSet();
-
-  /// Disconnected targets that warrant an *active* scan: only those never yet
-  /// connected this session. Once connected, a later drop relies on passive
-  /// autoConnect instead, to keep active scanning off the radio during a ride.
-  Set<String> _scanTargets() =>
-      _missingTargets().where((id) => !_everConnected.contains(id)).toSet();
-
-  Future<void> _scanRound(Set<String> missing) async {
-    final found = <String>{};
-    late final StreamSubscription<List<ScanResult>> sub;
-    sub = FlutterBluePlus.onScanResults.listen((results) {
-      for (final r in results) {
-        final id = r.device.remoteId.str;
-        if (!missing.contains(id)) continue;
-        // Record the advertised kinds even if we never manage to fully
-        // connect: merely being seen tells us what the sensor *is*, which is
-        // all a dashboard tile's visibility needs.
-        _noteAdvertisedKinds(id, _nameOf(r.device),
-            _kindsFromServices(r.advertisementData.serviceUuids));
-        if (found.add(id)) {
-          unawaited(_directConnect(r.device, id));
-        }
-      }
-    });
-    try {
-      // Filter by our known cycling services (the same filter [scan] uses for
-      // manual pairing, and proven to work) and match the target ids
-      // ourselves in Dart above, rather than the native `withRemoteIds`
-      // device-address filter — that path is far less exercised and, unlike
-      // the service filter, isn't what's already known-good for pairing.
-      // lowPower (not the default lowLatency): an aggressive scan competes
-      // for radio time with an already-connected sensor's notifications —
-      // e.g. HR data visibly stalling while this loop keeps hunting for a
-      // still-missing cadence/power sensor. We're a background retry, not a
-      // user-initiated one-shot scan, so it's fine for this to take longer.
-      await FlutterBluePlus.startScan(
-        withServices: _serviceGuids,
-        timeout: _scanWindow,
-        androidScanMode: AndroidScanMode.lowPower,
-      );
-      await Future<void>.delayed(_scanWindow);
-    } catch (_) {
-      // Scan failure (adapter off, etc.) — the next round/backstop retries.
-    } finally {
-      await sub.cancel();
-      try {
-        await FlutterBluePlus.stopScan();
-      } catch (_) {}
-    }
-  }
-
-  /// Merge kinds learned from a scan advertisement into the sensor's known
-  /// entry and emit, so listeners (and thus the paired-sensor store) pick up
-  /// the sensor's type without needing a full GATT connection.
-  void _noteAdvertisedKinds(
-      String deviceId, String name, Set<SensorKind> kinds) {
-    if (kinds.isEmpty) return;
-    final existing = _connected[deviceId];
-    final merged = existing == null ? kinds : {...existing.kinds, ...kinds};
-    if (existing != null && merged.length == existing.kinds.length) {
-      return; // nothing new
-    }
-    _connected[deviceId] = ConnectedSensor(
-      id: deviceId,
-      name: (existing?.name.isNotEmpty ?? false) ? existing!.name : name,
-      kinds: merged,
-      connected: existing?.connected ?? false,
-      reconnecting: existing?.reconnecting ?? _targets.contains(deviceId),
-    );
-    _emitConnected();
-  }
-
-  Future<void> _directConnect(BluetoothDevice device, String deviceId) async {
-    _ensureConnSub(deviceId);
-    try {
-      await device.connect(
-        license: License.nonprofit,
-        autoConnect: false,
-        mtu: 512,
-        timeout: _scanWindow,
-      );
-    } catch (_) {
-      // Left for the next scan round / autoConnect backstop to retry.
-    }
-  }
-
-  /// Cheap, passive backstop while we're between active scan rounds: Android
-  /// reconnects opportunistically if the sensor happens to reappear.
+  /// Registers Android's native autoConnect for [deviceId]: the OS re-links
+  /// whenever the sensor next advertises (wakes / back in range), with no
+  /// app-level scanning — quiet on the radio, so it doesn't fight the GPS.
   Future<void> _registerAutoConnect(String deviceId) async {
     if (_autoConnectRegistered.contains(deviceId)) return;
     _autoConnectRegistered.add(deviceId);
@@ -292,10 +158,6 @@ class BleSensorService implements SensorService {
   Future<void> _onConnected(BluetoothDevice device, String deviceId) async {
     try {
       _autoConnectRegistered.remove(deviceId);
-      // Mark it linked at least once this session: from here on a drop is
-      // handled by passive autoConnect, not a fresh active scan (see
-      // [_everConnected]).
-      _everConnected.add(deviceId);
       final services = await device.discoverServices();
       for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
         await s.cancel(); // drop any stale subs from a previous connection
@@ -356,7 +218,6 @@ class BleSensorService implements SensorService {
   Future<void> _removeTarget(String deviceId) async {
     _targets.remove(deviceId);
     _autoConnectRegistered.remove(deviceId);
-    _everConnected.remove(deviceId);
     await _connSubs.remove(deviceId)?.cancel();
     for (final s in _subs.remove(deviceId) ?? const <StreamSubscription>[]) {
       await s.cancel();

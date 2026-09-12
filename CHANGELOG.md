@@ -9,12 +9,15 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
-- **GPS reliability.** GPS acquisition now starts at app launch (ahead of the UI) for a
-  faster first fix, and the poll no longer sleeps between fixes — it re-requests the
-  position back-to-back so the receiver stays warm instead of powering down between reads
-  (which made the status-bar GPS icon toggle every ~1-2s). (A continuous `getPositionStream`
-  was attempted but does not reliably engage the GPS on Android 14 / Galaxy A33 — it
-  produced no fixes at all — so the working one-shot poll is retained, minus the idle gap.)
+- **GPS fix regression from BLE scanning.** Sensor reconnection had been changed to run an
+  app-level active BLE scan loop (an ~8-second scan every minute while a paired sensor was
+  missing — i.e. the whole ride, on a bike without that sensor). On phones with a combined
+  Wi-Fi/BT/GPS radio (e.g. Galaxy A33) that scanning competed with the GPS receiver and
+  degraded/prevented the fix. Reconnection is back to passive Android `autoConnect` (no
+  app scanning), so the GPS is no longer starved. GPS acquisition also now starts at app
+  launch (ahead of the UI) for a faster first fix.
+  - Trade-off: reconnecting a sensor that went idle mid-ride again relies on the OS, which
+    can be slower — to be revisited with an approach that doesn't scan during a ride.
 - **BLE sensor reconnection.** Reconnecting a paired sensor (on app launch or after a
   mid-ride drop) previously relied entirely on Android's native `autoConnect=true` GATT
   mode with no app-level retry, timeout, or fallback — on real devices with 2-3 sensors
