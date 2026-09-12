@@ -148,6 +148,12 @@ abstract class SensorService {
   Future<void> connect(String deviceId, {bool autoConnect = false});
   Future<void> disconnect(String deviceId);
 
+  /// User-triggered quick reconnect of an already-paired [deviceId]: a one-shot
+  /// direct connection attempt (no background scanning), for when a sensor
+  /// hasn't auto-linked. Falls back to passive autoConnect if the sensor isn't
+  /// reachable right now. A no-op if [deviceId] isn't a current target.
+  Future<void> reconnect(String deviceId);
+
   /// Sets the *complete* set of device ids that should actively be pursued
   /// right now (e.g. the active bike profile's allow-listed paired sensors).
   /// Any currently-pursued id not in [ids] is disconnected — but the caller

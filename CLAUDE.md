@@ -188,6 +188,13 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   (`BikeProfile.sensorIds`, `null` = all paired — see bike profiles below); `SensorService`
   exposes this as `setActiveTargets(ids)`, and `SensorConnectionController` recomputes/applies
   it whenever the active bike or its sensor selection changes.
+  **Manual quick reconnect:** tapping a sensor stat tile on the home screen calls
+  `SensorConnectionController.reconnectKind(kind)` → `SensorService.reconnect(id)` for the
+  active bike's sensors of that kind — a one-shot **direct connect** (`autoConnect:false`,
+  no scan), which is fast when the sensor is awake and, unlike an active scan, doesn't
+  disturb the GPS; it falls back to passive autoConnect if the sensor isn't reachable. This
+  is the sanctioned replacement for the removed auto-scan loop: a brief user-triggered blip,
+  not a background loop.
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`

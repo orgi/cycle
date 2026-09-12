@@ -97,6 +97,15 @@ class FakeSensorService implements SensorService {
     _connectedCtrl.add(List.of(_connected));
   }
 
+  /// Device ids [reconnect] was called for, in order (for test assertions).
+  final List<String> reconnectCalls = [];
+
+  @override
+  Future<void> reconnect(String deviceId) async {
+    reconnectCalls.add(deviceId);
+    await connect(deviceId);
+  }
+
   /// Last value pushed via [setWheelCircumference].
   double wheelCircumference = 2.105;
 

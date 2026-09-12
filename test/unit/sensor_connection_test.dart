@@ -150,6 +150,39 @@ void main() {
         {SensorKind.speedCadence});
   });
 
+  test('reconnectKind kicks a one-shot reconnect for that kind, honouring the profile',
+      () async {
+    final fake = FakeSensorService(discoverable: const [hr, cad]);
+    final store = _MemStore([
+      pairedHr,
+      const PairedSensor(id: 'cad2', name: 'CAD', kinds: {SensorKind.speedCadence}),
+    ]);
+    const bikeState = BikeProfilesState(
+      profiles: [
+        // Only the cadence sensor is selected for this bike.
+        BikeProfile(id: 'b1', name: 'Gravel', colorArgb: 1, sensorIds: {'cad2'}),
+      ],
+      activeId: 'b1',
+    );
+    final container = ProviderContainer(overrides: [
+      sensorServiceProvider.overrideWithValue(fake),
+      pairedSensorsStoreProvider.overrideWithValue(store),
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikeState)),
+    ]);
+    addTearDown(container.dispose);
+    final ctrl = container.read(sensorConnectionProvider.notifier);
+    await pumpEventQueue();
+
+    // Cadence is in the profile → reconnect kicks it.
+    expect(await ctrl.reconnectKind(SensorKind.speedCadence), 1);
+    expect(fake.reconnectCalls, contains('cad2'));
+
+    // HR is paired but NOT selected for this bike → not kicked.
+    fake.reconnectCalls.clear();
+    expect(await ctrl.reconnectKind(SensorKind.heartRate), 0);
+    expect(fake.reconnectCalls, isEmpty);
+  });
+
   test('a bike profile with a restrictive sensor selection only pursues its own',
       () async {
     final fake = FakeSensorService(discoverable: const [hr, cad]);

@@ -139,6 +139,22 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
     await _persist();
   }
 
+  /// Quick user-triggered reconnect (a tapped stat tile) of the active-bike
+  /// sensors of [kind]. One-shot direct-connect per sensor, no scanning.
+  /// Returns how many sensors were kicked (0 if none of that kind apply here).
+  Future<int> reconnectKind(SensorKind kind) async {
+    final allow = ref.read(bikeProfilesProvider).active?.sensorIds;
+    final service = ref.read(sensorServiceProvider);
+    var kicked = 0;
+    for (final p in state) {
+      if (!p.kinds.contains(kind)) continue;
+      if (allow != null && !allow.contains(p.id)) continue;
+      await service.reconnect(p.id);
+      kicked++;
+    }
+    return kicked;
+  }
+
   Future<void> _applyActiveTargets() async {
     final allow = ref.read(bikeProfilesProvider).active?.sensorIds;
     final paired = state.map((p) => p.id).toSet();

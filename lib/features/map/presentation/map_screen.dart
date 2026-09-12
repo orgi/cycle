@@ -378,6 +378,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
     setState(() => _follow = true);
   }
 
+  /// Tapping a sensor stat tile: quick one-shot manual reconnect of that
+  /// sensor (direct connect, no scanning — so it doesn't disturb the GPS),
+  /// for when a paired sensor hasn't auto-linked.
+  Future<void> _reconnectSensor(SensorKind kind, String label) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final kicked =
+        await ref.read(sensorConnectionProvider.notifier).reconnectKind(kind);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      duration: const Duration(seconds: 2),
+      content: Text(kicked > 0
+          ? 'Reconnecting $label sensor…'
+          : 'No $label sensor paired for this bike'),
+    ));
+  }
+
   /// Centre on the demo location once, after the map is ready — only while no
   /// real GPS fix has arrived. After that the map follows the position fixes
   /// and build() never moves it again.
@@ -792,6 +808,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               label: 'HR',
                               value: sensor?.heartRate?.toString() ?? '—',
                               unit: 'bpm',
+                              onTap: () => _reconnectSensor(
+                                  SensorKind.heartRate, 'HR'),
                             ),
                           if (visibleSensors.contains(SensorKind.speedCadence))
                             _MapStat(
@@ -799,12 +817,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               value: sensor?.cadenceRpm?.round().toString() ??
                                   '—',
                               unit: 'rpm',
+                              onTap: () => _reconnectSensor(
+                                  SensorKind.speedCadence, 'speed/cadence'),
                             ),
                           if (visibleSensors.contains(SensorKind.power))
                             _MapStat(
                               label: 'PWR',
                               value: sensor?.power?.toString() ?? '—',
                               unit: 'W',
+                              onTap: () =>
+                                  _reconnectSensor(SensorKind.power, 'power'),
                             ),
                         ]),
                         const SizedBox(height: 6),
@@ -907,6 +929,7 @@ class _MapStat extends StatelessWidget {
     required this.unit,
     this.emphasized = false,
     this.valueColor,
+    this.onTap,
   });
 
   final String label;
@@ -918,10 +941,13 @@ class _MapStat extends StatelessWidget {
   /// the emphasized/normal default.
   final Color? valueColor;
 
+  /// Optional tap handler (e.g. a sensor tile → quick manual reconnect).
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
+    final tile = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
@@ -975,6 +1001,15 @@ class _MapStat extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return tile;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: tile,
       ),
     );
   }

@@ -118,6 +118,46 @@ class BleSensorService implements SensorService {
   Future<void> disconnect(String deviceId) => _removeTarget(deviceId);
 
   @override
+  Future<void> reconnect(String deviceId) async {
+    if (!_targets.contains(deviceId)) return;
+    final device = BluetoothDevice.fromId(deviceId);
+    _ensureConnSub(deviceId);
+    // Mark as being worked on so the UI can show "reconnecting…".
+    final existing = _connected[deviceId];
+    if (existing != null && !existing.connected) {
+      _connected[deviceId] = ConnectedSensor(
+        id: existing.id,
+        name: existing.name,
+        kinds: existing.kinds,
+        connected: false,
+        reconnecting: true,
+      );
+      _emitConnected();
+    }
+    // Clear any half-open link + its autoConnect so the direct attempt is clean.
+    _autoConnectRegistered.remove(deviceId);
+    try {
+      await device.disconnect();
+    } catch (_) {}
+    try {
+      // Direct connect (autoConnect:false): fast when the sensor is awake and
+      // advertising, and — unlike an active scan — it doesn't hammer the shared
+      // radio, so it won't disturb the GPS. One-shot: triggered by the user's
+      // tap, not a repeating loop.
+      await device.connect(
+        license: License.nonprofit,
+        autoConnect: false,
+        mtu: 512,
+        timeout: const Duration(seconds: 10),
+      );
+    } catch (_) {
+      // Asleep / out of range — fall back to passive autoConnect so it links
+      // when it next advertises, same as a normal target.
+      await _registerAutoConnect(deviceId);
+    }
+  }
+
+  @override
   Future<void> setActiveTargets(Set<String> ids) async {
     for (final id in _targets.difference(ids).toList()) {
       await _removeTarget(id);
