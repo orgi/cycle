@@ -70,20 +70,32 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     already-loaded tiles) so the map pans smoothly. Drop the override if fixed upstream.
 * **GPS:** `geolocator` — we hold **one continuous `getPositionStream`** open on the
   raw `LocationManager` provider (`forceLocationManager: true`), the same continuous
-  `requestLocationUpdates` OruxMaps uses. See `lib/core/services/location_service.dart`.
+  `requestLocationUpdates` OruxMaps uses, and it is **never closed on a missing fix**.
+  See `lib/core/services/location_service.dart`.
   * **Why a held-open stream, not 1 Hz polling.** An earlier design polled the one-shot
     `getCurrentPosition` at 1 Hz (chosen because geolocator's stream on the *fused*
     provider was flaky on Android 14 — connected but never emitted). Real-device field
     use exposed the cost: each `getCurrentPosition` powers the GPS up for a single fix
-    and releases it, so on a Galaxy A33 the GPS **visibly toggled on/off every ~1-2s in
-    the status bar** and never held a lock — poor, cold-restarted fixes on a moving bike
-    (OruxMaps running its continuous stream alongside had a rock-solid fix). We now hold
-    a stream open so the chip keeps its lock. The Android-14 no-emit case is avoided by
-    using the **raw** provider (not fused) and guarded by a per-gap `.timeout(12s)` that
-    falls back to the assisted/fused provider for a round if the raw stream goes silent
-    (indoors / no sky view), then returns to raw GPS. No `timeLimit` on the stream
-    settings — a held-open stream must survive gaps under cover. Only re-subscribes on a
-    stream error/end, so during normal riding the GPS stays continuously on.
+    and releases it, so on a Galaxy A33 the GPS **visibly toggled on/off in the status
+    bar** and never held a lock — poor, cold-restarted fixes on a moving bike (OruxMaps
+    running its continuous stream alongside had a rock-solid fix).
+  * **Never power the GPS down while active.** A held-open stream must stay subscribed
+    even when no fix is arriving (e.g. no sky view) — the GPS engine then stays on and
+    *searching* (status-bar icon solid), and locks the instant it gets signal. A first
+    cut at the stream added a `.timeout(12s)` watchdog that **closed** the stream on a
+    fix gap and fell back to the fused provider — that close *is* powering GPS off, and
+    reproduced the very blinking we were removing (the icon dropped off in a basement).
+    Removed: there is now **no timeout and no fused fallback**. The raw provider keeps
+    the engine on; the fused provider would only road-snap/smooth (bad for cycling) and
+    its Android-14 no-emit flakiness is a fused-provider issue we avoid by staying raw.
+    The stream is re-subscribed (after a 2s pause) **only** if the platform stream throws
+    a genuine error (provider disabled, permission revoked); filtering inaccurate fixes
+    never closes it. No `timeLimit` on the settings — a held-open stream must survive
+    gaps under cover.
+  * **GPS starts at app launch, ahead of the UI.** `main()` owns the `ProviderContainer`
+    and warms `currentPositionProvider` (+ `ensurePermission`) immediately, before
+    `runApp`, so acquisition begins the instant the app starts rather than when the map
+    screen finishes building (behind the async map load). GPS is the priority sensor.
   * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
     at the source when the GPS chip's own accuracy estimate is worse than 10 m
     (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no

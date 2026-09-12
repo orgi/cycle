@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -41,19 +39,22 @@ class GeolocatorLocationService implements LocationService {
   @override
   Stream<GeoSample> positions() => _shared ??= _stream().asBroadcastStream();
 
-  /// Holds ONE continuous location stream open, so the GPS chip keeps a lock
-  /// instead of cold-cycling. The previous design polled the one-shot
-  /// `getCurrentPosition` at 1 Hz — each call powered the GPS up for a single
-  /// fix and released it, so the GPS visibly toggled on/off every ~1-2s in the
-  /// status bar and never settled into a solid lock (poor fixes on a moving
-  /// bike). A held-open `getPositionStream` on the raw `LocationManager`
+  /// Holds ONE continuous location stream open, so the GPS chip stays powered
+  /// on and keeps a lock instead of cold-cycling. The previous design polled
+  /// the one-shot `getCurrentPosition` at 1 Hz — each call powered the GPS up
+  /// for a single fix and released it, so the GPS visibly toggled on/off in
+  /// the status bar and never settled into a solid lock (poor fixes on a
+  /// moving bike). A held-open `getPositionStream` on the raw `LocationManager`
   /// provider is the same continuous `requestLocationUpdates` OruxMaps uses.
   ///
-  /// geolocator's stream on the *fused* provider was historically flaky on
-  /// Android 14 (connected but never emitted). We use the raw provider
-  /// (`forceLocationManager: true`), and guard the "never emits" case with a
-  /// per-gap timeout that falls back to the assisted provider so a location
-  /// still comes through indoors / on a cold start, then returns to raw GPS.
+  /// We NEVER close the stream on a missing fix — that would power the GPS
+  /// down (the icon would blink off even while "searching", e.g. in a
+  /// basement). The stream is only re-subscribed if the platform stream itself
+  /// errors out. No fused/assisted fallback: the raw provider keeps the GPS
+  /// engine on and searching, and emits as soon as it acquires; a fused
+  /// fallback would only road-snap/smooth (bad for cycling) and its historical
+  /// Android-14 "never emits" flakiness is a fused-provider problem we avoid by
+  /// staying on raw.
   Stream<GeoSample> _stream() async* {
     // Seed immediately with the last known position so the map centres and the
     // location dot appear at once — even before a fresh fix.
@@ -65,50 +66,21 @@ class GeolocatorLocationService implements LocationService {
       }
     } catch (_) {}
 
-    var useFused = false;
     while (true) {
-      final settings = useFused ? _fusedStreamSettings() : _rawStreamSettings();
-      var gotFix = false;
       try {
-        // If no fix arrives for a while the raw provider may be silently stuck
-        // (no sky view, or the Android-14 no-emit case) — close the stream so
-        // we drop to the assisted provider for a round instead of hanging.
-        final stream = Geolocator.getPositionStream(locationSettings: settings)
-            .timeout(const Duration(seconds: 12),
-                onTimeout: (sink) => sink.close());
-        await for (final position in stream) {
-          final sample = _toSample(position);
-          if (isAccurateEnough(sample)) {
-            gotFix = true;
-            yield sample;
-          }
-        }
+        // Held open indefinitely: filtering inaccurate fixes does NOT close the
+        // stream, so the GPS stays continuously on and searching. During normal
+        // operation this yield* never returns.
+        yield* Geolocator.getPositionStream(locationSettings: _rawStreamSettings())
+            .map(_toSample)
+            .where(isAccurateEnough);
       } catch (e) {
-        // Stream error (permission revoked mid-ride, provider disabled, …) —
-        // resubscribe below.
-        if (kDebugMode) debugPrint('[cycle] positionStream(fused=$useFused): $e');
+        // Only a genuine platform error ends the stream (provider disabled,
+        // permission revoked mid-ride, …) — resubscribe after a short pause.
+        if (kDebugMode) debugPrint('[cycle] positionStream error: $e');
       }
-      // Raw produced nothing this round → try the assisted provider next;
-      // otherwise always prefer raw GPS.
-      useFused = !gotFix && !useFused;
-      // Only reached when the stream ended/errored — during normal operation
-      // the await-for above never returns, so the GPS stays continuously on.
       await Future<void>.delayed(const Duration(seconds: 2));
     }
-  }
-
-  /// Assisted (fused, wifi/cell) provider, used only as a fallback when the raw
-  /// GPS stream goes silent — so a location still comes through indoors.
-  LocationSettings _fusedStreamSettings() {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return AndroidSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 0,
-        forceLocationManager: false,
-        intervalDuration: const Duration(seconds: 1),
-      );
-    }
-    return _rawStreamSettings();
   }
 
   /// Continuous-stream location settings. On Android we force the raw
@@ -116,7 +88,7 @@ class GeolocatorLocationService implements LocationService {
   /// unsmoothed positions (better for cycling speed/distance, no road-snapping),
   /// keeps the GPS continuously on, and is the provider the emulator's
   /// `geo fix` feeds. No `timeLimit` — a held-open stream must survive gaps
-  /// under cover (the [_stream] timeout handles a truly stuck provider).
+  /// under cover without being torn down.
   LocationSettings _rawStreamSettings() {
     const accuracy = LocationAccuracy.bestForNavigation;
     switch (defaultTargetPlatform) {

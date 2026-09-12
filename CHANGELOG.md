@@ -9,6 +9,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **GPS fix quality — hold the location stream open instead of polling.** The GPS was
+  read via a one-shot `getCurrentPosition` once per second, so the chip powered up for a
+  single fix and released it every second — the status-bar GPS icon visibly toggled on/off
+  and the receiver never held a lock, giving poor fixes on a moving bike. Cycle now holds
+  one continuous `getPositionStream` open on the raw GPS provider (the same continuous
+  approach OruxMaps uses) and never closes it on a missing fix, so the GPS stays locked.
+  GPS acquisition also now starts at app launch, ahead of the UI, for a faster first fix.
 - **BLE sensor reconnection.** Reconnecting a paired sensor (on app launch or after a
   mid-ride drop) previously relied entirely on Android's native `autoConnect=true` GATT
   mode with no app-level retry, timeout, or fallback — on real devices with 2-3 sensors
