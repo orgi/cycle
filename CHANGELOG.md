@@ -29,10 +29,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   passive `autoConnect=true` link kept as a low-cost backstop between rounds.
 
 ### Added
-- **Tap a sensor tile to reconnect it.** Tapping the HR / cadence / power stat on the home
-  screen triggers a quick one-shot manual reconnect of that sensor (a direct connect, no
-  background scanning — so it doesn't disturb the GPS), for when a paired sensor hasn't
-  auto-linked yet.
+- **Tap a stat to reconnect its sensor.** Tapping the SPEED / HR / cadence / power stat on
+  the home screen triggers a quick one-shot manual reconnect of that sensor (a direct
+  connect, no background scanning — so it doesn't disturb the GPS), for when a paired sensor
+  hasn't auto-linked yet. The **SPEED** stat reconnects the BLE speed sensor (which has no
+  tile of its own — its data feeds the speed reading), and reconnect also works for a sensor
+  whose type the app hasn't learned yet (a flaky one that never linked cleanly). The Sensors
+  screen also gets a per-sensor **Reconnect** button (by name), for unambiguous control.
 - **Per-bike sensor selection.** Each bike profile can now be restricted to a subset of
   paired sensors (Settings → Bikes → Bike profiles → ⋮ → "Sensors for this bike") — e.g. a
   second bike with no cadence/speed sensor won't have the app endlessly retry connecting

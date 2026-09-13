@@ -44,10 +44,14 @@ class RecordingScreenWakeService implements ScreenWakeService {
 /// A [SensorService] driven by the test: set [discoverable] sensors, drive
 /// [emitSnapshot], and connect/disconnect deterministically.
 class FakeSensorService implements SensorService {
-  FakeSensorService({this.discoverable = const []});
+  FakeSensorService({this.discoverable = const [], this.connectTargets = true});
 
   List<DiscoveredSensor> discoverable;
   bool ready = true;
+
+  /// When false, [setActiveTargets] registers targets but leaves them
+  /// disconnected — lets a test show a paired-but-not-connected sensor.
+  bool connectTargets;
 
   final StreamController<SensorSnapshot> _snapshots =
       StreamController<SensorSnapshot>.broadcast();
@@ -123,6 +127,7 @@ class FakeSensorService implements SensorService {
     for (final c in _connected.map((c) => c.id).toList()) {
       if (!ids.contains(c)) await disconnect(c);
     }
+    if (!connectTargets) return;
     for (final id in ids) {
       if (!_connected.any((c) => c.id == id)) await connect(id);
     }

@@ -141,19 +141,30 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
 
   /// Quick user-triggered reconnect (a tapped stat tile) of the active-bike
   /// sensors of [kind]. One-shot direct-connect per sensor, no scanning.
-  /// Returns how many sensors were kicked (0 if none of that kind apply here).
+  /// Returns how many sensors were kicked (0 if none apply here).
+  ///
+  /// Also kicks sensors whose kind we don't know yet (paired under the old
+  /// id-only format and not connected since, so their kind was never learned) —
+  /// a reconnect is harmless, and once it links its kind is backfilled and
+  /// future taps are precise. This is what makes a flaky, never-cleanly-linked
+  /// speed sensor reconnectable from a stat tile at all.
   Future<int> reconnectKind(SensorKind kind) async {
     final allow = ref.read(bikeProfilesProvider).active?.sensorIds;
     final service = ref.read(sensorServiceProvider);
     var kicked = 0;
     for (final p in state) {
-      if (!p.kinds.contains(kind)) continue;
+      if (!(p.kinds.contains(kind) || p.kinds.isEmpty)) continue;
       if (allow != null && !allow.contains(p.id)) continue;
       await service.reconnect(p.id);
       kicked++;
     }
     return kicked;
   }
+
+  /// Quick user-triggered reconnect of one specific paired sensor by id (the
+  /// Sensors screen's per-device reconnect — unambiguous, by name).
+  Future<void> reconnectDevice(String deviceId) =>
+      ref.read(sensorServiceProvider).reconnect(deviceId);
 
   Future<void> _applyActiveTargets() async {
     final allow = ref.read(bikeProfilesProvider).active?.sensorIds;

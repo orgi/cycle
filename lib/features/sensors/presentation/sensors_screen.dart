@@ -60,10 +60,34 @@ class SensorsScreen extends ConsumerWidget {
                 ),
                 title: Text(p.name),
                 subtitle: Text(_kindsLabel(live[p.id]?.kinds ?? p.kinds)),
-                trailing: TextButton(
-                  onPressed: () =>
-                      ref.read(sensorConnectionProvider.notifier).disconnect(p.id),
-                  child: const Text('Disconnect'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Quick manual reconnect for a sensor that hasn't linked
+                    // (e.g. a flaky speed sensor) — a one-shot direct connect,
+                    // no scanning, shown only while it isn't connected.
+                    if (live[p.id]?.connected != true)
+                      IconButton(
+                        key: Key('reconnect_${p.id}'),
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Reconnect',
+                        onPressed: () {
+                          ref
+                              .read(sensorConnectionProvider.notifier)
+                              .reconnectDevice(p.id);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            duration: const Duration(seconds: 2),
+                            content: Text('Reconnecting ${p.name}…'),
+                          ));
+                        },
+                      ),
+                    TextButton(
+                      onPressed: () => ref
+                          .read(sensorConnectionProvider.notifier)
+                          .disconnect(p.id),
+                      child: const Text('Disconnect'),
+                    ),
+                  ],
                 ),
               ),
           ],

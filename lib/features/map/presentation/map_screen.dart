@@ -607,6 +607,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
       paired: pairedSensors,
       allowedSensorIds: activeBike?.sensorIds,
     );
+    // A speed sensor's data feeds the top SPEED metric, not a dedicated tile,
+    // so make SPEED tappable to reconnect it. Also enable it when a paired
+    // sensor's kind isn't known yet (a flaky speed sensor that never linked
+    // cleanly) so it's reachable at all.
+    final allow = activeBike?.sensorIds;
+    final canReconnectSpeed =
+        visibleSensors.contains(SensorKind.speedCadence) ||
+            pairedSensors.any((p) =>
+                p.kinds.isEmpty && (allow == null || allow.contains(p.id)));
 
     ref.listen(currentPositionProvider, (_, next) {
       next.whenData((sample) {
@@ -752,6 +761,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           // (accurate); default accent when it's GPS.
                           valueColor: m.speedFromSensor
                               ? const Color(0xFF4CD964)
+                              : null,
+                          // Tap to reconnect the (BLE) speed sensor, which has
+                          // no tile of its own — its data lands here.
+                          onTap: canReconnectSpeed
+                              ? () => _reconnectSensor(
+                                  SensorKind.speedCadence, 'speed')
                               : null,
                         ),
                       ),
