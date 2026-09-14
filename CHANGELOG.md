@@ -9,6 +9,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **GPS now uses a continuous native location request (real fix, no more toggling).** The
+  GPS was read by polling one-shot position requests, which cold-restarted the receiver on
+  every poll — the status-bar GPS icon toggled on/off and, on the Galaxy A33, often never
+  got a fix at all. Android now holds a single continuous native `LocationManager` request
+  (the same approach OruxMaps uses), so the GPS keeps its lock. (geolocator's polling and
+  its position-stream both proved unable to hold the receiver on this hardware.)
 - **GPS fix regression from BLE scanning.** Sensor reconnection had been changed to run an
   app-level active BLE scan loop (an ~8-second scan every minute while a paired sensor was
   missing — i.e. the whole ride, on a bike without that sensor). On phones with a combined

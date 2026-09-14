@@ -68,36 +68,30 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     (~hundreds of m) at a time while the marker/track followed correctly. The patch
     re-stamps every emitted tileset to `mapModel.lastPosition` (cheap re-projection of
     already-loaded tiles) so the map pans smoothly. Drop the override if fixed upstream.
-* **GPS:** `geolocator` — we poll the one-shot `getCurrentPosition` **back-to-back** (no
-  idle gap between calls) on the raw `LocationManager` provider (`forceLocationManager:
-  true`). See `lib/core/services/location_service.dart`.
-  * **Why polling, not `getPositionStream`.** geolocator 14's continuous
-    `getPositionStream` does **not reliably engage the GPS on this hardware** (Android 14
-    / Galaxy A33): it connects but never starts `requestLocationUpdates`, yielding **no
-    fixes and no GPS icon at all** — verified the hard way by shipping a continuous-stream
-    build that left the device with a dead GPS. The one-shot `getCurrentPosition` path is
-    the one that actually drives the receiver here (fixes flow, tracks record). A
-    continuous `requestLocationUpdates` stream (what OruxMaps uses) would be nicer in
-    principle but isn't reachable through geolocator on this device; revisit only with a
-    library/native path proven to keep the A33's GPS on.
-  * **Back-to-back, no idle sleep.** The original polling slept 1s between calls, which
-    let the GPS power down in the gap and made the status-bar icon toggle every ~1-2s.
-    Removing that sleep (loop straight into the next `getCurrentPosition`, which itself
-    blocks ~1s waiting for a fix) keeps a request essentially always in flight, so the
-    receiver stays warm between fixes — much less toggling — while still using the working
-    one-shot path. A 1s delay is applied **only after an error**, to avoid a tight failure
-    loop. Do NOT reintroduce an unconditional inter-poll sleep.
-  * **A cautionary tale (don't repeat).** Chasing the icon-toggle cosmetics, a series of
-    changes migrated this to a held-open `getPositionStream` with a `.timeout(12s)`
-    watchdog that *closed* the stream on a fix gap (itself powering GPS off, reproducing
-    the blink), then to a no-timeout stream — the latter left the real device with **no
-    GPS at all** because `getPositionStream` doesn't emit here. Reverted to back-to-back
-    polling. If you touch this, test on the **real A33**: the emulator's `geo fix` also
-    satisfies `getLastKnownPosition`, so a location dot on the emulator does NOT prove the
-    live stream/poll is emitting.
-  * **Fused fallback for cold start.** Prefer the raw GPS provider; after ~4 consecutive
-    failures fall back to the fused (wifi/cell-assisted) provider for one try so a
-    location still arrives indoors / on a cold start, then reset to raw on any success.
+* **GPS: native continuous `LocationManager` on Android (NOT geolocator).** Android uses
+  ONE held-open `LocationManager.requestLocationUpdates(GPS_PROVIDER, 1000ms, 0f)` in
+  `MainActivity.kt`, streamed to Dart over the `cycle/location` EventChannel and consumed by
+  `NativeLocationService` (`lib/core/services/native_location_service.dart`,
+  `locationServiceProvider` picks it on Android). This is exactly what OruxMaps does, and —
+  proven on the real A33 via `dumpsys location` — the only thing that holds a solid fix here.
+  Other platforms fall back to `GeolocatorLocationService` (`location_service.dart`).
+  Permission still goes through geolocator (that part is fine); only the position stream is
+  native.
+  * **Why native, not geolocator (both of its paths failed on the A33).** (1) One-shot
+    `getCurrentPosition` polling **cold-restarts the GPS on every call** — `dumpsys`/logcat
+    showed `mStarted=false → startNavigating` per poll and the request toggling ON/OFF every
+    1-2s, so the receiver never settled into a lock; back-to-back polling made it *worse*
+    (no fix at all). (2) `getPositionStream` **never engages the receiver** on this hardware
+    (no fixes, no GPS icon). A raw `LocationManager` request registered natively holds ONE
+    continuous request (dumpsys: a single `@+1s0ms HIGH_ACCURACY` that stays on for minutes,
+    like OruxMaps) so the GPS keeps navigating. **Do NOT go back to geolocator for the
+    position stream**, and do NOT reintroduce `getPositionStream` or `getCurrentPosition`
+    polling.
+  * **Verify on the real A33, via dumpsys — not the emulator, not a location dot.** The
+    emulator's `geo fix` satisfies `getLastKnownLocation`, so a dot on the map (or a stale
+    `last location` in dumpsys) does NOT prove live fixes are flowing. Confirm
+    `dumpsys location` shows Cycle's `gps provider` request held **continuously** (not
+    toggling OFF between fixes) like OruxMaps'.
   * **GPS starts at app launch, ahead of the UI.** `main()` owns the `ProviderContainer`
     and warms `currentPositionProvider` (+ `ensurePermission`) immediately, before
     `runApp`, so acquisition begins the instant the app starts rather than when the map

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/database.dart';
@@ -12,6 +13,7 @@ import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/native_location_service.dart';
 import '../../../core/services/fg_task_recording_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
@@ -22,8 +24,15 @@ import '../../settings/application/settings_providers.dart';
 import '../../tracks/application/track_repair.dart';
 
 /// Platform GPS source. Overridden with a fake in tests.
+///
+/// Android uses the native continuous `LocationManager` stream
+/// ([NativeLocationService]) — geolocator's polling cold-restarts the GPS and
+/// its stream doesn't engage the receiver on the target hardware (see that
+/// class + CLAUDE.md). Other platforms fall back to geolocator.
 final locationServiceProvider = Provider<LocationService>(
-  (ref) => GeolocatorLocationService(),
+  (ref) => defaultTargetPlatform == TargetPlatform.android
+      ? NativeLocationService()
+      : GeolocatorLocationService(),
 );
 
 /// Keep-screen-awake service. Overridden with a no-op in tests.

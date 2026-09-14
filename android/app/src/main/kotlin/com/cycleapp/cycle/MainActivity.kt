@@ -1,10 +1,16 @@
 package com.cycleapp.cycle
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
@@ -12,6 +18,7 @@ import android.view.KeyEvent
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
@@ -69,6 +76,16 @@ class MainActivity : FlutterActivity() {
 
     private var buttons: MethodChannel? = null
     private var buttonsEnabled = false
+
+    // Continuous GPS: ONE held-open LocationManager.requestLocationUpdates (as
+    // OruxMaps does), streamed to Dart over an EventChannel. geolocator's
+    // getCurrentPosition cold-restarted the GPS on every poll (dumpsys:
+    // mStarted=false → startNavigating each call), so it never held a lock and
+    // often got no fix at all; getPositionStream never engaged the receiver on
+    // this hardware. A raw LocationManager request keeps the GPS navigating.
+    private val locationChannel = "cycle/location"
+    private var locationManager: LocationManager? = null
+    private var locationListener: LocationListener? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -257,7 +274,72 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        EventChannel(messenger, locationChannel).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    startLocationUpdates(events)
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    stopLocationUpdates()
+                }
+            },
+        )
+
         handleIntent(intent)
+    }
+
+    /// One continuous GPS request; every fix is streamed to Dart. Kept open for
+    /// the app's lifetime (Dart holds the subscription), so the GPS stays
+    /// navigating instead of cold-restarting per fix.
+    private fun startLocationUpdates(events: EventChannel.EventSink) {
+        val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        locationManager = lm
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                events.success(locationToMap(location))
+            }
+
+            // Required on older API levels; nothing to do.
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+        locationListener = listener
+        try {
+            // Seed with the last known GPS fix so the map centres immediately.
+            lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let {
+                events.success(locationToMap(it))
+            }
+            lm.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                1000L, // ~1 Hz
+                0f, // every fix, no distance filter
+                listener,
+                Looper.getMainLooper(),
+            )
+        } catch (e: SecurityException) {
+            events.error("PERMISSION", "Location permission not granted", null)
+        }
+    }
+
+    private fun stopLocationUpdates() {
+        locationListener?.let { locationManager?.removeUpdates(it) }
+        locationListener = null
+    }
+
+    private fun locationToMap(l: Location): Map<String, Any?> = mapOf(
+        "latitude" to l.latitude,
+        "longitude" to l.longitude,
+        "timeMillis" to l.time,
+        "speed" to if (l.hasSpeed()) l.speed.toDouble() else null,
+        "altitude" to if (l.hasAltitude()) l.altitude else null,
+        "accuracy" to if (l.hasAccuracy()) l.accuracy.toDouble() else null,
+    )
+
+    override fun onDestroy() {
+        stopLocationUpdates()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
