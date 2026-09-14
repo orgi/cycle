@@ -160,11 +160,19 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
   `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
   `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
-  **Reconnection is PASSIVE — Android's native `autoConnect=true` only, no app-level BLE
-  scanning.** `BleSensorService.connect()`/`setActiveTargets()` register `device.connect(
-  autoConnect: true)` per target and let the OS re-link whenever the sensor reappears; a
-  drop is handled by that same registration (it survives disconnects), not by any app
-  retry. **Do NOT reintroduce an app-driven active-scan retry loop.** An earlier version
+  **Reconnection: one-shot DIRECT connect, no app-level BLE scanning.**
+  `BleSensorService.connect()`/`setActiveTargets()` do a one-shot
+  `device.connect(autoConnect: false)` per target (`_attemptDirectConnect`) — a direct
+  connect links fast when the sensor is advertising (a worn HR strap, a spinning cadence
+  sensor), whereas passive `autoConnect: true` frequently **never links a present sensor**
+  (confirmed on-device: the app registered autoConnect for a worn HR sensor and it stayed
+  disconnected — FBP made the connect call, no link; switching to a direct connect linked it
+  in ~2s). Crucially a direct connect does NOT scan, so — unlike the removed active-scan
+  loop — it doesn't disturb the GPS radio. If the sensor isn't reachable now, it falls back
+  to passive `autoConnect: true` (quiet on the radio) for later; a **mid-ride drop** of an
+  active target also re-registers passive autoConnect (a direct retry could fight a brief
+  out-of-range blip). The manual reconnect tap uses the same direct-connect path.
+  **Do NOT reintroduce an app-driven active-scan retry loop.** An earlier version
   did exactly that (a periodic `startScan` — targeted `withRemoteIds`, then service-filtered
   — backing off 10s→60s while a paired sensor was missing) to make reconnection fast/
   deterministic. It **wrecked the GPS fix**: on the Galaxy A33's shared Wi-Fi/BT/GPS radio,

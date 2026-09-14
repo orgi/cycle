@@ -9,6 +9,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **Sensors auto-connect on launch again (direct connect).** After the switch to passive
+  reconnection, a paired sensor that was present and advertising (e.g. a worn HR strap)
+  often would not link on launch — passive Android `autoConnect` frequently never connects a
+  present sensor. The app now does a one-shot **direct connect** per sensor (the same path
+  the manual "tap to reconnect" uses, which worked), which links a present sensor in a couple
+  of seconds; it still doesn't scan, so it doesn't disturb the GPS. Absent sensors fall back
+  to passive autoConnect. Verified on-device: a worn HR sensor now connects ~2s after launch
+  with no tap.
 - **GPS now uses a continuous native location request (real fix, no more toggling).** The
   GPS was read by polling one-shot position requests, which cold-restarted the receiver on
   every poll — the status-bar GPS icon toggled on/off and, on the Galaxy A33, often never

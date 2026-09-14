@@ -105,13 +105,35 @@ class BleSensorService implements SensorService {
     );
     _emitConnected();
     _ensureConnSub(deviceId);
-    // Passive reconnection ONLY: register Android's native autoConnect and let
-    // the OS re-link whenever the sensor reappears. We deliberately do NOT run
-    // an app-level active BLE scan loop — a periodic startScan competes with
-    // the GPS receiver for the shared radio on the A33 and wrecked the GPS fix
-    // (dumpsys/logcat confirmed an 8s scan every 60s while a paired sensor was
-    // absent, i.e. the whole ride). autoConnect is quiet on the radio.
-    unawaited(_registerAutoConnect(deviceId));
+    // One-shot DIRECT connect (not passive autoConnect): a direct connect links
+    // fast when the sensor is advertising — which a worn HR strap / a spinning
+    // cadence sensor is — whereas passive `autoConnect=true` frequently just
+    // never links a present sensor (confirmed on-device: the app registered
+    // autoConnect for a worn HR sensor and it stayed disconnected). Crucially a
+    // direct connect does NOT scan, so — unlike the removed active-scan retry
+    // loop — it doesn't compete with the GPS radio. If the sensor isn't
+    // reachable right now it falls back to passive autoConnect for later. This
+    // is the same path the manual reconnect tap uses (which works).
+    unawaited(_attemptDirectConnect(deviceId));
+  }
+
+  /// One-shot direct connect with a passive-autoConnect fallback. No scanning,
+  /// so GPS-safe. Shared by initial connect, [reconnect], and post-drop
+  /// recovery.
+  Future<void> _attemptDirectConnect(String deviceId) async {
+    _ensureConnSub(deviceId);
+    try {
+      await BluetoothDevice.fromId(deviceId).connect(
+        license: License.nonprofit,
+        autoConnect: false,
+        mtu: 512,
+        timeout: const Duration(seconds: 12),
+      );
+    } catch (_) {
+      // Asleep / out of range — register passive autoConnect so it links when
+      // it next advertises (quiet on the radio, no scan).
+      await _registerAutoConnect(deviceId);
+    }
   }
 
   @override
@@ -139,22 +161,7 @@ class BleSensorService implements SensorService {
     try {
       await device.disconnect();
     } catch (_) {}
-    try {
-      // Direct connect (autoConnect:false): fast when the sensor is awake and
-      // advertising, and — unlike an active scan — it doesn't hammer the shared
-      // radio, so it won't disturb the GPS. One-shot: triggered by the user's
-      // tap, not a repeating loop.
-      await device.connect(
-        license: License.nonprofit,
-        autoConnect: false,
-        mtu: 512,
-        timeout: const Duration(seconds: 10),
-      );
-    } catch (_) {
-      // Asleep / out of range — fall back to passive autoConnect so it links
-      // when it next advertises, same as a normal target.
-      await _registerAutoConnect(deviceId);
-    }
+    await _attemptDirectConnect(deviceId);
   }
 
   @override
@@ -175,8 +182,14 @@ class BleSensorService implements SensorService {
         unawaited(_onConnected(device, deviceId));
       } else if (st == BluetoothConnectionState.disconnected) {
         _onDisconnected(deviceId);
-        // No app-level retry: the native autoConnect registration survives a
-        // drop and re-links on its own when the sensor reappears.
+        // Mid-ride drop of an active target: register passive autoConnect so
+        // the OS re-links it when it reappears. Passive (no scan) so it stays
+        // quiet on the radio and doesn't disturb GPS; a direct-connect retry
+        // here could fight a brief out-of-range blip. The user can also tap the
+        // stat to force a direct reconnect.
+        if (_targets.contains(deviceId)) {
+          unawaited(_registerAutoConnect(deviceId));
+        }
       }
     });
   }
