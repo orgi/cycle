@@ -380,11 +380,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   /// Tapping a sensor stat tile: quick one-shot manual reconnect of that
   /// sensor (direct connect, no scanning — so it doesn't disturb the GPS),
-  /// for when a paired sensor hasn't auto-linked.
-  Future<void> _reconnectSensor(SensorKind kind, String label) async {
+  /// for when a paired sensor hasn't auto-linked. [action] returns how many
+  /// sensors were kicked (0 → nothing of that kind here).
+  Future<void> _runReconnect(Future<int> Function() action, String label) async {
     final messenger = ScaffoldMessenger.of(context);
-    final kicked =
-        await ref.read(sensorConnectionProvider.notifier).reconnectKind(kind);
+    final kicked = await action();
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(
       duration: const Duration(seconds: 2),
@@ -765,8 +765,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           // Tap to reconnect the (BLE) speed sensor, which has
                           // no tile of its own — its data lands here.
                           onTap: canReconnectSpeed
-                              ? () => _reconnectSensor(
-                                  SensorKind.speedCadence, 'speed')
+                              ? () => _runReconnect(
+                                  () => ref
+                                      .read(sensorConnectionProvider.notifier)
+                                      .reconnectCsc(wantSpeed: true),
+                                  'speed')
                               : null,
                         ),
                       ),
@@ -823,8 +826,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               label: 'HR',
                               value: sensor?.heartRate?.toString() ?? '—',
                               unit: 'bpm',
-                              onTap: () => _reconnectSensor(
-                                  SensorKind.heartRate, 'HR'),
+                              onTap: () => _runReconnect(
+                                  () => ref
+                                      .read(sensorConnectionProvider.notifier)
+                                      .reconnectKind(SensorKind.heartRate),
+                                  'HR'),
                             ),
                           if (visibleSensors.contains(SensorKind.speedCadence))
                             _MapStat(
@@ -832,16 +838,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               value: sensor?.cadenceRpm?.round().toString() ??
                                   '—',
                               unit: 'rpm',
-                              onTap: () => _reconnectSensor(
-                                  SensorKind.speedCadence, 'speed/cadence'),
+                              onTap: () => _runReconnect(
+                                  () => ref
+                                      .read(sensorConnectionProvider.notifier)
+                                      .reconnectCsc(wantSpeed: false),
+                                  'cadence'),
                             ),
                           if (visibleSensors.contains(SensorKind.power))
                             _MapStat(
                               label: 'PWR',
                               value: sensor?.power?.toString() ?? '—',
                               unit: 'W',
-                              onTap: () =>
-                                  _reconnectSensor(SensorKind.power, 'power'),
+                              onTap: () => _runReconnect(
+                                  () => ref
+                                      .read(sensorConnectionProvider.notifier)
+                                      .reconnectKind(SensorKind.power),
+                                  'power'),
                             ),
                         ]),
                         const SizedBox(height: 6),

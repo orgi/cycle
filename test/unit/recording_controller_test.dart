@@ -59,6 +59,8 @@ void main() {
     await container.read(recordingProvider.notifier).start();
     expect(container.read(recordingProvider), isTrue);
     expect(wake.enableCount, 1);
+    // Ride start re-arms the sensor reconnect retry window.
+    expect(sensors.retryConnectionsCalls, 1);
 
     await container.read(recordingProvider.notifier).stop();
     expect(container.read(recordingProvider), isFalse);

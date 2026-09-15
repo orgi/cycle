@@ -110,6 +110,12 @@ class FakeSensorService implements SensorService {
     await connect(deviceId);
   }
 
+  /// How many times [retryConnections] was called (for test assertions).
+  int retryConnectionsCalls = 0;
+
+  @override
+  Future<void> retryConnections() async => retryConnectionsCalls++;
+
   /// Last value pushed via [setWheelCircumference].
   double wheelCircumference = 2.105;
 

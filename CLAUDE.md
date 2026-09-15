@@ -190,13 +190,20 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   (`BikeProfile.sensorIds`, `null` = all paired — see bike profiles below); `SensorService`
   exposes this as `setActiveTargets(ids)`, and `SensorConnectionController` recomputes/applies
   it whenever the active bike or its sensor selection changes.
-  **Manual quick reconnect:** tapping a sensor stat tile on the home screen calls
-  `SensorConnectionController.reconnectKind(kind)` → `SensorService.reconnect(id)` for the
-  active bike's sensors of that kind — a one-shot **direct connect** (`autoConnect:false`,
-  no scan), which is fast when the sensor is awake and, unlike an active scan, doesn't
-  disturb the GPS; it falls back to passive autoConnect if the sensor isn't reachable. This
-  is the sanctioned replacement for the removed auto-scan loop: a brief user-triggered blip,
-  not a background loop.
+  **Manual quick reconnect:** tapping a sensor stat tile on the home screen kicks a one-shot
+  direct connect (same `_attemptDirectConnect` path) for that stat's sensor — HR/power via
+  `reconnectKind(kind)`, and **SPEED vs CAD via `reconnectCsc(wantSpeed:)`**. A speed sensor
+  and a cadence sensor are the *same* GATT type (CSC), so they can't be told apart by kind;
+  `reconnectCsc` distinguishes them **by name** (SPD/SPEED vs CAD/RPM/CADENCE) when more than
+  one CSC sensor is paired (a single one is unambiguous; unclear names → reconnect all CSC).
+  Without this, both the SPEED and CAD taps reconnected *both* CSC sensors, which read as the
+  two being "mixed up".
+  **Bounded retry window (no scan):** `SensorService.retryConnections()` (re)arms a ~5-minute
+  timer that re-issues a direct connect to any not-yet-linked target every 30s, stopping
+  early once all are connected. It's armed on startup and again on **ride start/resume**
+  (`RecordingController.start`/`resume`), so a sensor that wasn't ready at launch (just
+  mounted / waking on the bike) still links without a tap. Direct connect only — NEVER a
+  scan — so it stays clear of the GPS radio; it's bounded, not the removed perpetual loop.
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`

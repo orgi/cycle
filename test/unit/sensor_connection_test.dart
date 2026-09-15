@@ -183,6 +183,36 @@ void main() {
     expect(fake.reconnectCalls, isEmpty);
   });
 
+  test('reconnectCsc targets the speed vs cadence sensor by name (not both)',
+      () async {
+    // A speed sensor and a cadence sensor are the same GATT type; distinguish
+    // by name so tapping SPEED reconnects only the speed sensor and CAD only
+    // the cadence one.
+    final fake = FakeSensorService();
+    final store = _MemStore([
+      const PairedSensor(
+          id: 'spd', name: 'SPD-BLE0187176', kinds: {SensorKind.speedCadence}),
+      const PairedSensor(
+          id: 'cad', name: 'CAD-BLE0254805', kinds: {SensorKind.speedCadence}),
+    ]);
+    final container = ProviderContainer(overrides: [
+      sensorServiceProvider.overrideWithValue(fake),
+      pairedSensorsStoreProvider.overrideWithValue(store),
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+    ]);
+    addTearDown(container.dispose);
+    final ctrl = container.read(sensorConnectionProvider.notifier);
+    await pumpEventQueue();
+
+    fake.reconnectCalls.clear();
+    expect(await ctrl.reconnectCsc(wantSpeed: true), 1);
+    expect(fake.reconnectCalls, ['spd']);
+
+    fake.reconnectCalls.clear();
+    expect(await ctrl.reconnectCsc(wantSpeed: false), 1);
+    expect(fake.reconnectCalls, ['cad']);
+  });
+
   test('a bike profile with a restrictive sensor selection only pursues its own',
       () async {
     final fake = FakeSensorService(discoverable: const [hr, cad]);

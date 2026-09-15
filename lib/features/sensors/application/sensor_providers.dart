@@ -139,26 +139,67 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
     await _persist();
   }
 
+  /// Paired sensors in scope for the active bike (its selection, or all paired).
+  Iterable<PairedSensor> _reconnectableForActiveBike() {
+    final allow = ref.read(bikeProfilesProvider).active?.sensorIds;
+    return state.where((p) => allow == null || allow.contains(p.id));
+  }
+
   /// Quick user-triggered reconnect (a tapped stat tile) of the active-bike
-  /// sensors of [kind]. One-shot direct-connect per sensor, no scanning.
-  /// Returns how many sensors were kicked (0 if none apply here).
+  /// sensors of [kind] (HR / power). One-shot direct-connect per sensor, no
+  /// scanning. Returns how many sensors were kicked (0 if none apply here).
   ///
   /// Also kicks sensors whose kind we don't know yet (paired under the old
   /// id-only format and not connected since, so their kind was never learned) —
   /// a reconnect is harmless, and once it links its kind is backfilled and
-  /// future taps are precise. This is what makes a flaky, never-cleanly-linked
-  /// speed sensor reconnectable from a stat tile at all.
+  /// future taps are precise.
   Future<int> reconnectKind(SensorKind kind) async {
-    final allow = ref.read(bikeProfilesProvider).active?.sensorIds;
     final service = ref.read(sensorServiceProvider);
     var kicked = 0;
-    for (final p in state) {
+    for (final p in _reconnectableForActiveBike()) {
       if (!(p.kinds.contains(kind) || p.kinds.isEmpty)) continue;
-      if (allow != null && !allow.contains(p.id)) continue;
       await service.reconnect(p.id);
       kicked++;
     }
     return kicked;
+  }
+
+  /// Reconnect the speed *or* cadence sensor. A speed sensor and a cadence
+  /// sensor are the same GATT type (CSC), so they can't be told apart by kind —
+  /// tapping SPEED vs CAD would otherwise reconnect both, which reads as the two
+  /// being "mixed up". We distinguish by name (SPD/SPEED vs CAD/RPM/CADENCE)
+  /// when there's more than one CSC sensor; a single CSC sensor is unambiguous,
+  /// and if names don't separate them we reconnect all CSC (a reconnect is
+  /// harmless). Returns how many were kicked.
+  Future<int> reconnectCsc({required bool wantSpeed}) async {
+    final service = ref.read(sensorServiceProvider);
+    final csc = _reconnectableForActiveBike()
+        .where((p) =>
+            p.kinds.contains(SensorKind.speedCadence) || p.kinds.isEmpty)
+        .toList();
+    Iterable<PairedSensor> targets = csc;
+    if (csc.length > 1) {
+      final matched =
+          csc.where((p) => _nameIsSpeed(p.name) == wantSpeed && _nameKnown(p.name));
+      if (matched.isNotEmpty) targets = matched;
+    }
+    var kicked = 0;
+    for (final p in targets) {
+      await service.reconnect(p.id);
+      kicked++;
+    }
+    return kicked;
+  }
+
+  static bool _nameKnown(String name) => _nameIsSpeed(name) || _nameIsCadence(name);
+  static bool _nameIsSpeed(String name) {
+    final u = name.toUpperCase();
+    return u.contains('SPD') || u.contains('SPEED');
+  }
+
+  static bool _nameIsCadence(String name) {
+    final u = name.toUpperCase();
+    return u.contains('CAD') || u.contains('RPM') || u.contains('CADENCE');
   }
 
   /// Quick user-triggered reconnect of one specific paired sensor by id (the

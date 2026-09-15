@@ -42,7 +42,18 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   one is seen, retrying on a backoff (10s → 20s → 40s → 60s) if it isn't found, with the
   passive `autoConnect=true` link kept as a low-cost backstop between rounds.
 
+### Fixed
+- **Tap-to-reconnect no longer mixes up speed and cadence.** A speed sensor and a cadence
+  sensor are the same Bluetooth type, so tapping SPEED and tapping CAD both reconnected both
+  of them. The taps now target the right one, distinguished by the sensor's name
+  (SPD/SPEED vs CAD/RPM/CADENCE).
+
 ### Added
+- **Sensors keep trying to connect for a few minutes.** After app start — and again when a
+  ride starts — the app re-tries connecting any not-yet-linked sensor every 30s for ~5
+  minutes (a direct connect, no scanning, so it doesn't affect GPS), then stops once all are
+  connected. So a sensor that wasn't ready at launch (just mounted on the bike / waking up)
+  links on its own without you tapping.
 - **Tap a stat to reconnect its sensor.** Tapping the SPEED / HR / cadence / power stat on
   the home screen triggers a quick one-shot manual reconnect of that sensor (a direct
   connect, no background scanning — so it doesn't disturb the GPS), for when a paired sensor

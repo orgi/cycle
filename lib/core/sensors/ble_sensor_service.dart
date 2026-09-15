@@ -44,6 +44,14 @@ class BleSensorService implements SensorService {
   final Set<String> _targets = {};
   final Set<String> _autoConnectRegistered = {};
 
+  // Bounded direct-connect retry window (no scanning). Re-armed on startup and
+  // on ride start; ticks periodically to direct-connect any target that isn't
+  // linked yet, and stops at the deadline or once all targets are connected.
+  Timer? _retryTimer;
+  DateTime? _retryDeadline;
+  static const _retryWindow = Duration(minutes: 5);
+  static const _retryInterval = Duration(seconds: 30);
+
   @override
   void setWheelCircumference(double meters) {
     if (meters > 0) _wheelCircumferenceMeters = meters;
@@ -115,11 +123,39 @@ class BleSensorService implements SensorService {
     // reachable right now it falls back to passive autoConnect for later. This
     // is the same path the manual reconnect tap uses (which works).
     unawaited(_attemptDirectConnect(deviceId));
+    _armRetryWindow();
+  }
+
+  @override
+  Future<void> retryConnections() async => _armRetryWindow(immediate: true);
+
+  /// (Re)arm the bounded direct-connect retry window. [immediate] runs a tick
+  /// right away (used when a ride starts) instead of waiting for the interval.
+  void _armRetryWindow({bool immediate = false}) {
+    _retryDeadline = DateTime.now().add(_retryWindow);
+    _retryTimer ??= Timer.periodic(_retryInterval, (_) => _retryTick());
+    if (immediate) _retryTick();
+  }
+
+  void _retryTick() {
+    final missing =
+        _targets.where((id) => _connected[id]?.connected != true).toList();
+    if (missing.isEmpty ||
+        _retryDeadline == null ||
+        DateTime.now().isAfter(_retryDeadline!)) {
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      _retryDeadline = null;
+      return;
+    }
+    for (final id in missing) {
+      unawaited(_attemptDirectConnect(id));
+    }
   }
 
   /// One-shot direct connect with a passive-autoConnect fallback. No scanning,
-  /// so GPS-safe. Shared by initial connect, [reconnect], and post-drop
-  /// recovery.
+  /// so GPS-safe. Shared by initial connect, [reconnect], the retry window, and
+  /// post-drop recovery.
   Future<void> _attemptDirectConnect(String deviceId) async {
     _ensureConnSub(deviceId);
     try {

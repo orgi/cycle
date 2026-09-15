@@ -85,6 +85,10 @@ class RecordingController extends Notifier<bool> {
           bikeProfileId: bikeProfileId,
         );
     await ref.read(recordingForegroundServiceProvider).start();
+    // Ride starting/resuming: re-arm the bounded direct-connect retry window so
+    // a sensor that wasn't ready at app launch (just mounted / waking on the
+    // bike) gets picked up now, without the user tapping.
+    await ref.read(sensorServiceProvider).retryConnections();
     state = true;
   }
 
@@ -119,6 +123,10 @@ class RecordingController extends Notifier<bool> {
     ref.read(rideControllerProvider.notifier).resumeFrom(points);
     _trackId = trackId;
     await ref.read(recordingForegroundServiceProvider).start();
+    // Ride starting/resuming: re-arm the bounded direct-connect retry window so
+    // a sensor that wasn't ready at app launch (just mounted / waking on the
+    // bike) gets picked up now, without the user tapping.
+    await ref.read(sensorServiceProvider).retryConnections();
     state = true;
   }
 

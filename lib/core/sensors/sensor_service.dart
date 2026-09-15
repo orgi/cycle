@@ -154,6 +154,13 @@ abstract class SensorService {
   /// reachable right now. A no-op if [deviceId] isn't a current target.
   Future<void> reconnect(String deviceId);
 
+  /// (Re)arms a bounded retry window (~5 min) that periodically direct-connects
+  /// any active target that isn't linked yet — no scanning, so GPS-safe. Called
+  /// on startup and again when a ride starts, so a sensor that wasn't ready at
+  /// launch (still waking / just mounted on the bike) still gets picked up
+  /// without the user tapping. Stops early once every target is connected.
+  Future<void> retryConnections();
+
   /// Sets the *complete* set of device ids that should actively be pursued
   /// right now (e.g. the active bike profile's allow-listed paired sensors).
   /// Any currently-pursued id not in [ids] is disconnected — but the caller
