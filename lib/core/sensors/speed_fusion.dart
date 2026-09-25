@@ -10,6 +10,13 @@ class SpeedFusion {
   /// How long a BLE speed sample is trusted before falling back to GPS.
   final Duration bleFreshness;
 
+  /// A BLE wheel reading below this counts as "not turning".
+  static const double _bleStalledMps = 0.5; // ~1.8 km/h
+  /// If GPS shows at least this while the BLE wheel reads ~0, trust GPS — the
+  /// sensor has most likely gone to sleep and is wrongly reporting 0 while we're
+  /// clearly still moving. (Without this the speed sticks at a stale BLE 0.)
+  static const double _gpsMovingMps = 1.8; // ~6.5 km/h
+
   double? _bleSpeed;
   DateTime? _bleAt;
   double? _gpsSpeed;
@@ -35,21 +42,23 @@ class SpeedFusion {
   }
 
   /// Best speed estimate (m/s) as of [now].
-  double fused(DateTime now) {
-    final bleAt = _bleAt;
-    if (_bleSpeed != null &&
-        bleAt != null &&
-        now.difference(bleAt) <= bleFreshness) {
-      return _bleSpeed!;
-    }
-    return _gpsSpeed ?? 0;
-  }
+  double fused(DateTime now) => _usingBle(now) ? _bleSpeed! : (_gpsSpeed ?? 0);
 
-  /// Whether the most recent value came from the BLE sensor.
-  bool isUsingBle(DateTime now) {
-    final bleAt = _bleAt;
-    return _bleSpeed != null &&
-        bleAt != null &&
-        now.difference(bleAt) <= bleFreshness;
+  /// Whether the displayed value currently comes from the BLE sensor.
+  bool isUsingBle(DateTime now) => _usingBle(now);
+
+  bool _usingBle(DateTime now) {
+    final at = _bleAt;
+    final ble = _bleSpeed;
+    if (ble == null || at == null || now.difference(at) > bleFreshness) {
+      return false;
+    }
+    // A sleeping/stalled sensor keeps reporting ~0 while we're actually moving;
+    // defer to GPS when it clearly disagrees so the speed doesn't stick at 0.
+    final gps = _gpsSpeed;
+    if (ble < _bleStalledMps && gps != null && gps > _gpsMovingMps) {
+      return false;
+    }
+    return true;
   }
 }

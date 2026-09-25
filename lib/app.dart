@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
+import 'features/backup/presentation/backup_screen.dart';
 import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
+import 'features/settings/presentation/bike_profiles_screen.dart';
+import 'features/tracks/presentation/oruxmaps_import_screen.dart';
+import 'features/tracks/presentation/ride_classifier_screen.dart';
 import 'features/tracks/presentation/track_detail_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/tracks/presentation/tracks_screen.dart';
@@ -16,10 +20,7 @@ import 'features/upload/presentation/upload_settings_screen.dart';
 /// manager, sensors and rides are reachable from its app bar.
 final GoRouter appRouter = GoRouter(
   routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const MapScreen(),
-    ),
+    GoRoute(path: '/', builder: (context, state) => const MapScreen()),
     GoRoute(
       path: '/maps',
       builder: (context, state) => const ManageMapsScreen(),
@@ -28,15 +29,11 @@ final GoRouter appRouter = GoRouter(
       path: '/sensors',
       builder: (context, state) => const SensorsScreen(),
     ),
-    GoRoute(
-      path: '/tracks',
-      builder: (context, state) => const TracksScreen(),
-    ),
+    GoRoute(path: '/tracks', builder: (context, state) => const TracksScreen()),
     GoRoute(
       path: '/tracks/:id',
-      builder: (context, state) => TrackDetailScreen(
-        trackId: int.parse(state.pathParameters['id']!),
-      ),
+      builder: (context, state) =>
+          TrackDetailScreen(trackId: int.parse(state.pathParameters['id']!)),
     ),
     GoRoute(
       path: '/upload-accounts',
@@ -45,6 +42,19 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+    GoRoute(
+      path: '/bike-profiles',
+      builder: (context, state) => const BikeProfilesScreen(),
+    ),
+    GoRoute(
+      path: '/classify-rides',
+      builder: (context, state) => const RideClassifierScreen(),
+    ),
+    GoRoute(path: '/backup', builder: (context, state) => const BackupScreen()),
+    GoRoute(
+      path: '/oruxmaps-import',
+      builder: (context, state) => const OruxMapsImportScreen(),
     ),
   ],
 );

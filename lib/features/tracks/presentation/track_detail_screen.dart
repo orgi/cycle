@@ -11,8 +11,12 @@ import '../../../core/services/upload/upload_models.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
+import '../../settings/application/bike_profile_providers.dart';
+import '../../settings/application/settings_providers.dart';
+import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
+import '../application/track_repair.dart';
 import 'widgets/ride_map.dart';
 import 'widgets/speed_color.dart';
 
@@ -35,6 +39,12 @@ class TrackDetailScreen extends ConsumerWidget {
             icon: const Icon(Icons.cloud_upload_outlined),
             tooltip: 'Upload',
             onPressed: () => _upload(context, ref),
+          ),
+          IconButton(
+            key: const Key('cleanSpikesButton'),
+            icon: const Icon(Icons.auto_fix_high),
+            tooltip: 'Clean GPS spikes',
+            onPressed: () => _cleanSpikes(context, ref),
           ),
           IconButton(
             key: const Key('exportButton'),
@@ -80,6 +90,24 @@ class TrackDetailScreen extends ConsumerWidget {
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
     await ref.read(appDatabaseProvider).deleteTrack(trackId);
     if (context.mounted) context.pop();
+  }
+
+  Future<void> _cleanSpikes(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await repairTrackSpikes(
+      ref.read(appDatabaseProvider),
+      ref.read(settingsProvider),
+      trackId,
+    );
+    // Reload the header stats + points so the map/chart redraw without spikes.
+    ref.invalidate(trackProvider(trackId));
+    ref.invalidate(trackPointsProvider(trackId));
+    final n = result.removed;
+    messenger.showSnackBar(SnackBar(
+      content: Text(n == 0
+          ? 'No GPS spikes found'
+          : 'Removed $n GPS spike${n == 1 ? '' : 's'} and recomputed stats'),
+    ));
   }
 
   Future<void> _upload(BuildContext context, WidgetRef ref) async {
@@ -141,18 +169,25 @@ class _Body extends StatefulWidget {
 }
 
 class _BodyState extends State<_Body> {
-  // Active pointer count. When >= 2 (a pinch), the page scroll is disabled so
-  // the gesture reaches the map / elevation chart to zoom them.
-  int _pointers = 0;
+  // Count of pointers currently down over an "isolated" region (the map or
+  // the elevation chart). While > 0 the outer list's scroll is disabled, so a
+  // single-finger pan or a two-finger pinch that starts on the map/chart goes
+  // entirely to that widget instead of fighting the page scroll for the
+  // gesture. Scoping this per-region (rather than to the whole page) means
+  // the rest of the ride details still scroll normally.
+  int _isolated = 0;
 
-  void _update(int delta) {
-    final next = (_pointers + delta).clamp(0, 10);
-    if ((next >= 2) != (_pointers >= 2)) {
-      setState(() => _pointers = next);
-    } else {
-      _pointers = next;
-    }
-  }
+  void _lock() => setState(() => _isolated++);
+  void _unlock() => setState(() => _isolated = (_isolated - 1).clamp(0, 10));
+
+  /// Wraps [child] so any touch on it claims the gesture away from the outer
+  /// scroll view for as long as a finger is down.
+  Widget _isolate(Widget child) => Listener(
+        onPointerDown: (_) => _lock(),
+        onPointerUp: (_) => _unlock(),
+        onPointerCancel: (_) => _unlock(),
+        child: child,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -212,16 +247,51 @@ class _BodyState extends State<_Body> {
       }
     }
 
-    return Listener(
-      onPointerDown: (_) => _update(1),
-      onPointerUp: (_) => _update(-1),
-      onPointerCancel: (_) => _update(-1),
-      child: ListView(
-        physics: _pointers >= 2 ? const NeverScrollableScrollPhysics() : null,
+    return ListView(
+        physics:
+            _isolated > 0 ? const NeverScrollableScrollPhysics() : null,
         padding: const EdgeInsets.all(12),
         children: [
         Text(formatDateTime(track.startedAt),
             style: const TextStyle(color: Colors.white54)),
+        const SizedBox(height: 6),
+        Consumer(builder: (context, ref, _) {
+          final profiles = ref.watch(bikeProfilesProvider).profiles;
+          final current =
+              profiles.where((p) => p.id == track.bikeProfileId).firstOrNull;
+          return InkWell(
+            key: const Key('trackBikeRow'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: () async {
+              final chosen = await showBikeProfilePicker(context,
+                  profiles: profiles, currentId: track.bikeProfileId);
+              if (chosen == null) return;
+              await ref
+                  .read(appDatabaseProvider)
+                  .setTrackBikeProfile(track.id, chosen);
+              ref.invalidate(trackProvider(track.id));
+              ref.invalidate(tracksProvider);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.pedal_bike,
+                      size: 18,
+                      color: current != null
+                          ? Color(current.colorArgb)
+                          : Colors.white38),
+                  const SizedBox(width: 8),
+                  Text(current?.name ?? 'Unassigned',
+                      style: const TextStyle(color: Colors.white70)),
+                  const Spacer(),
+                  const Icon(Icons.edit_outlined,
+                      size: 16, color: Colors.white38),
+                ],
+              ),
+            ),
+          );
+        }),
         const SizedBox(height: 12),
         for (var i = 0; i < tiles.length; i += 2) ...[
           SizedBox(
@@ -241,18 +311,18 @@ class _BodyState extends State<_Body> {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
-        const Text('MAP — track coloured by speed (pinch to zoom)',
+        const Text('MAP — drag/pinch to pan & zoom',
             style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
         const SizedBox(height: 8),
-        SizedBox(height: 300, child: RideMap(points: points)),
+        _isolate(SizedBox(height: 300, child: RideMap(points: points))),
         const SizedBox(height: 8),
         const _SpeedLegend(),
         if (_hasElevation) ...[
           const SizedBox(height: 16),
-          const Text('ELEVATION (pinch to zoom)',
+          const Text('ELEVATION — drag/pinch to pan & zoom',
               style: TextStyle(color: Colors.white54, letterSpacing: 1.2)),
           const SizedBox(height: 8),
-          SizedBox(
+          _isolate(SizedBox(
             height: 150,
             child: InteractiveViewer(
               panEnabled: true,
@@ -261,11 +331,10 @@ class _BodyState extends State<_Body> {
               maxScale: 8,
               child: _ElevationChart(points: points),
             ),
-          ),
+          )),
         ],
         ],
-      ),
-    );
+      );
   }
 
   bool get _hasElevation => widget.points.any((p) => p.altitude != null);
@@ -358,7 +427,10 @@ class _ElevationChart extends StatelessWidget {
         titlesData: const FlTitlesData(show: false),
         gridData: const FlGridData(show: false),
         borderData: FlBorderData(show: false),
-        lineTouchData: const LineTouchData(enabled: true),
+        // Disabled: fl_chart's own touch handling otherwise wins the gesture
+        // arena against the enclosing InteractiveViewer, so pinch-zoom/pan
+        // never reached it.
+        lineTouchData: const LineTouchData(enabled: false),
       ),
     );
   }

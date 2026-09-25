@@ -1,8 +1,11 @@
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/hardware_button_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
@@ -19,7 +22,7 @@ void main() {
   late FakeSensorService sensors;
   late AppDatabase db;
 
-  ProviderContainer build({bool enabled = true}) {
+  ProviderContainer build({bool enabled = true, BikeProfilesState? bikeProfiles}) {
     buttons = FakeHardwareButtonService();
     location = FakeLocationService();
     sensors = FakeSensorService();
@@ -32,6 +35,9 @@ void main() {
       screenWakeServiceProvider.overrideWithValue(RecordingScreenWakeService()),
       sensorServiceProvider.overrideWithValue(sensors),
       appDatabaseProvider.overrideWithValue(db),
+      bikeProfilesStoreProvider.overrideWithValue(
+        FakeBikeProfilesStore(bikeProfiles ?? BikeProfilesState.empty),
+      ),
       recordingForegroundServiceProvider
           .overrideWithValue(const NoopRecordingForegroundService()),
     ]);
@@ -89,6 +95,33 @@ void main() {
     buttons.press(HardwareButton.volumeUp);
     await settle();
     expect(container.read(recordingProvider), isTrue);
+  });
+
+  test(
+      'a 2nd volume-up press while recording cycles the bike profile '
+      'instead of starting again', () async {
+    const p1 = BikeProfile(id: 'p1', name: 'Road', colorArgb: 1);
+    const p2 = BikeProfile(id: 'p2', name: 'Gravel', colorArgb: 2);
+    container = build(
+      bikeProfiles: const BikeProfilesState(profiles: [p1, p2], activeId: 'p1'),
+    );
+    container.listen(hardwareButtonControllerProvider, (_, _) {});
+    container.listen(bikeProfilesProvider, (_, _) {});
+    await settle();
+
+    buttons.press(HardwareButton.volumeUp); // 1st press: starts
+    await settle();
+    expect(container.read(recordingProvider), isTrue);
+    expect(container.read(bikeProfilesProvider).activeId, 'p1');
+
+    buttons.press(HardwareButton.volumeUp); // 2nd press: cycles, doesn't stop
+    await settle();
+    expect(container.read(recordingProvider), isTrue); // still recording
+    expect(container.read(bikeProfilesProvider).activeId, 'p2');
+
+    buttons.press(HardwareButton.volumeUp); // 3rd press: cycles back
+    await settle();
+    expect(container.read(bikeProfilesProvider).activeId, 'p1');
   });
 
   test('wheel-circumference setting is pushed to the sensor service', () async {

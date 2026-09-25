@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/database.dart';
@@ -12,13 +13,26 @@ import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/native_location_service.dart';
+import '../../../core/services/fg_task_recording_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
+import '../../../core/services/settings/app_settings.dart';
 import '../../sensors/application/sensor_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
+import '../../settings/application/settings_providers.dart';
+import '../../tracks/application/track_repair.dart';
 
 /// Platform GPS source. Overridden with a fake in tests.
+///
+/// Android uses the native continuous `LocationManager` stream
+/// ([NativeLocationService]) — geolocator's polling cold-restarts the GPS and
+/// its stream doesn't engage the receiver on the target hardware (see that
+/// class + CLAUDE.md). Other platforms fall back to geolocator.
 final locationServiceProvider = Provider<LocationService>(
-  (ref) => GeolocatorLocationService(),
+  (ref) => defaultTargetPlatform == TargetPlatform.android
+      ? NativeLocationService()
+      : GeolocatorLocationService(),
 );
 
 /// Keep-screen-awake service. Overridden with a no-op in tests.
@@ -37,11 +51,12 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-/// Keeps recording alive in the background. A real foreground service is
-/// deferred to M7; for now this is a no-op (recording runs while the screen is
-/// on via the wakelock).
+/// Keeps recording alive in the background: a real Android foreground service
+/// (persistent notification, `location` type), started without a callback/
+/// TaskHandler so the plugin doesn't spin up a second Flutter engine — see
+/// FgTaskRecordingService's doc comment.
 final recordingForegroundServiceProvider = Provider<RecordingForegroundService>(
-  (ref) => const NoopRecordingForegroundService(),
+  (ref) => const FgTaskRecordingService(),
 );
 
 /// Whether a ride is currently being recorded. Recording persists a [Tracks]
@@ -63,10 +78,55 @@ class RecordingController extends Notifier<bool> {
     await ref.read(screenWakeServiceProvider).enable();
     ref.read(rideControllerProvider.notifier).reset();
     final battery = await ref.read(batteryServiceProvider).level();
-    _trackId = await ref
-        .read(appDatabaseProvider)
-        .createTrack(DateTime.now(), batteryStartPercent: battery);
+    final bikeProfileId = ref.read(bikeProfilesProvider).activeId;
+    _trackId = await ref.read(appDatabaseProvider).createTrack(
+          DateTime.now(),
+          batteryStartPercent: battery,
+          bikeProfileId: bikeProfileId,
+        );
     await ref.read(recordingForegroundServiceProvider).start();
+    // Ride starting/resuming: re-arm the bounded direct-connect retry window so
+    // a sensor that wasn't ready at app launch (just mounted / waking on the
+    // bike) gets picked up now, without the user tapping.
+    await ref.read(sensorServiceProvider).retryConnections();
+    state = true;
+  }
+
+  /// Sets the active bike profile; if a ride is currently recording, also
+  /// live-corrects that ride's stamped profile (in case the wrong one was
+  /// active when it started).
+  Future<void> setBikeProfile(String id) async {
+    await ref.read(bikeProfilesProvider.notifier).setActive(id);
+    final trackId = _trackId;
+    if (state && trackId != null) {
+      await ref.read(appDatabaseProvider).setTrackBikeProfile(trackId, id);
+    }
+  }
+
+  /// Advances to the next bike profile (wrapping). No-op with fewer than 2
+  /// profiles. See [setBikeProfile].
+  Future<void> cycleBikeProfile() async {
+    final profiles = ref.read(bikeProfilesProvider).profiles;
+    if (profiles.length < 2) return;
+    final activeId = ref.read(bikeProfilesProvider).activeId;
+    final i = profiles.indexWhere((p) => p.id == activeId);
+    final next = profiles[(i + 1) % profiles.length];
+    await setBikeProfile(next.id);
+  }
+
+  /// Resumes recording into an existing, interrupted ride — continues appending
+  /// to the same track, its stats carried over.
+  Future<void> resume(int trackId) async {
+    if (state) return;
+    await ref.read(screenWakeServiceProvider).enable();
+    final points = await ref.read(appDatabaseProvider).pointsFor(trackId);
+    ref.read(rideControllerProvider.notifier).resumeFrom(points);
+    _trackId = trackId;
+    await ref.read(recordingForegroundServiceProvider).start();
+    // Ride starting/resuming: re-arm the bounded direct-connect retry window so
+    // a sensor that wasn't ready at app launch (just mounted / waking on the
+    // bike) gets picked up now, without the user tapping.
+    await ref.read(sensorServiceProvider).retryConnections();
     state = true;
   }
 
@@ -97,6 +157,7 @@ class RecordingController extends Notifier<bool> {
     GeoSample sample,
     SensorSnapshot? snapshot,
     double speedMps,
+    bool speedFromSensor,
   ) async {
     final id = _trackId;
     if (!state || id == null) return;
@@ -111,6 +172,7 @@ class RecordingController extends Notifier<bool> {
             heartRate: Value(snapshot?.heartRate),
             cadenceRpm: Value(snapshot?.cadenceRpm),
             power: Value(snapshot?.power),
+            speedFromSensor: Value(speedFromSensor),
           ),
         );
   }
@@ -131,6 +193,9 @@ class RideController extends Notifier<RideMetrics> {
 
   @override
   RideMetrics build() {
+    // Auto-pause config from settings, kept in sync as the user changes it.
+    _applyAutoPause(ref.read(settingsProvider));
+    ref.listen(settingsProvider, (_, next) => _applyAutoPause(next));
     final service = ref.watch(locationServiceProvider);
     // Request location permission (no-op on the emulator where it's pre-granted;
     // shows the system dialog on a real device).
@@ -180,13 +245,14 @@ class RideController extends Notifier<RideMetrics> {
     _fusion.updateGps(metrics.currentSpeedMps);
     final now = DateTime.now();
     final fused = _fusedSpeed(now);
+    final fromSensor = _fusion.isUsingBle(now);
     state = metrics.copyWith(
         currentSpeedMps: fused,
         maxSpeedMps: _maxSpeedMps,
-        speedFromSensor: _fusion.isUsingBle(now));
+        speedFromSensor: fromSensor);
     unawaited(ref
         .read(recordingProvider.notifier)
-        .recordPoint(sample, _latestSnapshot, fused));
+        .recordPoint(sample, _latestSnapshot, fused, fromSensor));
   }
 
   void _onSnapshot(SensorSnapshot snapshot) {
@@ -207,6 +273,24 @@ class RideController extends Notifier<RideMetrics> {
       maxSpeedMps: _maxSpeedMps,
       speedFromSensor: _fusion.isUsingBle(now),
     );
+  }
+
+  /// Preloads the metrics from an interrupted ride's [points] so a resumed ride
+  /// continues from where it left off (the dead-time gap is not counted).
+  void resumeFrom(List<TrackPoint> points) {
+    final m = computeStatsFromPoints(points, ref.read(settingsProvider));
+    _maxSpeedMps = m.maxSpeedMps;
+    _accumulator.resumeWith(
+      distanceMeters: m.distanceMeters,
+      movingMillis: m.elapsed.inMilliseconds,
+      maxSpeedMps: m.maxSpeedMps,
+    );
+    state = m.copyWith(currentSpeedMps: 0, speedFromSensor: false);
+  }
+
+  void _applyAutoPause(AppSettings s) {
+    _accumulator.autoPauseEnabled = s.autoPauseEnabled;
+    _accumulator.autoPauseThresholdMps = s.autoPauseSpeedKmh / 3.6;
   }
 
   /// Fused (BLE-preferred) speed, also tracking the running max.

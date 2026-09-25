@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/location_service.dart';
 import 'package:cycle/core/services/route_import_service.dart';
@@ -42,10 +44,14 @@ class RecordingScreenWakeService implements ScreenWakeService {
 /// A [SensorService] driven by the test: set [discoverable] sensors, drive
 /// [emitSnapshot], and connect/disconnect deterministically.
 class FakeSensorService implements SensorService {
-  FakeSensorService({this.discoverable = const []});
+  FakeSensorService({this.discoverable = const [], this.connectTargets = true});
 
   List<DiscoveredSensor> discoverable;
   bool ready = true;
+
+  /// When false, [setActiveTargets] registers targets but leaves them
+  /// disconnected — lets a test show a paired-but-not-connected sensor.
+  bool connectTargets;
 
   final StreamController<SensorSnapshot> _snapshots =
       StreamController<SensorSnapshot>.broadcast();
@@ -75,11 +81,17 @@ class FakeSensorService implements SensorService {
 
   @override
   Future<void> connect(String deviceId, {bool autoConnect = false}) async {
-    final d = discoverable.firstWhere((s) => s.id == deviceId);
+    // A device reconnected from persisted pairing (not this session's scan)
+    // may not be in [discoverable] — fall back to a bare entry, same as the
+    // real service falling back to a generic name until it actually connects.
+    final d = discoverable.where((s) => s.id == deviceId).firstOrNull;
     _connected
       ..removeWhere((c) => c.id == deviceId)
       ..add(ConnectedSensor(
-          id: d.id, name: d.name, kinds: d.kinds, connected: true));
+          id: deviceId,
+          name: d?.name ?? deviceId,
+          kinds: d?.kinds ?? const {},
+          connected: true));
     _connectedCtrl.add(List.of(_connected));
   }
 
@@ -88,6 +100,21 @@ class FakeSensorService implements SensorService {
     _connected.removeWhere((c) => c.id == deviceId);
     _connectedCtrl.add(List.of(_connected));
   }
+
+  /// Device ids [reconnect] was called for, in order (for test assertions).
+  final List<String> reconnectCalls = [];
+
+  @override
+  Future<void> reconnect(String deviceId) async {
+    reconnectCalls.add(deviceId);
+    await connect(deviceId);
+  }
+
+  /// How many times [retryConnections] was called (for test assertions).
+  int retryConnectionsCalls = 0;
+
+  @override
+  Future<void> retryConnections() async => retryConnectionsCalls++;
 
   /// Last value pushed via [setWheelCircumference].
   double wheelCircumference = 2.105;
@@ -100,6 +127,17 @@ class FakeSensorService implements SensorService {
 
   @override
   Stream<SensorSnapshot> snapshots() => _snapshots.stream;
+
+  @override
+  Future<void> setActiveTargets(Set<String> ids) async {
+    for (final c in _connected.map((c) => c.id).toList()) {
+      if (!ids.contains(c)) await disconnect(c);
+    }
+    if (!connectTargets) return;
+    for (final id in ids) {
+      if (!_connected.any((c) => c.id == id)) await connect(id);
+    }
+  }
 }
 
 /// A [RouteImportService] driven by the test: [filesXml] maps a route file name
@@ -157,4 +195,16 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Future<void> save(AppSettings settings) async => _settings = settings;
+}
+
+/// An in-memory [BikeProfilesStore] seeded with [initial].
+class FakeBikeProfilesStore implements BikeProfilesStore {
+  FakeBikeProfilesStore([this._state = BikeProfilesState.empty]);
+  BikeProfilesState _state;
+
+  @override
+  Future<BikeProfilesState> load() async => _state;
+
+  @override
+  Future<void> save(BikeProfilesState state) async => _state = state;
 }

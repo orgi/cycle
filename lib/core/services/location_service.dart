@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
+import '../utils/gps_accuracy_filter.dart';
 
 /// Abstraction over the platform GPS so the rest of the app depends on a stream
 /// of [GeoSample]s rather than on geolocator directly. This keeps controllers
@@ -18,8 +19,8 @@ abstract class LocationService {
 class GeolocatorLocationService implements LocationService {
   GeolocatorLocationService();
 
-  // One shared polling loop feeds all listeners (metrics + map), so they never
-  // desync and we don't poll the GPS twice.
+  // One shared location stream feeds all listeners (metrics + map), so they
+  // never desync and we don't open the GPS twice.
   Stream<GeoSample>? _shared;
 
   @override
@@ -38,26 +39,39 @@ class GeolocatorLocationService implements LocationService {
   @override
   Stream<GeoSample> positions() => _shared ??= _poll().asBroadcastStream();
 
+  /// Reads fixes by polling the one-shot `getCurrentPosition` **back-to-back**
+  /// (no idle gap): each call blocks until the GPS returns a fix, then the next
+  /// request is issued immediately.
+  ///
+  /// Why polling and not `getPositionStream`: geolocator 14's continuous
+  /// `getPositionStream` does not reliably engage the GPS on this hardware
+  /// (Android 14 / Galaxy A33) — it connected but never started
+  /// `requestLocationUpdates`, so **no fixes and no GPS icon at all**. The
+  /// one-shot `getCurrentPosition` path is the one that actually drives the
+  /// receiver here (verified on-device: fixes flow, tracks record). It's the
+  /// same reason this code polled originally.
+  ///
+  /// The earlier polling **slept 1s between calls**, which let the GPS power
+  /// down in the gap and made the status-bar icon toggle every ~1-2s. Removing
+  /// that sleep keeps a request essentially always in flight, so the receiver
+  /// stays warm between fixes (far less toggling) while still using the working
+  /// one-shot path. A short delay is applied only after an *error*, to avoid a
+  /// tight failure loop.
   Stream<GeoSample> _poll() async* {
     // Seed immediately with the last known position so the map centres and the
-    // location dot appear at once — even before a fresh fix. Without this the
-    // raw GPS provider (below) can take a long time to lock, or never lock
-    // indoors/under cover, leaving the map stuck on its default centre.
+    // location dot appear at once — even before a fresh fix.
     try {
       final last = await Geolocator.getLastKnownPosition();
-      if (last != null) yield _toSample(last);
+      if (last != null) {
+        final seed = _toSample(last);
+        if (isAccurateEnough(seed)) yield seed;
+      }
     } catch (_) {}
 
-    // geolocator 14's getPositionStream binds a foreground service that, on
-    // Android 14 (incl. the emulator), often connects but never starts
-    // requestLocationUpdates — yielding no fixes and no error. Polling the
-    // one-shot getCurrentPosition at ~1 Hz uses a different, reliable code path
-    // and is exactly the cadence a bike computer needs.
-    //
-    // We prefer the raw GPS provider (accurate, unsmoothed), but it needs sky
-    // view. If it can't get a fix for a few tries, fall back to the fused
-    // provider (wifi/cell-assisted) for one try so a location still arrives
-    // indoors / on a cold start; any success resets us to GPS.
+    // Prefer the raw GPS provider (accurate, unsmoothed). If it can't get a fix
+    // for a few tries, fall back to the fused (wifi/cell-assisted) provider for
+    // one try so a location still arrives indoors / on a cold start; any
+    // success resets to GPS.
     var gpsFailures = 0;
     while (true) {
       final useFused = gpsFailures >= 4;
@@ -65,14 +79,17 @@ class GeolocatorLocationService implements LocationService {
         final position = await Geolocator.getCurrentPosition(
           locationSettings: useFused ? _fusedSettings() : _settings(),
         );
-        yield _toSample(position);
+        final sample = _toSample(position);
+        if (isAccurateEnough(sample)) yield sample;
         gpsFailures = 0;
+        // No idle delay: loop straight into the next request so the GPS stays
+        // warm between fixes instead of powering down.
       } catch (e) {
-        // Transient (e.g. no fix within timeLimit); retry on the next tick.
+        // Transient (e.g. no fix within timeLimit); brief pause then retry.
         if (kDebugMode) debugPrint('[cycle] getCurrentPosition: $e');
         if (!useFused) gpsFailures++;
+        await Future<void>.delayed(const Duration(seconds: 1));
       }
-      await Future<void>.delayed(const Duration(seconds: 1));
     }
   }
 
@@ -90,10 +107,10 @@ class GeolocatorLocationService implements LocationService {
     return _settings();
   }
 
-  /// Platform-specific location settings. On Android we force the raw
-  /// `LocationManager` (GPS) provider instead of the fused provider: it gives
-  /// unsmoothed positions (better for cycling speed/distance, no road-snapping)
-  /// and is the provider the emulator's `geo fix` feeds, so GPS works there too.
+  /// Per-fix location settings. On Android we force the raw `LocationManager`
+  /// (GPS) provider instead of the fused provider: it gives unsmoothed
+  /// positions (better for cycling speed/distance, no road-snapping) and is the
+  /// provider the emulator's `geo fix` feeds.
   LocationSettings _settings() {
     const accuracy = LocationAccuracy.bestForNavigation;
     const timeLimit = Duration(seconds: 8);

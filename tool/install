@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# One-command, no-parameter install of the current app onto the connected phone.
+#
+#   tool/install
+#
+# Installs the release-signed APK in place (adb install -r, NEVER uninstalls —
+# so your rides, downloaded maps and settings survive). Builds the release APK
+# first if one isn't already present. Release-signed matches what's on the phone,
+# so the update applies in place without a data-wiping reinstall.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+APK="build/app/outputs/flutter-apk/app-release.apk"
+
+# Need a device before we spend time building.
+if ! adb get-state >/dev/null 2>&1; then
+  echo "No device connected. Plug in the phone (and accept the USB-debugging"
+  echo "prompt if it appears), then run tool/install again."
+  echo
+  echo "Connected devices:"
+  adb devices -l
+  exit 1
+fi
+
+if [[ ! -f "$APK" ]]; then
+  echo ">> No release APK yet — building it (this takes a couple of minutes)…"
+  tool/fl flutter build apk --release
+fi
+
+echo ">> Installing $APK (in place, keeping your data)…"
+adb install -r "$APK"
+echo ">> Done. Installed version:"
+adb shell dumpsys package com.cycleapp.cycle 2>/dev/null | grep -m1 versionName || true

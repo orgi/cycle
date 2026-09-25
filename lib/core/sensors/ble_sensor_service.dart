@@ -11,6 +11,17 @@ import 'sensor_service.dart';
 /// cycling GATT services, connects, subscribes to the measurement
 /// characteristics and feeds the (separately unit-tested) parsers + CSC
 /// calculator. Hardware-verified on a physical device (emulators have no BLE).
+///
+/// Reconnection is driven by our own scan-and-connect retry loop, not by
+/// Android's native `autoConnect=true` GATT mode alone: that mode is a
+/// low-priority background op, and on real devices it was observed to be
+/// wildly non-deterministic with 2-3 sensors registered at once — one sensor
+/// reconnecting instantly while another sat for 20+ minutes with no error, no
+/// timeout, and no way to tell "still trying" from "stuck". Instead, for every
+/// active target we do a short *targeted* active scan (`withRemoteIds`) and
+/// connect the moment it's seen, retrying on a backoff if it isn't found,
+/// while also registering the passive `autoConnect=true` link as a low-cost
+/// backstop in case active scanning is paused.
 class BleSensorService implements SensorService {
   final StreamController<SensorSnapshot> _snapshots =
       StreamController<SensorSnapshot>.broadcast();
@@ -22,9 +33,24 @@ class BleSensorService implements SensorService {
   final Map<String, CscCalculator> _csc = {};
   final Map<String, List<StreamSubscription<dynamic>>> _subs = {};
   // Persistent per-device connection-state listeners (survive drop/reconnect
-  // cycles so autoConnect can re-establish without re-pairing).
+  // cycles so the retry loop doesn't need to re-wire anything).
   final Map<String, StreamSubscription<dynamic>> _connSubs = {};
   double _wheelCircumferenceMeters = 2.105;
+
+  /// Device ids we're actively pursuing right now (the active bike profile's
+  /// allow-listed paired sensors). A sensor that's paired but out of scope
+  /// for the current bike simply isn't in here — its pairing is remembered
+  /// by the caller, not by this service.
+  final Set<String> _targets = {};
+  final Set<String> _autoConnectRegistered = {};
+
+  // Bounded direct-connect retry window (no scanning). Re-armed on startup and
+  // on ride start; ticks periodically to direct-connect any target that isn't
+  // linked yet, and stops at the deadline or once all targets are connected.
+  Timer? _retryTimer;
+  DateTime? _retryDeadline;
+  static const _retryWindow = Duration(minutes: 5);
+  static const _retryInterval = Duration(seconds: 30);
 
   @override
   void setWheelCircumference(double meters) {
@@ -77,34 +103,150 @@ class BleSensorService implements SensorService {
 
   @override
   Future<void> connect(String deviceId, {bool autoConnect = false}) async {
+    _targets.add(deviceId);
+    _connected[deviceId] ??= ConnectedSensor(
+      id: deviceId,
+      name: _nameOf(BluetoothDevice.fromId(deviceId)),
+      kinds: const {},
+      connected: false,
+      reconnecting: true,
+    );
+    _emitConnected();
+    _ensureConnSub(deviceId);
+    // One-shot DIRECT connect (not passive autoConnect): a direct connect links
+    // fast when the sensor is advertising — which a worn HR strap / a spinning
+    // cadence sensor is — whereas passive `autoConnect=true` frequently just
+    // never links a present sensor (confirmed on-device: the app registered
+    // autoConnect for a worn HR sensor and it stayed disconnected). Crucially a
+    // direct connect does NOT scan, so — unlike the removed active-scan retry
+    // loop — it doesn't compete with the GPS radio. If the sensor isn't
+    // reachable right now it falls back to passive autoConnect for later. This
+    // is the same path the manual reconnect tap uses (which works).
+    unawaited(_attemptDirectConnect(deviceId));
+    _armRetryWindow();
+  }
+
+  @override
+  Future<void> retryConnections() async => _armRetryWindow(immediate: true);
+
+  /// (Re)arm the bounded direct-connect retry window. [immediate] runs a tick
+  /// right away (used when a ride starts) instead of waiting for the interval.
+  void _armRetryWindow({bool immediate = false}) {
+    _retryDeadline = DateTime.now().add(_retryWindow);
+    _retryTimer ??= Timer.periodic(_retryInterval, (_) => _retryTick());
+    if (immediate) _retryTick();
+  }
+
+  void _retryTick() {
+    final missing =
+        _targets.where((id) => _connected[id]?.connected != true).toList();
+    if (missing.isEmpty ||
+        _retryDeadline == null ||
+        DateTime.now().isAfter(_retryDeadline!)) {
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      _retryDeadline = null;
+      return;
+    }
+    for (final id in missing) {
+      unawaited(_attemptDirectConnect(id));
+    }
+  }
+
+  /// One-shot direct connect with a passive-autoConnect fallback. No scanning,
+  /// so GPS-safe. Shared by initial connect, [reconnect], the retry window, and
+  /// post-drop recovery.
+  Future<void> _attemptDirectConnect(String deviceId) async {
+    _ensureConnSub(deviceId);
+    try {
+      await BluetoothDevice.fromId(deviceId).connect(
+        license: License.nonprofit,
+        autoConnect: false,
+        mtu: 512,
+        timeout: const Duration(seconds: 12),
+      );
+    } catch (_) {
+      // Asleep / out of range — register passive autoConnect so it links when
+      // it next advertises (quiet on the radio, no scan).
+      await _registerAutoConnect(deviceId);
+    }
+  }
+
+  @override
+  Future<void> disconnect(String deviceId) => _removeTarget(deviceId);
+
+  @override
+  Future<void> reconnect(String deviceId) async {
+    if (!_targets.contains(deviceId)) return;
     final device = BluetoothDevice.fromId(deviceId);
-    // Keep ONE persistent connection-state listener per device: it discovers
-    // services on every (re)connect and tears down on every drop. With
-    // [autoConnect] the OS re-establishes the link whenever the sensor reappears
-    // (wakes from standby / back in range) — that's how auto-reconnect survives
-    // a sensor that was idle too long. License.nonprofit covers personal/OSS use.
-    await _connSubs[deviceId]?.cancel();
+    _ensureConnSub(deviceId);
+    // Mark as being worked on so the UI can show "reconnecting…".
+    final existing = _connected[deviceId];
+    if (existing != null && !existing.connected) {
+      _connected[deviceId] = ConnectedSensor(
+        id: existing.id,
+        name: existing.name,
+        kinds: existing.kinds,
+        connected: false,
+        reconnecting: true,
+      );
+      _emitConnected();
+    }
+    // Clear any half-open link + its autoConnect so the direct attempt is clean.
+    _autoConnectRegistered.remove(deviceId);
+    try {
+      await device.disconnect();
+    } catch (_) {}
+    await _attemptDirectConnect(deviceId);
+  }
+
+  @override
+  Future<void> setActiveTargets(Set<String> ids) async {
+    for (final id in _targets.difference(ids).toList()) {
+      await _removeTarget(id);
+    }
+    for (final id in ids.difference(_targets).toList()) {
+      await connect(id);
+    }
+  }
+
+  void _ensureConnSub(String deviceId) {
+    if (_connSubs.containsKey(deviceId)) return;
+    final device = BluetoothDevice.fromId(deviceId);
     _connSubs[deviceId] = device.connectionState.listen((st) {
       if (st == BluetoothConnectionState.connected) {
         unawaited(_onConnected(device, deviceId));
       } else if (st == BluetoothConnectionState.disconnected) {
         _onDisconnected(deviceId);
+        // Mid-ride drop of an active target: register passive autoConnect so
+        // the OS re-links it when it reappears. Passive (no scan) so it stays
+        // quiet on the radio and doesn't disturb GPS; a direct-connect retry
+        // here could fight a brief out-of-range blip. The user can also tap the
+        // stat to force a direct reconnect.
+        if (_targets.contains(deviceId)) {
+          unawaited(_registerAutoConnect(deviceId));
+        }
       }
     });
-    // List the sensor immediately (as not-yet-connected) so the UI shows it.
-    _connected[deviceId] ??= ConnectedSensor(
-        id: deviceId, name: _nameOf(device), kinds: const {}, connected: false);
-    _emitConnected();
-    await device.connect(
-      license: License.nonprofit,
-      autoConnect: autoConnect,
-      mtu: autoConnect ? null : 512,
-    );
+  }
+
+  /// Registers Android's native autoConnect for [deviceId]: the OS re-links
+  /// whenever the sensor next advertises (wakes / back in range), with no
+  /// app-level scanning — quiet on the radio, so it doesn't fight the GPS.
+  Future<void> _registerAutoConnect(String deviceId) async {
+    if (_autoConnectRegistered.contains(deviceId)) return;
+    _autoConnectRegistered.add(deviceId);
+    _ensureConnSub(deviceId);
+    try {
+      await BluetoothDevice.fromId(deviceId)
+          .connect(license: License.nonprofit, autoConnect: true, mtu: null);
+    } catch (_) {}
   }
 
   /// Discover services + subscribe to measurements after a (re)connect.
   Future<void> _onConnected(BluetoothDevice device, String deviceId) async {
     try {
+      _autoConnectRegistered.remove(deviceId);
       final services = await device.discoverServices();
       for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
         await s.cancel(); // drop any stale subs from a previous connection
@@ -132,12 +274,13 @@ class BleSensorService implements SensorService {
           id: deviceId, name: _nameOf(device), kinds: kinds, connected: true);
       _emitConnected();
     } catch (_) {
-      // A quick re-drop can race discovery; the next connected event retries.
+      // A quick re-drop can race discovery; the retry loop/next event retries.
     }
   }
 
-  /// A drop (sensor out of range / standby). Keep the pairing so autoConnect can
-  /// re-establish it; just tear down the live subscriptions and mark it offline.
+  /// A drop (sensor out of range / standby). Keep it as a target so the retry
+  /// loop re-establishes it; just tear down the live subscriptions and mark
+  /// it offline.
   void _onDisconnected(String deviceId) {
     for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
       unawaited(s.cancel());
@@ -147,27 +290,33 @@ class BleSensorService implements SensorService {
     final existing = _connected[deviceId];
     if (existing != null) {
       _connected[deviceId] = ConnectedSensor(
-          id: existing.id,
-          name: existing.name,
-          kinds: existing.kinds,
-          connected: false);
+        id: existing.id,
+        name: existing.name,
+        kinds: existing.kinds,
+        connected: false,
+        reconnecting: _targets.contains(deviceId),
+      );
       _emitConnected();
     }
   }
 
-  @override
-  Future<void> disconnect(String deviceId) async {
-    // User-initiated: stop autoConnect and forget the device entirely.
-    await _connSubs[deviceId]?.cancel();
-    _connSubs.remove(deviceId);
-    for (final s in _subs[deviceId] ?? const <StreamSubscription>[]) {
+  /// Stops pursuing [deviceId]: tears down the live connection/subscriptions
+  /// and forgets its live status. Used both for a user-initiated unpair and
+  /// for a bike-profile switch taking a sensor out of scope — the caller
+  /// decides which of those it is and whether the pairing itself is kept.
+  Future<void> _removeTarget(String deviceId) async {
+    _targets.remove(deviceId);
+    _autoConnectRegistered.remove(deviceId);
+    await _connSubs.remove(deviceId)?.cancel();
+    for (final s in _subs.remove(deviceId) ?? const <StreamSubscription>[]) {
       await s.cancel();
     }
-    _subs.remove(deviceId);
     _csc.remove(deviceId);
     _connected.remove(deviceId);
     _emitConnected();
-    await BluetoothDevice.fromId(deviceId).disconnect();
+    try {
+      await BluetoothDevice.fromId(deviceId).disconnect();
+    } catch (_) {}
   }
 
   @override

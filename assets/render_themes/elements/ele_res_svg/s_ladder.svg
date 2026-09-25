@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="580" version="1.1">
+ <metadata id="metadata7"/>
+ <path id="path4141" d="M135 76C123 76 110 85 110 98L110 482C114 516 157 507 158 482L158 434 422 434 422 482C426 516 469 507 470 482L470 98C466 63.8 423 73 422 98L422 146 158 146 158 98C156 81.9 146 75 135 76zM158 194L422 194 422 266 158 266 158 194zM158 314L422 314 422 386 158 386 158 314z" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" fill="none" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <path d="M135 76C123 76 110 85 110 98L110 482C114 516 157 507 158 482L158 434 422 434 422 482C426 516 469 507 470 482L470 98C466 63.8 423 73 422 98L422 146 158 146 158 98C156 81.9 146 75 135 76M158 194L422 194 422 266 158 266 158 194M158 314L422 314 422 386 158 386 158 314" id="path4138" fill="#666666"/>
+</svg>

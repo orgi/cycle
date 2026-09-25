@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # Semantic version (https://semver.org). The +N build number = Android
 # versionCode; bump it every release. Keep CHANGELOG.md in step, then run
 # `tool/fl python3 tool/gen_version.py` to refresh lib/core/app_version.dart.
-version: 0.1.0+1
+version: 0.1.0+2028
 
 environment:
   sdk: ^3.12.0
@@ -47,14 +47,17 @@ dependencies:
   http: ^1.6.0
   mapsforge_flutter_mapfile: ^4.0.0
   mapsforge_flutter_core: ^4.0.0
+  mapsforge_flutter_renderer: ^4.0.0 # symbol cache loader for bundled themes
   geolocator_android: ^5.0.2
   geolocator_apple: ^2.3.13
   flutter_blue_plus: ^2.3.8
   shared_preferences: ^2.5.5
   drift: ^2.33.0
   sqlite3_flutter_libs: ^0.6.0+eol
+  sqlite3: ^3.3.2
   fl_chart: ^1.2.0
   gpx: ^2.3.0
+  flutter_foreground_task: ^9.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -92,6 +95,9 @@ flutter:
     - assets/render_themes/dark.xml
     - assets/render_themes/light.xml
     - assets/render_themes/bw.xml
+    - assets/render_themes/elements/Elements.xml
+    - assets/render_themes/elements/Elements-dark.xml
+    - assets/render_themes/elements/ele_res_svg/
     - assets/maps/monaco.map
     - assets/routes/monaco_loop.gpx
 

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="580" height="580">
+ <metadata id="metadata2975"/>
+ <circle fill="none" id="circle4144" r="51" cy="398" cx="172" opacity=".8" color-interpolation-filters="linearRGB" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" color-interpolation="sRGB" stroke-linejoin="round" stroke="#ffffff" shape-rendering="auto"/>
+ <path fill="none" id="path4137" d="M285 104C232 50.6 157 39.6 112 84c-49 47.9-33 120 20.5 173 41.9 41.9 92 63 137 45 18.6 6.4 50 19.3 81 41.9-1 4.8.3 10 4.1 13.7l91 91c5.9 5.9 15.4 5.9 21 0l10.6-10.6c5.9-5.9 5.9-15.4 0-21l-90-90c-3.7-3.7-8.9-5.1-13.7-4.1-22.7-30.6-35.7-62-42-81 17.7-44.9-3.3-95-45-137zm58.9 212c-19.9-10.9-38.7-19.6-55-26.4 5.1-4.2 10.2-8.8 15-13.8 5-5 9.6-10 13.8-15.2 6.9 16.7 15.6 35.5 26.4 55z" mix-blend-mode="normal" solid-color="#000000" opacity=".8" color-interpolation-filters="linearRGB" filter-gaussianBlur-deviation="0" color="#000000" image-rendering="auto" color-rendering="auto" stroke-width="64" isolation="auto" color-interpolation="sRGB" solid-opacity="1" stroke-linejoin="round" filter-blend-mode="normal" stroke="#ffffff" shape-rendering="auto"/>
+ <circle cx="172" cy="398" r="51" id="circle2441" fill="#39ac39"/>
+ <path d="M285 104C232 50.6 157 39.6 112 84c-49 47.9-33 120 20.5 173 41.9 41.9 92 63 137 45 18.6 6.4 50 19.3 81 41.9-1 4.8.3 10 4.1 13.7l91 91c5.9 5.9 15.4 5.9 21 0l10.6-10.6c5.9-5.9 5.9-15.4 0-21l-90-90c-3.7-3.7-8.9-5.1-13.7-4.1-22.7-30.6-35.7-62-42-81 17.7-44.9-3.3-95-45-137m58.9 212c-19.9-10.9-38.7-19.6-55-26.4 5.1-4.2 10.2-8.8 15-13.8 5-5 9.6-10 13.8-15.2 6.9 16.7 15.6 35.5 26.4 55" id="path2443" fill="#39ac39"/>
+</svg>

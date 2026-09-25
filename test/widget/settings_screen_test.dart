@@ -1,6 +1,12 @@
+import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/settings_screen.dart';
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +18,10 @@ void main() {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -28,7 +37,10 @@ void main() {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -37,17 +49,27 @@ void main() {
     // Default is enabled; tapping disables it. Scroll it into view first
     // (the Appearance section sits above it).
     await tester.scrollUntilVisible(
-        find.byKey(const Key('hardwareButtonsSwitch')), 200);
+      find.byKey(const Key('hardwareButtonsSwitch')),
+      200,
+    );
     await tester.tap(find.byKey(const Key('hardwareButtonsSwitch')));
     await tester.pumpAndSettle();
     expect((await store.load()).hardwareButtonsEnabled, isFalse);
   });
 
   testWidgets('edits the wheel circumference via the dialog', (tester) async {
+    // Tall viewport so the whole settings list (incl. all colour-scheme radios)
+    // fits without anything sitting off-screen.
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final store = FakeSettingsStore();
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [settingsStoreProvider.overrideWithValue(store)],
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
@@ -56,10 +78,128 @@ void main() {
     await tester.tap(find.text('Wheel circumference'));
     await tester.pumpAndSettle();
     await tester.enterText(
-        find.byKey(const Key('wheelCircumferenceField')), '2200');
+      find.byKey(const Key('wheelCircumferenceField')),
+      '2200',
+    );
     await tester.tap(find.byKey(const Key('wheelCircumferenceSave')));
     await tester.pumpAndSettle();
 
     expect((await store.load()).wheelCircumferenceMeters, closeTo(2.2, 1e-9));
+  });
+
+  testWidgets('recalculates ride distances after confirmation', (tester) async {
+    final store = FakeSettingsStore();
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final id = await db.createTrack(DateTime(2026, 1, 1));
+    await db.addPoint(
+      TrackPointsCompanion.insert(
+        trackId: id,
+        time: DateTime(2026, 1, 1, 0, 0, 0),
+        latitude: 0,
+        longitude: 0,
+      ),
+    );
+    await db.addPoint(
+      TrackPointsCompanion.insert(
+        trackId: id,
+        time: DateTime(2026, 1, 1, 0, 0, 10),
+        latitude: 0,
+        longitude: 0.001,
+      ),
+    );
+    await db.finalizeTrack(
+      id,
+      endedAt: DateTime(2026, 1, 1, 0, 0, 10),
+      distanceMeters: 9999,
+      durationSeconds: 10,
+      avgSpeedMps: 1,
+      maxSpeedMps: 1,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+          appDatabaseProvider.overrideWithValue(db),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('recalculateDistancesTile')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('recalculateDistancesTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recalculateDistancesConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recalculated 1 ride'), findsOneWidget);
+    final track = await db.track(id);
+    expect(track!.distanceMeters, lessThan(200));
+  });
+
+  testWidgets('removes duplicate rides after confirmation', (tester) async {
+    final store = FakeSettingsStore();
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final startedAt = DateTime(2026, 1, 1);
+    final kept = await db.createTrack(startedAt);
+    await db.createTrack(startedAt); // duplicate, same start time
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+          appDatabaseProvider.overrideWithValue(db),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('removeDuplicatesTile')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('removeDuplicatesTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('removeDuplicatesConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Removed 1 duplicate ride'), findsOneWidget);
+    final remaining = await db.allTracks();
+    expect(remaining.map((t) => t.id), [kept]);
+  });
+
+  testWidgets('bike profiles tile summarises the active profile', (tester) async {
+    final store = FakeSettingsStore();
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Gravel bike', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('bikeProfilesTile')),
+      200,
+    );
+    expect(find.textContaining('1 bike'), findsOneWidget);
+    expect(find.textContaining('Gravel bike'), findsOneWidget);
   });
 }

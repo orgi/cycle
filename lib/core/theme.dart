@@ -10,10 +10,12 @@ import 'services/settings/app_settings.dart';
 ThemeData buildAppTheme(AppColorScheme scheme) {
   switch (scheme) {
     case AppColorScheme.light:
+    case AppColorScheme.elements: // light detailed map → light app chrome
       return _light();
     case AppColorScheme.bw:
       return _oled(const Color(0xFFE0E0E0));
     case AppColorScheme.dark:
+    case AppColorScheme.elementsDark: // dark detailed map → dark app chrome
       return _oled(const Color(0xFF00E5FF));
   }
 }
@@ -95,8 +97,8 @@ class MapAccents {
   final bool onLightMap;
 
   static const _dark = MapAccents(
-    track: 0xFFFF6D00, // orange
-    route: 0xFF2979FF, // blue
+    track: 0xFFFFA726, // bright amber-orange — stays legible in direct sun
+    route: 0xFF40C4FF, // bright light-blue — route direction arrows pop
     me: 0xFF00E5FF, // cyan
     meStroke: 0xFFFFFFFF,
     ghost: 0xFFB0BEC5,
@@ -124,10 +126,12 @@ class MapAccents {
   static MapAccents of(AppColorScheme scheme) {
     switch (scheme) {
       case AppColorScheme.light:
+      case AppColorScheme.elements: // Elements is a light map
         return _light;
       case AppColorScheme.bw:
         return _bw;
       case AppColorScheme.dark:
+      case AppColorScheme.elementsDark: // Elements dark is a dark map
         return _dark;
     }
   }

@@ -8,7 +8,128 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Fixed
+- **Sensors auto-connect on launch again (direct connect).** After the switch to passive
+  reconnection, a paired sensor that was present and advertising (e.g. a worn HR strap)
+  often would not link on launch — passive Android `autoConnect` frequently never connects a
+  present sensor. The app now does a one-shot **direct connect** per sensor (the same path
+  the manual "tap to reconnect" uses, which worked), which links a present sensor in a couple
+  of seconds; it still doesn't scan, so it doesn't disturb the GPS. Absent sensors fall back
+  to passive autoConnect. Verified on-device: a worn HR sensor now connects ~2s after launch
+  with no tap.
+- **GPS now uses a continuous native location request (real fix, no more toggling).** The
+  GPS was read by polling one-shot position requests, which cold-restarted the receiver on
+  every poll — the status-bar GPS icon toggled on/off and, on the Galaxy A33, often never
+  got a fix at all. Android now holds a single continuous native `LocationManager` request
+  (the same approach OruxMaps uses), so the GPS keeps its lock. (geolocator's polling and
+  its position-stream both proved unable to hold the receiver on this hardware.)
+- **GPS fix regression from BLE scanning.** Sensor reconnection had been changed to run an
+  app-level active BLE scan loop (an ~8-second scan every minute while a paired sensor was
+  missing — i.e. the whole ride, on a bike without that sensor). On phones with a combined
+  Wi-Fi/BT/GPS radio (e.g. Galaxy A33) that scanning competed with the GPS receiver and
+  degraded/prevented the fix. Reconnection is back to passive Android `autoConnect` (no
+  app scanning), so the GPS is no longer starved. GPS acquisition also now starts at app
+  launch (ahead of the UI) for a faster first fix.
+  - Trade-off: reconnecting a sensor that went idle mid-ride again relies on the OS, which
+    can be slower — to be revisited with an approach that doesn't scan during a ride.
+- **BLE sensor reconnection.** Reconnecting a paired sensor (on app launch or after a
+  mid-ride drop) previously relied entirely on Android's native `autoConnect=true` GATT
+  mode with no app-level retry, timeout, or fallback — on real devices with 2-3 sensors
+  paired at once this was wildly non-deterministic (one sensor reconnecting instantly,
+  another sitting for 20+ minutes with no error and no indication anything was stuck).
+  `BleSensorService` now runs its own scan-and-connect retry loop: a short targeted scan
+  (`withRemoteIds`) for whichever paired sensors aren't yet linked, connecting the moment
+  one is seen, retrying on a backoff (10s → 20s → 40s → 60s) if it isn't found, with the
+  passive `autoConnect=true` link kept as a low-cost backstop between rounds.
+
+### Fixed
+- **Tap-to-reconnect no longer mixes up speed and cadence.** A speed sensor and a cadence
+  sensor are the same Bluetooth type, so tapping SPEED and tapping CAD both reconnected both
+  of them. The taps now target the right one, distinguished by the sensor's name
+  (SPD/SPEED vs CAD/RPM/CADENCE).
+
 ### Added
+- **Sensors keep trying to connect for a few minutes.** After app start — and again when a
+  ride starts — the app re-tries connecting any not-yet-linked sensor every 30s for ~5
+  minutes (a direct connect, no scanning, so it doesn't affect GPS), then stops once all are
+  connected. So a sensor that wasn't ready at launch (just mounted on the bike / waking up)
+  links on its own without you tapping.
+- **Tap a stat to reconnect its sensor.** Tapping the SPEED / HR / cadence / power stat on
+  the home screen triggers a quick one-shot manual reconnect of that sensor (a direct
+  connect, no background scanning — so it doesn't disturb the GPS), for when a paired sensor
+  hasn't auto-linked yet. The **SPEED** stat reconnects the BLE speed sensor (which has no
+  tile of its own — its data feeds the speed reading), and reconnect also works for a sensor
+  whose type the app hasn't learned yet (a flaky one that never linked cleanly). The Sensors
+  screen also gets a per-sensor **Reconnect** button (by name), for unambiguous control.
+- **Per-bike sensor selection.** Each bike profile can now be restricted to a subset of
+  paired sensors (Settings → Bikes → Bike profiles → ⋮ → "Sensors for this bike") — e.g. a
+  second bike with no cadence/speed sensor won't have the app endlessly retry connecting
+  ones that only exist on another bike. Left unconfigured (the default), a profile keeps
+  today's behaviour of pursuing every paired sensor. Switching the active bike disconnects
+  now out-of-scope sensors and starts pursuing newly in-scope ones automatically. The home
+  screen's HR/cadence/power tiles are shown based purely on "paired and selected for this
+  bike", independent of live connection state — a sensor that's temporarily disconnected or
+  reconnecting keeps its tile instead of disappearing.
+- **Bike profiles** — record against different bicycles and see stats per bike or
+  in total. A coloured chip in the top-left of the home screen shows the active
+  profile; tap it to switch, or manage profiles (add/rename/recolour/delete) from
+  **Settings → Bikes**. No pop-up when starting a ride: the volume-up button
+  starts recording with whichever profile is already active, and pressing it
+  again *while already recording* cycles to the next profile — correcting the
+  ride in progress if the wrong bike was active, without interrupting it. Rides
+  are stamped with their bike; the Rides list gets a filter row ("All" + one chip
+  per bike, only shown once you have 2+) that filters both the ride list and the
+  week/month/year summary cards, plus a small colour dot on each row.
+  **Correcting past rides:** a ride's detail screen shows its bike (or
+  "Unassigned") — tap to change it via the same picker. To bulk-fix a whole ride
+  history at once (e.g. after renaming your first profile to your bike's real
+  name), **Settings → Bikes → Bike profiles → ⋮ → "Assign all rides to this
+  bike"** sets every recorded ride to that bike in one go.
+  **Classify rides** (Settings → Bikes → Bike profiles → filter icon) — find old
+  rides matching a combination of criteria (only-unassigned, has cadence/heart-rate/
+  power data, distance/average-speed/max-speed range, date range) and bulk-assign
+  just the matches to a bike. ("Had a speed sensor" isn't offered as a criterion —
+  unlike cadence/HR/power, that wasn't stored per point for rides recorded before
+  this release, so it can't be reconstructed; new rides now record it, so it'll be
+  available for those going forward.)
+- **Import from OruxMaps** (Settings → Data) — bring in ride history recorded with
+  OruxMaps, entirely on-device, no PC/adb. Bulk-import your whole ride history in one go by
+  granting "All files access" (the same permission a file-manager app holds) — needed
+  because Android 11+ otherwise blocks every other app from OruxMaps' storage entirely.
+  Alternatively, share a single track's GPX export from OruxMaps' own Track Manager, no
+  permission required. If bulk import still can't reach the database (some devices block it
+  even with the permission granted), a "Pick database file" button opens the system file
+  picker so you can import a copy you've moved somewhere ordinary yourself (e.g. via a PC/USB
+  connection). Either way, already-imported rides are skipped, so re-importing is safe.
+- **Remove duplicate rides** (Settings → Data) — a one-tap maintenance action that removes
+  rides sharing the exact same start time as another ride, keeping the first-recorded copy.
+  For duplicates left behind by an OruxMaps import that ran twice at once (see "Fixed" below).
+- **Recalculate ride distances** (Settings → Data) — a one-tap maintenance action that
+  recomputes every ride's distance/average/max from its recorded points using the current
+  maths, for rides recorded before a distance-calculation fix (see "Fixed" below).
+- **Resume an interrupted ride** — if a ride was cut short by a crash/kill, on
+  the next launch the app offers **"Resume"**: recording continues into the same
+  track with its distance/time/average carried over (the dead-time gap while the
+  app was gone isn't counted).
+- **Clean GPS spikes on a recorded ride** — a new wand action on the ride screen
+  removes teleport outliers from an already-recorded track and recomputes its
+  distance / average / max from the cleaned points (for rides recorded before the
+  outlier filter below).
+- **Auto-pause** — the ride timer, distance and average now pause automatically
+  when you stop or slow below a threshold (default **5 km/h**), so waits at lights
+  and breaks don't drag your moving average down. The TIME box shows **PAUSED**
+  (amber) while paused. Configurable in **Settings → Controls** (on/off + the
+  km/h threshold); max speed still records the true peak.
+- **Detailed (Elements) map theme** — the full OpenAndroMaps *Elements* render
+  theme (contour lines, POI symbols, named cycle routes, landuse detail) is now
+  selectable in **Settings → Appearance**, alongside the minimal Dark/Light/B&W
+  themes (kept as the lighter, battery-saving options). Bundles the theme + its
+  ~195 symbols; a `file:` symbol loader resolves them from the app assets.
+  A **dark/night** variant ("Detailed (Elements) — Dark") is also available.
+- **Free-look on the map** — panning the map now pauses GPS auto-follow so you
+  can scout alternative routes without it snapping back to your location on the
+  next fix; a **recenter** button appears while paused — tap it to recentre and
+  resume following.
 - **Speed shows its source by colour** — the live SPEED value reads **green**
   when it comes from the BLE wheel sensor (accurate) and the normal accent when
   it's GPS, so you can tell at a glance which source is driving it.
@@ -19,7 +140,72 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   signed cycle routes (local→international, highlighted on the road), and named
   peaks / saddles / mountain passes. Applies to Dark/Light/B&W.
 
+### Changed
+- **Followed route is a dashed line of small arrows** — the route to follow is
+  drawn as a dashed line whose every dash is a small arrow (a short shaft with a
+  head no wider than the line), packed with a tiny gap. Custom-drawn in screen
+  space, so the gap stays tight at any zoom and every arrow points in the actual
+  travel direction (earlier approaches either spread out when you zoomed in or
+  pointed backwards on half the route).
+- **More sunlight readability** — the recorded track line is brighter (amber), and
+  roads / streets are brighter in the Dark and Detailed (Elements) — Dark map
+  themes (near-white road bodies over a dark casing) so they stay legible with the
+  sun on the screen. (The map theme refreshes as tiles redraw — pan/zoom or
+  restart to repaint already-cached tiles.)
+
 ### Fixed
+- **OruxMaps bulk import no longer silently misses newer rides, and no longer
+  double-imports on a re-tap** — a real multi-year ride history (hundreds of
+  tracks/hundreds of thousands of points) made the import commit to disk on
+  every single point instead of batching, taking well over an hour on a real
+  device — easily mistaken for "it silently stopped partway" (the actual
+  cause of newer, e.g. 2025/2026, rides appearing to be missing) when it was
+  simply still running. Now batches each ride's points into one transaction,
+  cutting a real-device import from 60+ minutes to a few minutes. Also
+  guarded against a second import starting while one is still running (which
+  otherwise imported the overlapping rides twice) — the import screen now
+  shows a progress state and disables its buttons while busy. See "Remove
+  duplicate rides" above for cleaning up rides a pre-fix import already
+  duplicated. Also fixed a related bug in the manual file-picker path where
+  an 80+ MB database sent as a single method-channel argument silently
+  truncated to a partial copy on a real device — it's now streamed to a
+  local file instead.
+- **OruxMaps import now actually brings in heart rate and cadence** —
+  OruxMaps packs those into a binary blob the importer wasn't reading at
+  all (it only looked for named columns, which don't exist for these on a
+  real export), so every previous import silently added zero sensor data
+  even though the source had it. Re-running the import (Settings →
+  "Import from OruxMaps") after updating backfills heart rate/cadence onto
+  rides you already imported, not just new ones — you don't need to
+  re-import from scratch.
+- **Recorded distance no longer reads ~5% long from GPS jitter** — even with
+  every fix passing the accuracy filter, summing the leg between *every*
+  consecutive 1 Hz fix overcounted distance vs. a reference track (Komoot) with
+  no spikes involved: plain positional noise adds spurious zig-zag length (the
+  "coastline paradox") continuously while riding, not just when stationary.
+  Distance is now integrated from the GPS chip's own reported (Doppler) speed
+  over time rather than differenced from consecutive positions — Doppler
+  velocity doesn't carry the position-fix noise that caused the overcount.
+  Existing rides can be corrected with the new "Recalculate ride distances"
+  action above.
+- **GPS spikes no longer corrupt the track or the average** — occasional GPS
+  "teleport" outliers (multipath reflections, worse in the evening) made the
+  recorded track dart out and back, and — because the huge out/back legs are
+  rejected for distance while time keeps running — dragged the average speed down
+  with every spike. Such fixes are now rejected at the source (any that imply an
+  impossible speed from the last good position), keeping the last good fix as the
+  reference so the next real leg is measured across the gap. Cleaner track,
+  correct distance and average.
+- **Opening a GPX reuses the running app** — opening/sharing a `.gpx` from a file
+  manager spawned a *second* instance of Cycle instead of handing the route to the
+  one already running. The activity is now `singleTask`, so the intent goes to the
+  existing instance (and you keep your current ride/map state).
+- **Speed no longer sticks at 0 when the sensor sleeps** — a speed sensor that
+  goes to sleep keeps reporting 0 while you're still moving; the display held that
+  stale (green) 0 and never fell back to GPS. Now, when the BLE wheel reads ~0 but
+  GPS clearly shows movement, the speed uses GPS (and shows the GPS colour). Paired
+  sensors also reconnect persistently, so one that drops/sleeps re-links by itself
+  when it wakes — no manual re-pair.
 - **BLE sensors auto-reconnect reliably** — reconnect is now persistent
   (`autoConnect`): a paired sensor that was on standby at launch, or that drops
   out and comes back in range, re-links by itself instead of only getting one
@@ -62,6 +248,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   the batch (vendored patch 4).
 
 ### Changed
+- **Battery: map-follow deadband** — while following, the map now only
+  re-centres once your location drifts ~45% of the way toward the nearest edge,
+  instead of re-stamping/redrawing the tiles on every 1 Hz fix. The location dot
+  still updates live (it drifts within the static map), so it saves a map redraw
+  per second; the map jumps back to centre only as the dot nears the edge.
 - **Live speed holds up under tree cover** — the GPS chip's reported speed
   regresses toward zero when the signal is weak (under canopy), so the
   speedometer read low while the distance-based average stayed correct. When a

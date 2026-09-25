@@ -104,6 +104,40 @@ void main() {
     expect(await part.exists(), isFalse);
   });
 
+  test('a 416 (stale/invalid .part) discards it and restarts fresh', () async {
+    final mapBytes = List<int>.generate(4096, (i) => i % 256);
+    final zip = _zipWith('Testland.map', mapBytes);
+
+    // A .part left over from an interrupted attempt that the server no
+    // longer honours a Range resume for (e.g. it changed, or a previous
+    // attempt already appended past what's actually valid).
+    final part = await storage.partFileForRegion(region);
+    await part.writeAsBytes(List<int>.filled(500, 1), flush: true);
+
+    var requestCount = 0;
+    final client = MockClient((req) async {
+      requestCount++;
+      if (requestCount == 1) {
+        expect(req.headers['range'], 'bytes=500-');
+        return http.Response('', 416);
+      }
+      // Second attempt: no Range header (fresh restart).
+      expect(req.headers.containsKey('range'), isFalse);
+      return http.Response.bytes(zip, 200,
+          headers: {'content-length': '${zip.length}'});
+    });
+    final service = MapDownloadService(storage, clientFactory: () => client);
+
+    final progress = <double>[];
+    await service.download(region, onProgress: progress.add);
+
+    expect(requestCount, 2);
+    final file = await storage.fileForRegion(region);
+    expect(await file.readAsBytes(), mapBytes);
+    expect(await part.exists(), isFalse);
+    expect(progress.last, 1.0);
+  });
+
   test('throws on a non-200 response', () {
     final client = MockClient((req) async => http.Response('nope', 404));
     final service = MapDownloadService(storage, clientFactory: () => client);

@@ -2,22 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/models/bike_profile.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/ride_summary.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
+import '../../settings/presentation/widgets/bike_color_dot.dart';
 import '../application/track_providers.dart';
 
-/// List of recorded rides, newest first.
+/// List of recorded rides, newest first. When 2+ bike profiles exist, a filter
+/// row lets you view a single bike's rides/summary or "All" (total). The
+/// app-bar filter icon opens the ride classifier (find old rides by criteria
+/// and bulk-assign them to a bike).
 class TracksScreen extends ConsumerWidget {
   const TracksScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tracks = ref.watch(tracksProvider);
+    final profiles = ref.watch(bikeProfilesProvider).profiles;
+    final filter = ref.watch(selectedBikeProfileFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rides'),
         actions: [
+          IconButton(
+            key: const Key('classifyRidesButton'),
+            icon: const Icon(Icons.filter_alt_outlined),
+            tooltip: 'Classify rides',
+            onPressed: () => context.push('/classify-rides'),
+          ),
           IconButton(
             key: const Key('uploadAccountsButton'),
             icon: const Icon(Icons.cloud_outlined),
@@ -29,17 +44,40 @@ class TracksScreen extends ConsumerWidget {
       body: tracks.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
-        data: (list) {
-          if (list.isEmpty) {
+        data: (all) {
+          if (all.isEmpty) {
             return const Center(
               child: Text('No rides yet. Tap Start to record one.',
                   style: TextStyle(color: Colors.white54)),
             );
           }
+          final list = filter == null
+              ? all
+              : all.where((t) => t.bikeProfileId == filter).toList();
+          final summaries = computeRideSummaries(list);
+          // Filter row (only with 2+ bikes) + summary row, then either the
+          // (possibly filtered) ride rows or an empty-for-this-bike message.
+          final showFilter = profiles.length > 1;
+          final headerCount = (showFilter ? 1 : 0) + 1;
+          final bodyCount = list.isEmpty ? 1 : list.length;
           return ListView.builder(
-            itemCount: list.length,
+            itemCount: headerCount + bodyCount,
             itemBuilder: (context, i) {
-              final t = list[i];
+              if (showFilter && i == 0) {
+                return _BikeFilterRow(profiles: profiles, selected: filter);
+              }
+              final afterFilter = showFilter ? i - 1 : i;
+              if (afterFilter == 0) {
+                return _SummaryRow(summaries: summaries);
+              }
+              if (list.isEmpty) {
+                return const _EmptyForFilter();
+              }
+              final t = list[afterFilter - 1];
+              final profileColor = profiles
+                  .where((p) => p.id == t.bikeProfileId)
+                  .firstOrNull
+                  ?.colorArgb;
               return Dismissible(
                 key: Key('track_${t.id}'),
                 direction: DismissDirection.endToStart,
@@ -53,6 +91,13 @@ class TracksScreen extends ConsumerWidget {
                     ref.read(appDatabaseProvider).deleteTrack(t.id),
                 child: ListTile(
                   key: Key('trackTile_${t.id}'),
+                  leading: (showFilter && profileColor != null)
+                      ? BikeColorDot(
+                          key: Key('trackBikeDot_${t.id}'),
+                          colorArgb: profileColor,
+                          radius: 6,
+                        )
+                      : null,
                   title: Text(t.name),
                   subtitle: Text(
                     '${formatDateTime(t.startedAt)}  •  '
@@ -66,6 +111,135 @@ class TracksScreen extends ConsumerWidget {
             },
           );
         },
+      ),
+    );
+  }
+}
+
+/// Shown in place of the ride rows when a bike filter matches no rides.
+class _EmptyForFilter extends StatelessWidget {
+  const _EmptyForFilter();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Center(
+        child: Text('No rides for this bike yet.',
+            style: TextStyle(color: Colors.white54)),
+      ),
+    );
+  }
+}
+
+/// "All" + one chip per bike profile, filtering the list/summary below.
+class _BikeFilterRow extends ConsumerWidget {
+  const _BikeFilterRow({required this.profiles, required this.selected});
+
+  final List<BikeProfile> profiles;
+  final String? selected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ChoiceChip(
+              key: const Key('bikeFilterAll'),
+              label: const Text('All'),
+              selected: selected == null,
+              onSelected: (_) => ref
+                  .read(selectedBikeProfileFilterProvider.notifier)
+                  .select(null),
+            ),
+            for (final p in profiles) ...[
+              const SizedBox(width: 6),
+              ChoiceChip(
+                key: Key('bikeFilter_${p.id}'),
+                avatar: BikeColorDot(colorArgb: p.colorArgb, radius: 10),
+                label: Text(p.name),
+                selected: selected == p.id,
+                onSelected: (_) => ref
+                    .read(selectedBikeProfileFilterProvider.notifier)
+                    .select(p.id),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Rolling week/month/year totals shown above the ride list.
+class _SummaryRow extends StatelessWidget {
+  const _SummaryRow({required this.summaries});
+
+  final RideSummaries summaries;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Row(
+        children: [
+          Expanded(
+              child: _SummaryCard(
+                  key: const Key('summaryWeek'),
+                  label: 'This week',
+                  summary: summaries.week)),
+          const SizedBox(width: 8),
+          Expanded(
+              child: _SummaryCard(
+                  key: const Key('summaryMonth'),
+                  label: 'This month',
+                  summary: summaries.month)),
+          const SizedBox(width: 8),
+          Expanded(
+              child: _SummaryCard(
+                  key: const Key('summaryYear'),
+                  label: 'This year',
+                  summary: summaries.year)),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({super.key, required this.label, required this.summary});
+
+  final String label;
+  final RideSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final hours = summary.duration.inMinutes / 60.0;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style:
+                  const TextStyle(color: Colors.white54, fontSize: 11)),
+          const SizedBox(height: 4),
+          Text('${formatDistanceKm(summary.distanceKm)} km',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold)),
+          Text('${hours.toStringAsFixed(1)} h  •  '
+              '${summary.rideCount} ride${summary.rideCount == 1 ? '' : 's'}',
+              style: const TextStyle(color: Colors.white54, fontSize: 11)),
+        ],
       ),
     );
   }

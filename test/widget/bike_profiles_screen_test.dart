@@ -1,0 +1,251 @@
+import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/sensors/gatt.dart';
+import 'package:cycle/core/sensors/paired_sensors_store.dart';
+import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/sensors/application/sensor_providers.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
+import 'package:cycle/features/settings/presentation/bike_profiles_screen.dart';
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../support/fakes.dart';
+
+void main() {
+  testWidgets('a fresh install auto-seeds one default profile', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bike 1'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
+  });
+
+  testWidgets('adds a bike profile via the dialog', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('addBikeProfileButton')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('bikeProfileNameField')), 'Road bike');
+    await tester.tap(find.byKey(const Key('bikeProfileNameSave')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Road bike'), findsOneWidget);
+  });
+
+  testWidgets('renames a profile', (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Bike 1', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('bikeProfileNameField')), 'Commuter');
+    await tester.tap(find.byKey(const Key('bikeProfileNameSave')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Commuter'), findsOneWidget);
+    expect(find.text('Bike 1'), findsNothing);
+  });
+
+  testWidgets('sets a colour from the swatch picker', (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Bike 1', colorArgb: 0xFFFFA726)],
+      activeId: 'p1',
+    );
+    final container = ProviderContainer(overrides: [
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(seeded)),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileColor_p1')));
+    await tester.pumpAndSettle();
+    final newColor = kBikeProfileColors.firstWhere((c) => c != 0xFFFFA726);
+    await tester.tap(find.byKey(
+        Key('bikeProfileColorOption_${newColor.toRadixString(16)}')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(bikeProfilesProvider).profiles.single.colorArgb,
+        newColor);
+  });
+
+  testWidgets('deletes a profile after confirmation', (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Bike 1', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bikeProfileDeleteConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bike 1'), findsNothing);
+    expect(find.textContaining('No bikes yet'), findsOneWidget);
+  });
+
+  testWidgets('tapping a profile row makes it active', (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [
+        BikeProfile(id: 'p1', name: 'Road', colorArgb: 1),
+        BikeProfile(id: 'p2', name: 'Gravel', colorArgb: 2),
+      ],
+      activeId: 'p1',
+    );
+    final container = ProviderContainer(overrides: [
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(seeded)),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileRow_p2')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(bikeProfilesProvider).activeId, 'p2');
+    expect(find.text('Active'), findsOneWidget); // now only on Gravel's row
+  });
+
+  testWidgets('assigns all rides to a bike after confirmation', (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.createTrack(DateTime.utc(2026, 1, 1)); // unassigned
+    await db.createTrack(DateTime.utc(2026, 1, 2), bikeProfileId: 'other');
+
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Cube', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(seeded)),
+          appDatabaseProvider.overrideWithValue(db),
+        ],
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Assign all rides to this bike'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('all 2 recorded rides'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assignAllRidesConfirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Assigned 2 rides to "Cube"'), findsOneWidget);
+    final tracks = await db.allTracks();
+    expect(tracks.every((t) => t.bikeProfileId == 'p1'), isTrue);
+  });
+
+  testWidgets('restricts a bike to a subset of paired sensors',
+      (tester) async {
+    const seeded = BikeProfilesState(
+      profiles: [BikeProfile(id: 'p1', name: 'Gravel', colorArgb: 1)],
+      activeId: 'p1',
+    );
+    final pairedStore = _MemPairedSensorsStore([
+      const PairedSensor(id: 'hr1', name: 'HR strap', kinds: {SensorKind.heartRate}),
+      const PairedSensor(id: 'cad2', name: 'Cadence', kinds: {SensorKind.speedCadence}),
+    ]);
+    final container = ProviderContainer(overrides: [
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(seeded)),
+      sensorServiceProvider.overrideWithValue(FakeSensorService()),
+      pairedSensorsStoreProvider.overrideWithValue(pairedStore),
+    ]);
+    addTearDown(container.dispose);
+    container.read(sensorConnectionProvider); // pre-load the paired sensors
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BikeProfilesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('bikeProfileMenu_p1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sensors for this bike'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('HR strap'), findsOneWidget);
+    expect(find.text('Cadence'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bikeSensorOption_cad2')));
+    await tester.tap(find.byKey(const Key('bikeSensorsSave')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(bikeProfilesProvider).profiles.single.sensorIds,
+        {'hr1'});
+  });
+}
+
+class _MemPairedSensorsStore implements PairedSensorsStore {
+  _MemPairedSensorsStore([List<PairedSensor> initial = const []])
+      : saved = List.of(initial);
+  List<PairedSensor> saved;
+  @override
+  Future<List<PairedSensor>> load() async => List.of(saved);
+  @override
+  Future<void> save(List<PairedSensor> sensors) async =>
+      saved = List.of(sensors);
+}

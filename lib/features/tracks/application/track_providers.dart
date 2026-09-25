@@ -6,10 +6,36 @@ import '../../dashboard/application/ride_providers.dart';
 import '../../map/application/map_providers.dart';
 import '../../map/application/map_render_service.dart';
 import '../../settings/application/settings_providers.dart';
+import 'track_repair.dart';
 
 /// All recorded rides, newest first, live-updating.
 final tracksProvider = StreamProvider<List<Track>>(
   (ref) => ref.watch(appDatabaseProvider).watchTracks(),
+);
+
+/// Which bike profile the Rides list is filtered to, or `null` for all bikes
+/// (total). Not persisted — resets to "All" on next launch.
+final selectedBikeProfileFilterProvider =
+    NotifierProvider<SelectedBikeProfileFilter, String?>(
+        SelectedBikeProfileFilter.new);
+
+class SelectedBikeProfileFilter extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String? bikeProfileId) => state = bikeProfileId;
+}
+
+/// Runs once at startup: recompute + finalise any ride interrupted by a crash /
+/// kill (still `endedAt == null`), so its stats aren't stuck at zero. Read it
+/// somewhere that loads at launch (the home screen). The live [tracksProvider]
+/// stream then refreshes automatically. Resolves to the id of the most recent
+/// ride if it was interrupted recently (offer to resume it), else `null`.
+final interruptedTrackRecoveryProvider = FutureProvider<int?>(
+  (ref) => recoverInterruptedTracks(
+    ref.read(appDatabaseProvider),
+    ref.read(settingsProvider),
+  ),
 );
 
 /// A single track's recorded points.

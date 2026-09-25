@@ -26,6 +26,11 @@ Target use case:
   * Possible to start/stop track using physical buttons (where possible)
   * Local database for storing all tracks
 
+## Versioning
+
+For all builds that will be installed on the device, make sure to strictly follow semantic versioning. Also, every build MUST ALWAYS increase the build number.
+Also, a changelog has to be maintained.
+
 ## Testing
 
 Every feature, bugfix other other changes to the source code ALWAYS needs to be tested.
@@ -33,11 +38,14 @@ Every feature, bugfix other other changes to the source code ALWAYS needs to be 
 * For the general code testing there ALWAYS have to be unit tests.
 * For the system testing there needs to be at last a GUI test
 * Tests need to be executed for acceptance of any automated edit
+* Build for Android 32 & 64 bit shall ALWWAYS be done to verify a change.
 
 The actual phones available for manual testing will be
 
-* A Galaxy A33 5G
-* Possibly a Galaxy A3 2017
+* A Galaxy A33 5G (64 bit)
+* Possibly a Galaxy A3 2017 (32 bit)
+
+If either (or both) phones are connected while you are implementing a new feature / bugfix or any other changes, ALWAYS install the latest app w/o uninstalling the previous one to keep the database intact.
 
 When installing the app using adb, NEVER uninstall the existing app to avoid data loss.
 
@@ -60,15 +68,142 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     (~hundreds of m) at a time while the marker/track followed correctly. The patch
     re-stamps every emitted tileset to `mapModel.lastPosition` (cheap re-projection of
     already-loaded tiles) so the map pans smoothly. Drop the override if fixed upstream.
-* **GPS:** `geolocator` — note we **poll `getCurrentPosition` at 1 Hz** (not
-  `getPositionStream`, which is broken on Android 14) with `forceLocationManager: true`
-  (raw GPS). See `lib/core/services/location_service.dart`.
+* **GPS: native continuous `LocationManager` on Android (NOT geolocator).** Android uses
+  ONE held-open `LocationManager.requestLocationUpdates(GPS_PROVIDER, 1000ms, 0f)` in
+  `MainActivity.kt`, streamed to Dart over the `cycle/location` EventChannel and consumed by
+  `NativeLocationService` (`lib/core/services/native_location_service.dart`,
+  `locationServiceProvider` picks it on Android). This is exactly what OruxMaps does, and —
+  proven on the real A33 via `dumpsys location` — the only thing that holds a solid fix here.
+  Other platforms fall back to `GeolocatorLocationService` (`location_service.dart`).
+  Permission still goes through geolocator (that part is fine); only the position stream is
+  native.
+  * **Why native, not geolocator (both of its paths failed on the A33).** (1) One-shot
+    `getCurrentPosition` polling **cold-restarts the GPS on every call** — `dumpsys`/logcat
+    showed `mStarted=false → startNavigating` per poll and the request toggling ON/OFF every
+    1-2s, so the receiver never settled into a lock; back-to-back polling made it *worse*
+    (no fix at all). (2) `getPositionStream` **never engages the receiver** on this hardware
+    (no fixes, no GPS icon). A raw `LocationManager` request registered natively holds ONE
+    continuous request (dumpsys: a single `@+1s0ms HIGH_ACCURACY` that stays on for minutes,
+    like OruxMaps) so the GPS keeps navigating. **Do NOT go back to geolocator for the
+    position stream**, and do NOT reintroduce `getPositionStream` or `getCurrentPosition`
+    polling.
+  * **Verify on the real A33, via dumpsys — not the emulator, not a location dot.** The
+    emulator's `geo fix` satisfies `getLastKnownLocation`, so a dot on the map (or a stale
+    `last location` in dumpsys) does NOT prove live fixes are flowing. Confirm
+    `dumpsys location` shows Cycle's `gps provider` request held **continuously** (not
+    toggling OFF between fixes) like OruxMaps'.
+  * **GPS starts at app launch, ahead of the UI.** `main()` owns the `ProviderContainer`
+    and warms `currentPositionProvider` (+ `ensurePermission`) immediately, before
+    `runApp`, so acquisition begins the instant the app starts rather than when the map
+    screen finishes building (behind the async map load). GPS is the priority sensor.
+  * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
+    at the source when the GPS chip's own accuracy estimate is worse than 10 m
+    (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
+    reported accuracy is kept). An earlier approach rejected fixes by *implied speed*
+    (`GpsOutlierFilter`, live in `location_service.dart` + a flat 200 m per-leg cap in
+    `RideMetricsAccumulator`) — field data on the Galaxy A3 2017 showed this didn't
+    work: a slow sustained drift (e.g. multipath under tree cover) never looks "too
+    fast" so it sailed through un-flagged and showed up as the track wandering off
+    the real road for a stretch (the "clean spikes" tool couldn't fix it either, since
+    none of those points individually look like a spike to that same algorithm) —
+    while a *genuine* fast/sparse-fix descent after a real GPS gap of tens of seconds
+    produced a large-but-plausible-speed leg that got its **entire distance silently
+    discarded** by the flat 200 m cap, undercounting real rides. `GpsOutlierFilter`
+    and the 200 m cap were reverted from the live path; `GpsOutlierFilter` itself is
+    kept only as the manual "clean spikes" repair tool on the ride-detail screen and
+    for crash-interrupted-track recovery (`track_repair.dart`) — deliberately a
+    legacy/manual path, since GPS accuracy isn't persisted per point (no schema
+    change), so old tracks can't be re-judged by accuracy after the fact.
+  * **Distance is accumulated via streaming path simplification, not raw position
+    summing and not speed integration (jitter, not spikes).** Even with every fix
+    passing the accuracy filter above, summing the haversine leg between *every*
+    consecutive 1 Hz fix reads several percent long vs. a reference track (Komoot)
+    with no spikes/outliers involved — plain GPS jitter around the true position
+    adds spurious zig-zag length (the "coastline paradox"), and it does so
+    *continuously while riding*, not just when stationary: a first attempt at a fix
+    gated out only small (near-stationary) legs, which turned out to do nothing in
+    practice, since real per-sample movement at riding speed already clears any sane
+    minimum-leg-length gate on its own. A **second** attempt integrated the GPS
+    chip's own Doppler-measured speed (`GeoSample.speedMps`) over elapsed time
+    instead of differencing positions — this avoided the jitter bias but traded it
+    for a larger one in the other direction: field data from two real rides against
+    known (Komoot-planned) route distances showed it **undercounting by 4-6%**, and
+    every geometric alternative tried at the time (raw sum, fixed-time-window
+    displacement, batch Douglas-Peucker) came out *higher*, not lower, ruling out
+    "just needs more smoothing" — the reported speed itself isn't a reliable basis
+    for distance. `RideMetricsAccumulator` (`lib/core/metrics/ride_metrics_accumulator.dart`)
+    now instead runs an **incremental, buffered Douglas-Peucker-style streaming
+    simplifier**: every point since the last committed anchor is buffered, and on
+    each new point *all* buffered points are re-tested against the line from the
+    anchor to the new point; if all stay within `_simplifyEpsilonMeters` (5 m,
+    swept 3-10 m against the same two real rides — independently re-planned in
+    Komoot to 27.20 km / 40.80 km, ~1000-1600 points each — landing within
+    -0.74%/+0.64%) they're absorbed as
+    noise on one straight bit of path with no added zig-zag length, otherwise the
+    line up to the last still-valid point is committed as real distance and a new
+    run starts there. Testing every buffered point against the anchor→newest line
+    (not just the immediately-preceding point) matters: a naive two-point "sleeve"
+    that only compares against the prior candidate lets one noisy point corrupt the
+    reference line for the next comparison ("noise chasing noise") — verified to
+    overcount by 60%+ against synthetic alternating jitter of just 1.5-2m: the
+    buffered/re-tested version resolves cleanly up to ~3.5m of the same synthetic
+    jitter. This is the streaming (single-pass, small bounded state) form of what a
+    batch Douglas-Peucker would produce, so it can drive the live distance display
+    incrementally — the batch algorithm needs the whole path to recursively find the
+    worst-deviating point, which live recording doesn't have yet. Applies to both
+    live recording and `track_repair.dart`'s replay (same accumulator) — existing
+    rides recorded under either earlier approach can be corrected via Settings →
+    Data → "Recalculate ride distances".
 * **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
   (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
   with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in
   `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
   `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
   `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
+  **Reconnection: one-shot DIRECT connect, no app-level BLE scanning.**
+  `BleSensorService.connect()`/`setActiveTargets()` do a one-shot
+  `device.connect(autoConnect: false)` per target (`_attemptDirectConnect`) — a direct
+  connect links fast when the sensor is advertising (a worn HR strap, a spinning cadence
+  sensor), whereas passive `autoConnect: true` frequently **never links a present sensor**
+  (confirmed on-device: the app registered autoConnect for a worn HR sensor and it stayed
+  disconnected — FBP made the connect call, no link; switching to a direct connect linked it
+  in ~2s). Crucially a direct connect does NOT scan, so — unlike the removed active-scan
+  loop — it doesn't disturb the GPS radio. If the sensor isn't reachable now, it falls back
+  to passive `autoConnect: true` (quiet on the radio) for later; a **mid-ride drop** of an
+  active target also re-registers passive autoConnect (a direct retry could fight a brief
+  out-of-range blip). The manual reconnect tap uses the same direct-connect path.
+  **Do NOT reintroduce an app-driven active-scan retry loop.** An earlier version
+  did exactly that (a periodic `startScan` — targeted `withRemoteIds`, then service-filtered
+  — backing off 10s→60s while a paired sensor was missing) to make reconnection fast/
+  deterministic. It **wrecked the GPS fix**: on the Galaxy A33's shared Wi-Fi/BT/GPS radio,
+  an 8s BLE scan every 60s (which ran the whole ride whenever a profile listed a sensor the
+  rider wasn't carrying) competed with the GNSS receiver — confirmed on-device via
+  `dumpsys location` (Cycle's GPS request cold-restarting) and `logcat` (`BluetoothLeScanner
+  Start/Stop Scan` every minute) next to OruxMaps holding a rock-solid continuous fix with
+  zero scanning. GPS is the priority sensor; passive autoConnect is quiet on the radio. The
+  trade-off — autoConnect can be slow/non-deterministic to re-link a sensor that went idle —
+  is accepted; revisit sensor-reconnect speed only with an approach that does not actively
+  scan during a ride. Pairing persists each sensor's `SensorKind`s alongside its id
+  (`PairedSensorsStore`, migrated from the old id-only list) so callers — e.g. which
+  dashboard tiles to show — know what a paired sensor *is* without needing a live connection.
+  A bike profile can restrict which paired sensors it actively pursues
+  (`BikeProfile.sensorIds`, `null` = all paired — see bike profiles below); `SensorService`
+  exposes this as `setActiveTargets(ids)`, and `SensorConnectionController` recomputes/applies
+  it whenever the active bike or its sensor selection changes.
+  **Manual quick reconnect:** tapping a sensor stat tile on the home screen kicks a one-shot
+  direct connect (same `_attemptDirectConnect` path) for that stat's sensor — HR/power via
+  `reconnectKind(kind)`, and **SPEED vs CAD via `reconnectCsc(wantSpeed:)`**. A speed sensor
+  and a cadence sensor are the *same* GATT type (CSC), so they can't be told apart by kind;
+  `reconnectCsc` distinguishes them **by name** (SPD/SPEED vs CAD/RPM/CADENCE) when more than
+  one CSC sensor is paired (a single one is unambiguous; unclear names → reconnect all CSC).
+  Without this, both the SPEED and CAD taps reconnected *both* CSC sensors, which read as the
+  two being "mixed up".
+  **Bounded retry window (no scan):** `SensorService.retryConnections()` (re)arms a ~5-minute
+  timer that re-issues a direct connect to any not-yet-linked target every 30s, stopping
+  early once all are connected. It's armed on startup and again on **ride start/resume**
+  (`RecordingController.start`/`resume`), so a sensor that wasn't ready at launch (just
+  mounted / waking on the bike) still links without a tap. Direct connect only — NEVER a
+  scan — so it stays clear of the GPS radio; it's bounded, not the removed perpetual loop.
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`
@@ -164,11 +299,41 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   so real-sensor/Garmin verification needs a physical device).
 * **M4 — Recording & track DB:** done. `drift`/SQLite (`tracks` + `trackPoints`); recording
   persists a point per GPS sample with sensor values and finalises stats on stop; Rides list
-  + detail (stats, route-sketch, elevation chart) with GPX export. DB/GPX/persistence
+  + detail (stats, route-sketch, elevation chart) with GPX export. The Rides list also shows
+  rolling **week/month/year summary cards** above the ride list (rides count, distance, time;
+  `lib/core/utils/ride_summary.dart`, pure + unit-tested). **Backup & restore** (Settings →
+  Backup & restore, `lib/core/services/backup_service.dart` +
+  `lib/features/backup/`): exports the whole ride DB to a portable `.sqlite` snapshot
+  (`VACUUM INTO`, so it's a live consistent copy without closing the DB) into the app's
+  external files folder (adb/USB/Files-app reachable, no root needed); import **merges** by
+  matching `startedAt`, so re-importing or importing on a phone that already has some of the
+  same rides is safe. Moving a backup to another phone goes through the **OS share sheet**,
+  not an in-app cloud integration: a "Share" action per backup hands the file to
+  `ACTION_SEND` (`cycle/share` native channel + a `FileProvider`, `android/app/src/main/res/xml/file_paths.xml`)
+  so the user picks whatever app (OneDrive, Drive, email, Bluetooth, …) to send it through —
+  that app handles its own login, so Cycle itself has zero OAuth/account plumbing. Receiving
+  is symmetric: opening/sharing a `.sqlite` into Cycle (`cycle/incoming_backup` channel +
+  manifest intent-filters, mirroring the GPX open/share handling below) auto-imports it on
+  resume. (An earlier direct-OneDrive OAuth integration — Azure app registration, PKCE,
+  Microsoft Graph API — was built, tested, then deliberately dropped in favour of this: the
+  Azure registration/tenant setup was disproportionate ceremony for what is fundamentally a
+  personal file transfer between two owned phones, and the share-sheet works with *any*
+  storage app, not just OneDrive.) DB/GPX/persistence
   unit-tested; list/detail widget-tested; record→stop→Rides verified on the emulator.
-  NOTE: `flutter_foreground_task` was removed — its engine-startup registration caused a
-  main-thread ANR on Android 14. A real foreground service (background recording with screen
-  off) is **deferred to M7**; recording currently runs while the screen is on (wakelock).
+  **Background recording (real foreground service).** `flutter_foreground_task` was
+  originally removed here — its engine-startup registration caused a main-thread ANR on
+  Android 14 — and recording ran on the wakelock alone (screen-on only) for a while. It's
+  since been **re-added and wired in** (`lib/core/services/fg_task_recording_service.dart`,
+  `FgTaskRecordingService`, the default `recordingForegroundServiceProvider`): a real
+  Android foreground service (persistent notification, `location` service type) starts on
+  `RecordingController.start()`/`resume()` and stops on `stop()`, so the OS won't reclaim
+  Cycle for RAM while backgrounded mid-ride. The ANR is avoided by starting the service
+  **without a `callback`/`TaskHandler`** — that's what makes the plugin spin up a second
+  Flutter engine/callback dispatcher, which is what caused the original hang; without one,
+  we only keep the *main* isolate's process alive, no background Dart execution needed.
+  Verified on a real device (Galaxy A33): start/stop round-trip cleanly via the volume-key
+  path, the service starts/stops with no ANR, and the process survives being backgrounded.
+  `NoopRecordingForegroundService` remains for tests/platforms without it.
 * **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack), load the
   bundled demo route, or **open/share a `.gpx` into the app** (Android intent-filters +
   native `MainActivity` `cycle/incoming_gpx` MethodChannel → `IncomingGpxService`; iOS
@@ -234,13 +399,228 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
     colour bucket) + legend; the map pinch-zooms natively and the elevation chart is wrapped in
-    an `InteractiveViewer`. Stats include distance/time/avg/max + ascent + avg HR/cadence/power
+    an `InteractiveViewer` (its `LineChartData.lineTouchData` must stay **disabled** — fl_chart's
+    own touch handling otherwise wins the gesture arena and the pinch/pan never reaches the
+    viewer). The map and elevation sections each sit in a `Listener`-based "isolated region"
+    (`_BodyState._isolate`) that disables the outer page's scroll physics for as long as any
+    finger is down on them, so a one-finger drag or pinch on the map/chart never fights the
+    page scroll for the gesture (scoped per-widget, not the whole page, so the rest of the ride
+    detail still scrolls normally). Stats include distance/time/avg/max + ascent + avg HR/cadence/power
     + **battery used** (`tracks.batteryStart/EndPercent`, schema v2; read via the native
     `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
     only). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
     as the initial/first-fix zoom). The recorded track + followed route render as a **dashed
     line with chevron arrowheads** (`Icons.keyboard_arrow_up` `IconMarker`s). Map **rotation is
     disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).
+* **OruxMaps import** (Settings → Data → "Import from OruxMaps",
+  `oruxmaps_import_screen.dart`). `lib/features/tracks/application/oruxmaps_import_service.dart`
+  reads OruxMaps' `oruxmapstracks.db` (SQLite, `tracks`/`segments`/`trackpoints`; the
+  position/time columns match the schema confirmed by github.com/wolfgangasdf/oruxtool, but
+  heart rate/cadence/speed are packed into a `trkptsen` BLOB that reader doesn't document —
+  see the sensor-decoding bullet below, and the file's doc comment) and merges its rides into
+  Cycle's own database with the same "safe to run twice" start-time dedup as
+  `BackupService.importBackup`. Distance/duration/avg/max are **recomputed** with
+  `computeStatsFromPoints` rather than trusting OruxMaps' own segment stats. Entirely on-device,
+  no PC/adb, via two paths:
+  * **Bulk (recommended for a full ride history).** OruxMaps' database normally lives in its
+    own private storage (`Android/data/com.orux.oruxmaps/…`), which Android 11+ blocks every
+    other app — including file managers — from browsing (confirmed against a real device: the
+    folder is simply inaccessible from a file-manager app). `lib/core/services/file_access_service.dart`
+    checks/requests the **"All files access"** special permission (`MANAGE_EXTERNAL_STORAGE`;
+    manifest + native `cycle/file_access` channel in `MainActivity.kt`, opens
+    `Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`) — the same permission a file-manager
+    app holds, so once granted it lifts the block for Cycle too. This is a personal sideload, not
+    Play-distributed, so Play's policy restricting who may hold this permission doesn't apply.
+    Once granted, `OruxMapsImportService.findDatabaseOnDevice` locates `oruxmapstracks.db` itself
+    (checks OruxMaps' known storage paths across every volume — same
+    `getExternalStorageDirectories`-derived volume-root technique `MapStorageService` uses for
+    maps — then falls back to a depth-bounded recursive search) and `importFromDeviceStorage`
+    imports it directly; no manual file hunting needed. **OruxMaps ships as (at least) two
+    separate Android package ids** — `com.orux.oruxmaps` (free) and `com.orux.oruxmapsDonate`
+    (paid "Donate" version, same app) — each with its own storage folder; verified on a real
+    device with the Donate variant installed (`_knownPackageIds` checks both).
+  * **Manual pick, for when bulk still can't reach the file.** Some Android versions/OEM
+    skins block `Android/data/<pkg>/…` from every app, including a granted one — confirmed
+    on a real device where `File.exists()` returned false for the exact verified path even
+    with "All files access" granted (`appops` showing `allow`), and Samsung's own file
+    manager failed identically on the same folder with an explicit "only viewable from a
+    computer" message. Since `file_picker` doesn't build here (AGP 9, see Known gotchas), a
+    plugin-free SAF (`ACTION_OPEN_DOCUMENT`) picker is wired natively: `cycle/pick_document`
+    in `MainActivity.kt` (`startActivityForResult`/`onActivityResult`, no plugin) →
+    `lib/core/services/document_picker_service.dart` → a **"Pick database file"** button on
+    the import screen. The screen's instructions tell users to copy `oruxmapstracks.db` out
+    via a PC/USB connection (or any file manager that *can* browse it) into an ordinary
+    folder like Downloads, then pick that copy. Both this and the share-intent path
+    (`cycle/incoming_oruxmaps`) hand Dart a **path to a native cache-file copy, not raw
+    bytes** — an early version returned the picked file's bytes as a single MethodChannel
+    argument, which for an 80+ MB `oruxmapstracks.db` produced a **silently truncated**
+    in-memory copy on a real device (the import "succeeded" but only covered the file's
+    oldest rides, since it only got partway through before the transfer broke down);
+    streaming straight to a cache file on the native side and handing back the path avoids
+    marshalling the whole file through the channel at all.
+  * **Import performance: one transaction per track, not one commit per point.**
+    `OruxMapsImportService.importFrom`'s per-track/per-point insert loop originally awaited
+    each `createTrack`/`addPoint`/`finalizeTrack` call individually, with **no transaction**
+    wrapping them — every insert commits (fsyncs) on its own. A real multi-year OruxMaps
+    history (hundreds of tracks, hundreds of thousands of points) made this take **well over
+    an hour** on a real device, which looked indistinguishable from "the import silently
+    stopped partway" if you checked before it finished (this is what actually produced the
+    apparent "missing 2025/2026 rides" bug report — the import hadn't stopped, it just
+    hadn't gotten there yet). Wrapping each **track's** inserts in one `_db.transaction()`
+    (not one giant transaction for the whole import, so an interrupted run still keeps
+    whatever it already finished) cut the same real-device import from 60+ minutes to
+    ~3.5 minutes.
+  * **Concurrent imports double-insert — guarded at both the UI and service layer.**
+    `importFrom`'s dedup reads "already imported" once per call; two overlapping calls (e.g.
+    a double-tap, or an impatient re-tap on the several-minutes-long import before it
+    finishes) both see the same pre-import snapshot and neither sees the other's in-flight
+    inserts, so every track in the overlap gets imported twice — confirmed on a real device
+    (duplicate rows, same ride/start-time, after re-triggering the picker while a previous
+    import was still running). `OruxMapsImportScreen` now shows a progress indicator and
+    disables its import buttons while `_isImporting`; `OruxMapsImportService` itself also
+    throws if a second `importFrom` is called while one is already in flight, as a backstop
+    for any other caller. See "Remove duplicate rides" below for cleaning up duplicates a
+    pre-fix import already left behind.
+    Verified end-to-end on a real device (Galaxy A33) by simulating a user's manual-copy
+    workflow: `adb`-pulling the on-device OruxMaps db (via its group-readable `.backup`
+    file — the live db is owner-only 600, the rotating `.backup`/`.backup2` are 660, and
+    even `adb shell`'s `cat` was blocked on the primary file by the same OS-level
+    restriction as the app itself, though `ls` still listed it) to the host, `adb push`ing
+    it back into `/sdcard/Download/` to stand in for a manual copy, then driving the actual
+    picker UI (`am start` + `input tap`/`swipe`, bounds read via `uiautomator dump` —
+    screenshot pixel coords need ×1.2 to map to real device coords, `uiautomator` bounds
+    don't) through the system Files app to select it, and cross-checking the result via a
+    fresh **Backup & restore → Export backup** pulled and inspected directly (`sqlite3`) —
+    confirming the full 746/746 tracks (2023 through 2026) landed with zero duplicates
+    after the fix, versus a silently-still-running partial import and later duplicate rows
+    before it.
+  * **Heart rate/cadence: packed into a `trkptsen` BLOB, not named columns.** A real device
+    export's `trackpoints` table has no `heartrate`/`cadence`/`power` columns at all — an
+    earlier version of this importer only looked for named columns (plus a doc comment
+    claiming it read them "opportunistically", which was aspirational text that was never
+    actually implemented) and so silently imported zero sensor data, even though the source
+    had plenty. Reverse engineered against a real 746-track/420k-point export
+    (`_decodeSensorBlob`): `trkptsen` is always exactly 16 bytes, four **big-endian
+    float32s** `[heartRateBpm, cadenceRpm, temperatureCelsius, speedMps]`, `-1.0` as the "no
+    data" sentinel (confirmed against real ranges: heart rate 56–181 with never exactly 0,
+    cadence 0–~90 with genuine zeros while coasting) and thermodynamic absolute zero
+    (-273.15°C) as temperature's sentinel (never populated in this export — no temperature
+    sensor was ever paired). The blob's own speed is preferred over any named speed column
+    too, since the real export had no separate speed column either (so speed was *also*
+    silently never imported before this). Power isn't present in this blob at all — may
+    simply not have been recorded for a rider with no power meter, unconfirmed either way.
+    **Backfill for rides imported before this fix:** `importFrom` no longer just skips a
+    track it's already seen — for an existing match (same start time) it now runs
+    `_backfillSensorData`, filling in heart rate/cadence on that ride's already-saved points
+    (matched 1:1 by position, existing non-null values left alone) via a new
+    `AppDatabase.updatePointSensor`. So re-running "Pick database file" / "Import OruxMaps
+    database now" after upgrading past this fix repairs already-imported rides too, not just
+    new ones — `importFrom`'s return changed from a plain `int` to `({int imported, int
+    backfilledRides})`, and `summarizeOruxImport` (shared by the import screen and the
+    incoming-share auto-import) surfaces both counts, so a re-run that finds nothing new to
+    import but fixes 746 existing rides doesn't read as "No new rides" with no other
+    indication anything happened.
+  * **Per-track GPX (no permission needed).** OruxMaps' own Track Manager can Export/Share a
+    single ride as a `.gpx`, which — since OruxMaps owns that file — it can share directly
+    regardless of the storage restriction above. `lib/features/tracks/application/gpx_ride_import_service.dart`
+    (`GpxRideImportService.importRide`) imports a GPX's own timestamped track points as a past
+    ride (same recompute + dedup as the bulk import). Because the existing `cycle/incoming_gpx`
+    channel already treats every incoming GPX as a route to follow, `map_screen.dart`'s
+    `_checkIncomingGpx` now checks `FollowRoute.isTimed` (a GPX with real per-point timestamps
+    could be either): an untimed GPX still follows directly as before, but a timed one prompts
+    "Follow route" vs. "Import as ride" before doing either.
+* **Recalculate ride distances** (Settings → Data): a maintenance action —
+  `recalculateAllTrackStats`/`recalculateTrackStats` (`track_repair.dart`) reruns
+  `computeStatsFromPoints` over every finalised ride's already-recorded points and saves
+  the result, without touching the points. For rides recorded before a change to
+  `RideMetricsAccumulator`'s maths (e.g. the speed-integration distance fix above) so old
+  rides read consistently with new ones — a one-tap, on-device fix, no adb/DB surgery needed.
+* **Remove duplicate rides** (Settings → Data): `removeDuplicateTracks` (`track_repair.dart`)
+  groups rides by exact start time and deletes every copy but the first-inserted (lowest id)
+  one. Added alongside the OruxMaps import concurrency fix above, to clean up duplicates a
+  pre-fix (or a future double-tapped) import already left behind — a one-tap, on-device fix,
+  no adb/DB surgery needed. Safe to run any time; a no-op with no duplicates present.
+* **Bike profiles** — record against different bicycles and view stats per bike or in
+  total, without a pop-up on every ride. `BikeProfile` (`lib/core/models/bike_profile.dart`,
+  `id`/`name`/`colorArgb`, colours from `kBikeProfileColors`) + `BikeProfilesState`
+  (profiles list + `activeId`) persisted outside the SQL DB via
+  `lib/core/services/bike_profiles/bike_profiles_store.dart` (`shared_preferences` JSON,
+  same pattern as `SettingsStore`), managed by `BikeProfilesController`
+  (`lib/features/settings/application/bike_profile_providers.dart`; a fresh install
+  auto-seeds one default profile, "Bike 1", so there's always an active one — no setup
+  dialog). `Tracks` gained a nullable `bikeProfileId` `TextColumn` (schema v3, plain
+  `addColumn` migration, same shape as the v1→v2 one) — **not a SQL foreign key**, since
+  profiles live in prefs, not the DB; a deleted profile just leaves old rides pointing at
+  an id that matches nothing (same as a pre-feature ride with a null id).
+  * **No pop-up, but still correctable:** `RecordingController.start()` stamps the new
+    track with whichever profile is currently active — no prompt. Volume-up while **not**
+    recording starts the ride as before; volume-up again *while already recording*
+    (`HardwareButtonController`) calls `RecordingController.cycleBikeProfile()`, which
+    advances to the next profile and **live-corrects the DB row** for the ride in progress
+    (`AppDatabase.setTrackBikeProfile`) — so a wrong bike picked at the start can be fixed
+    from the saddle without stopping. `setBikeProfile`/`cycleBikeProfile` are the single
+    path both the hardware-button cycling and the on-screen picker go through.
+  * **Display + manual pick:** a coloured chip (`_BikeProfileChip` in `map_screen.dart`)
+    shows the active profile's colour + name. It sits in the **AppBar's `leading` slot**
+    (a fixed-width reservation), not the title — an earlier attempt put it in the title
+    `Row` alongside "Cycle" and it overflowed once the 5 action icons + title + chip all
+    competed for the same narrow app-bar width (only caught by an emulator screenshot;
+    plain `flutter analyze`/tests don't render real widths). Tapping the chip opens a
+    bottom sheet to explicitly pick a profile (works without hardware buttons too, e.g.
+    iOS) or jump to **Settings → Bikes → Bike profiles** (`/bike-profiles`,
+    `BikeProfilesScreen`) to add/rename/recolour/delete profiles and set the active one.
+  * **Per-bike sensor selection:** each profile's ⋮ menu has "Sensors for this bike" — a
+    checklist (sourced from `sensorConnectionProvider`'s full paired-sensor list) that sets
+    `BikeProfile.sensorIds` (`null` = all paired sensors, the default). Only sensors checked
+    for the *active* bike are actively pursued (see the BLE sensors reconnection note above)
+    and shown as dashboard tiles — so a second bike with no cadence/speed sensor doesn't
+    endlessly retry connecting ones that live on a different bike, and doesn't show empty
+    tiles for them either. Pairing a new sensor from the Sensors screen adds it to the active
+    profile's selection too (if that profile has a restrictive one), so it isn't immediately
+    dropped as out-of-scope.
+  * **Rides list filtering:** `TracksScreen` gets an "All" + per-bike `ChoiceChip` row
+    (`selectedBikeProfileFilterProvider`, a plain in-memory `Notifier`, not persisted —
+    only shown once you have 2+ profiles, since one bike has nothing to filter), which
+    filters both the ride rows and the existing week/month/year summary cards
+    (`computeRideSummaries` already takes a plain `List<Track>`, so filtering before
+    calling it gives per-bike or total summaries for free) — plus a small colour dot per
+    row (also only shown with 2+ profiles, since a single bike's colour carries no
+    distinguishing information).
+  * **Correcting past rides:** the picker bottom sheet is shared
+    (`lib/features/settings/presentation/widgets/bike_profile_picker.dart`,
+    `showBikeProfilePicker`) between the home-screen chip and a "Bike" row on
+    `track_detail_screen.dart` (shows the ride's current bike, or "Unassigned"; tap
+    to change — writes straight to `AppDatabase.setTrackBikeProfile` and invalidates
+    `trackProvider`/`tracksProvider`, since this is a past/finalised ride, not the
+    live one `RecordingController` owns). For fixing a whole history at once (e.g.
+    after renaming the auto-seeded "Bike 1" to your actual bike), each profile's
+    menu on `BikeProfilesScreen` has **"Assign all rides to this bike"** —
+    `AppDatabase.assignAllTracksToBikeProfile` (`update(tracks)` with no `where`)
+    unconditionally overwrites every ride's bike, behind a confirm dialog that
+    states the ride count.
+  * **Classify rides** (`RideClassifierScreen`, `/classify-rides`, reached via the
+    filter icon on `TracksScreen` — the Rides/trip-history list, not Settings) —
+    finds old rides matching a combination
+    of criteria and bulk-assigns just the matches to a bike, for classifying a
+    ride history recorded before profiles existed. `RideClassifierFilter` +
+    `filterTracksForClassification` (`lib/features/tracks/application/
+    ride_classifier.dart`) split the work in two: cheap criteria that live
+    directly on `Tracks` (only-unassigned, distance/avg-speed/max-speed/date
+    range) run as SQL via `AppDatabase.tracksMatching`; criteria that only exist
+    on `TrackPoints` (has cadence/heart-rate/power data) then narrow that result
+    by loading points **only for the already-filtered candidates** — not the whole
+    ride history — checking `points.any((p) => p.<field> != null)`. Matches are
+    bulk-assigned via `AppDatabase.assignTracksToBikeProfile(ids, bikeProfileId)`
+    (distinct from `assignAllTracksToBikeProfile` — this one takes a specific id
+    list rather than unconditionally touching every ride).
+    **"Had a speed sensor" is deliberately not offered** as a criterion: unlike
+    cadence/HR/power, the recorded `speedMps` never distinguished GPS from a BLE
+    sensor — only the resulting number was stored, not its source — so it can't be
+    reconstructed for rides recorded before this shipped. `TrackPoints` gained a
+    nullable `speedFromSensor` `BoolColumn` (schema v4, plain `addColumn`
+    migration) fed from `RideController`'s already-computed `_fusion.isUsingBle`
+    through `RecordingController.recordPoint`, so **new** rides going forward can
+    be classified by it; old points stay `null` (unknown, not "false").
 
 ## Known gotchas
 
@@ -265,10 +645,12 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `aapt dump permissions`), not just the debug build.
 * **Tests don't catch startup hangs.** Widget/integration tests bypass real app launch, so a
   green suite is NOT proof the app runs. After adding a plugin/package or touching startup,
-  boot the emulator and screenshot the app. Two packages broke launch despite green tests and
-  were removed: `flutter_foreground_task` (main-thread ANR) and `dashboard` (first-frame hang,
-  splash forever) — the latter was for the customisable dashboard, now **deferred**; build any
-  editor from first-party widgets.
+  boot the emulator and screenshot the app. Two packages broke launch despite green tests:
+  `flutter_foreground_task` (main-thread ANR — since fixed and **re-added**, see the M4
+  background-recording note above: the ANR was specifically from starting it *with* a
+  callback/TaskHandler; starting it without one avoids the second-engine registration that
+  caused the hang) and `dashboard` (first-frame hang, splash forever) — the latter was for
+  the customisable dashboard, now **deferred**; build any editor from first-party widgets.
 * `MetricTile` reserves the widest value (`referenceValue`) so the speed/avg/etc. value does
   not resize when it gains a digit.
 * **`file_picker` does not build here.** The project uses **AGP 9 + standalone Kotlin**

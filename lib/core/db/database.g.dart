@@ -122,6 +122,17 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _bikeProfileIdMeta = const VerificationMeta(
+    'bikeProfileId',
+  );
+  @override
+  late final GeneratedColumn<String> bikeProfileId = GeneratedColumn<String>(
+    'bike_profile_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -134,6 +145,7 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     maxSpeedMps,
     batteryStartPercent,
     batteryEndPercent,
+    bikeProfileId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -224,6 +236,15 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         ),
       );
     }
+    if (data.containsKey('bike_profile_id')) {
+      context.handle(
+        _bikeProfileIdMeta,
+        bikeProfileId.isAcceptableOrUnknown(
+          data['bike_profile_id']!,
+          _bikeProfileIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -273,6 +294,10 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         DriftSqlType.int,
         data['${effectivePrefix}battery_end_percent'],
       ),
+      bikeProfileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bike_profile_id'],
+      ),
     );
   }
 
@@ -293,6 +318,7 @@ class Track extends DataClass implements Insertable<Track> {
   final double maxSpeedMps;
   final int? batteryStartPercent;
   final int? batteryEndPercent;
+  final String? bikeProfileId;
   const Track({
     required this.id,
     required this.name,
@@ -304,6 +330,7 @@ class Track extends DataClass implements Insertable<Track> {
     required this.maxSpeedMps,
     this.batteryStartPercent,
     this.batteryEndPercent,
+    this.bikeProfileId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -323,6 +350,9 @@ class Track extends DataClass implements Insertable<Track> {
     }
     if (!nullToAbsent || batteryEndPercent != null) {
       map['battery_end_percent'] = Variable<int>(batteryEndPercent);
+    }
+    if (!nullToAbsent || bikeProfileId != null) {
+      map['bike_profile_id'] = Variable<String>(bikeProfileId);
     }
     return map;
   }
@@ -345,6 +375,9 @@ class Track extends DataClass implements Insertable<Track> {
       batteryEndPercent: batteryEndPercent == null && nullToAbsent
           ? const Value.absent()
           : Value(batteryEndPercent),
+      bikeProfileId: bikeProfileId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bikeProfileId),
     );
   }
 
@@ -366,6 +399,7 @@ class Track extends DataClass implements Insertable<Track> {
         json['batteryStartPercent'],
       ),
       batteryEndPercent: serializer.fromJson<int?>(json['batteryEndPercent']),
+      bikeProfileId: serializer.fromJson<String?>(json['bikeProfileId']),
     );
   }
   @override
@@ -382,6 +416,7 @@ class Track extends DataClass implements Insertable<Track> {
       'maxSpeedMps': serializer.toJson<double>(maxSpeedMps),
       'batteryStartPercent': serializer.toJson<int?>(batteryStartPercent),
       'batteryEndPercent': serializer.toJson<int?>(batteryEndPercent),
+      'bikeProfileId': serializer.toJson<String?>(bikeProfileId),
     };
   }
 
@@ -396,6 +431,7 @@ class Track extends DataClass implements Insertable<Track> {
     double? maxSpeedMps,
     Value<int?> batteryStartPercent = const Value.absent(),
     Value<int?> batteryEndPercent = const Value.absent(),
+    Value<String?> bikeProfileId = const Value.absent(),
   }) => Track(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -411,6 +447,9 @@ class Track extends DataClass implements Insertable<Track> {
     batteryEndPercent: batteryEndPercent.present
         ? batteryEndPercent.value
         : this.batteryEndPercent,
+    bikeProfileId: bikeProfileId.present
+        ? bikeProfileId.value
+        : this.bikeProfileId,
   );
   Track copyWithCompanion(TracksCompanion data) {
     return Track(
@@ -436,6 +475,9 @@ class Track extends DataClass implements Insertable<Track> {
       batteryEndPercent: data.batteryEndPercent.present
           ? data.batteryEndPercent.value
           : this.batteryEndPercent,
+      bikeProfileId: data.bikeProfileId.present
+          ? data.bikeProfileId.value
+          : this.bikeProfileId,
     );
   }
 
@@ -451,7 +493,8 @@ class Track extends DataClass implements Insertable<Track> {
           ..write('avgSpeedMps: $avgSpeedMps, ')
           ..write('maxSpeedMps: $maxSpeedMps, ')
           ..write('batteryStartPercent: $batteryStartPercent, ')
-          ..write('batteryEndPercent: $batteryEndPercent')
+          ..write('batteryEndPercent: $batteryEndPercent, ')
+          ..write('bikeProfileId: $bikeProfileId')
           ..write(')'))
         .toString();
   }
@@ -468,6 +511,7 @@ class Track extends DataClass implements Insertable<Track> {
     maxSpeedMps,
     batteryStartPercent,
     batteryEndPercent,
+    bikeProfileId,
   );
   @override
   bool operator ==(Object other) =>
@@ -482,7 +526,8 @@ class Track extends DataClass implements Insertable<Track> {
           other.avgSpeedMps == this.avgSpeedMps &&
           other.maxSpeedMps == this.maxSpeedMps &&
           other.batteryStartPercent == this.batteryStartPercent &&
-          other.batteryEndPercent == this.batteryEndPercent);
+          other.batteryEndPercent == this.batteryEndPercent &&
+          other.bikeProfileId == this.bikeProfileId);
 }
 
 class TracksCompanion extends UpdateCompanion<Track> {
@@ -496,6 +541,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
   final Value<double> maxSpeedMps;
   final Value<int?> batteryStartPercent;
   final Value<int?> batteryEndPercent;
+  final Value<String?> bikeProfileId;
   const TracksCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -507,6 +553,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.maxSpeedMps = const Value.absent(),
     this.batteryStartPercent = const Value.absent(),
     this.batteryEndPercent = const Value.absent(),
+    this.bikeProfileId = const Value.absent(),
   });
   TracksCompanion.insert({
     this.id = const Value.absent(),
@@ -519,6 +566,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.maxSpeedMps = const Value.absent(),
     this.batteryStartPercent = const Value.absent(),
     this.batteryEndPercent = const Value.absent(),
+    this.bikeProfileId = const Value.absent(),
   }) : startedAt = Value(startedAt);
   static Insertable<Track> custom({
     Expression<int>? id,
@@ -531,6 +579,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Expression<double>? maxSpeedMps,
     Expression<int>? batteryStartPercent,
     Expression<int>? batteryEndPercent,
+    Expression<String>? bikeProfileId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -544,6 +593,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
       if (batteryStartPercent != null)
         'battery_start_percent': batteryStartPercent,
       if (batteryEndPercent != null) 'battery_end_percent': batteryEndPercent,
+      if (bikeProfileId != null) 'bike_profile_id': bikeProfileId,
     });
   }
 
@@ -558,6 +608,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Value<double>? maxSpeedMps,
     Value<int?>? batteryStartPercent,
     Value<int?>? batteryEndPercent,
+    Value<String?>? bikeProfileId,
   }) {
     return TracksCompanion(
       id: id ?? this.id,
@@ -570,6 +621,7 @@ class TracksCompanion extends UpdateCompanion<Track> {
       maxSpeedMps: maxSpeedMps ?? this.maxSpeedMps,
       batteryStartPercent: batteryStartPercent ?? this.batteryStartPercent,
       batteryEndPercent: batteryEndPercent ?? this.batteryEndPercent,
+      bikeProfileId: bikeProfileId ?? this.bikeProfileId,
     );
   }
 
@@ -606,6 +658,9 @@ class TracksCompanion extends UpdateCompanion<Track> {
     if (batteryEndPercent.present) {
       map['battery_end_percent'] = Variable<int>(batteryEndPercent.value);
     }
+    if (bikeProfileId.present) {
+      map['bike_profile_id'] = Variable<String>(bikeProfileId.value);
+    }
     return map;
   }
 
@@ -621,7 +676,8 @@ class TracksCompanion extends UpdateCompanion<Track> {
           ..write('avgSpeedMps: $avgSpeedMps, ')
           ..write('maxSpeedMps: $maxSpeedMps, ')
           ..write('batteryStartPercent: $batteryStartPercent, ')
-          ..write('batteryEndPercent: $batteryEndPercent')
+          ..write('batteryEndPercent: $batteryEndPercent, ')
+          ..write('bikeProfileId: $bikeProfileId')
           ..write(')'))
         .toString();
   }
@@ -744,6 +800,20 @@ class $TrackPointsTable extends TrackPoints
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _speedFromSensorMeta = const VerificationMeta(
+    'speedFromSensor',
+  );
+  @override
+  late final GeneratedColumn<bool> speedFromSensor = GeneratedColumn<bool>(
+    'speed_from_sensor',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("speed_from_sensor" IN (0, 1))',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -756,6 +826,7 @@ class $TrackPointsTable extends TrackPoints
     heartRate,
     cadenceRpm,
     power,
+    speedFromSensor,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -834,6 +905,15 @@ class $TrackPointsTable extends TrackPoints
         power.isAcceptableOrUnknown(data['power']!, _powerMeta),
       );
     }
+    if (data.containsKey('speed_from_sensor')) {
+      context.handle(
+        _speedFromSensorMeta,
+        speedFromSensor.isAcceptableOrUnknown(
+          data['speed_from_sensor']!,
+          _speedFromSensorMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -883,6 +963,10 @@ class $TrackPointsTable extends TrackPoints
         DriftSqlType.int,
         data['${effectivePrefix}power'],
       ),
+      speedFromSensor: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}speed_from_sensor'],
+      ),
     );
   }
 
@@ -903,6 +987,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
   final int? heartRate;
   final double? cadenceRpm;
   final int? power;
+  final bool? speedFromSensor;
   const TrackPoint({
     required this.id,
     required this.trackId,
@@ -914,6 +999,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
     this.heartRate,
     this.cadenceRpm,
     this.power,
+    this.speedFromSensor,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -937,6 +1023,9 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
     }
     if (!nullToAbsent || power != null) {
       map['power'] = Variable<int>(power);
+    }
+    if (!nullToAbsent || speedFromSensor != null) {
+      map['speed_from_sensor'] = Variable<bool>(speedFromSensor);
     }
     return map;
   }
@@ -963,6 +1052,9 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
       power: power == null && nullToAbsent
           ? const Value.absent()
           : Value(power),
+      speedFromSensor: speedFromSensor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(speedFromSensor),
     );
   }
 
@@ -982,6 +1074,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
       heartRate: serializer.fromJson<int?>(json['heartRate']),
       cadenceRpm: serializer.fromJson<double?>(json['cadenceRpm']),
       power: serializer.fromJson<int?>(json['power']),
+      speedFromSensor: serializer.fromJson<bool?>(json['speedFromSensor']),
     );
   }
   @override
@@ -998,6 +1091,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
       'heartRate': serializer.toJson<int?>(heartRate),
       'cadenceRpm': serializer.toJson<double?>(cadenceRpm),
       'power': serializer.toJson<int?>(power),
+      'speedFromSensor': serializer.toJson<bool?>(speedFromSensor),
     };
   }
 
@@ -1012,6 +1106,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
     Value<int?> heartRate = const Value.absent(),
     Value<double?> cadenceRpm = const Value.absent(),
     Value<int?> power = const Value.absent(),
+    Value<bool?> speedFromSensor = const Value.absent(),
   }) => TrackPoint(
     id: id ?? this.id,
     trackId: trackId ?? this.trackId,
@@ -1023,6 +1118,9 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
     heartRate: heartRate.present ? heartRate.value : this.heartRate,
     cadenceRpm: cadenceRpm.present ? cadenceRpm.value : this.cadenceRpm,
     power: power.present ? power.value : this.power,
+    speedFromSensor: speedFromSensor.present
+        ? speedFromSensor.value
+        : this.speedFromSensor,
   );
   TrackPoint copyWithCompanion(TrackPointsCompanion data) {
     return TrackPoint(
@@ -1038,6 +1136,9 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
           ? data.cadenceRpm.value
           : this.cadenceRpm,
       power: data.power.present ? data.power.value : this.power,
+      speedFromSensor: data.speedFromSensor.present
+          ? data.speedFromSensor.value
+          : this.speedFromSensor,
     );
   }
 
@@ -1053,7 +1154,8 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
           ..write('speedMps: $speedMps, ')
           ..write('heartRate: $heartRate, ')
           ..write('cadenceRpm: $cadenceRpm, ')
-          ..write('power: $power')
+          ..write('power: $power, ')
+          ..write('speedFromSensor: $speedFromSensor')
           ..write(')'))
         .toString();
   }
@@ -1070,6 +1172,7 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
     heartRate,
     cadenceRpm,
     power,
+    speedFromSensor,
   );
   @override
   bool operator ==(Object other) =>
@@ -1084,7 +1187,8 @@ class TrackPoint extends DataClass implements Insertable<TrackPoint> {
           other.speedMps == this.speedMps &&
           other.heartRate == this.heartRate &&
           other.cadenceRpm == this.cadenceRpm &&
-          other.power == this.power);
+          other.power == this.power &&
+          other.speedFromSensor == this.speedFromSensor);
 }
 
 class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
@@ -1098,6 +1202,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
   final Value<int?> heartRate;
   final Value<double?> cadenceRpm;
   final Value<int?> power;
+  final Value<bool?> speedFromSensor;
   const TrackPointsCompanion({
     this.id = const Value.absent(),
     this.trackId = const Value.absent(),
@@ -1109,6 +1214,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
     this.heartRate = const Value.absent(),
     this.cadenceRpm = const Value.absent(),
     this.power = const Value.absent(),
+    this.speedFromSensor = const Value.absent(),
   });
   TrackPointsCompanion.insert({
     this.id = const Value.absent(),
@@ -1121,6 +1227,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
     this.heartRate = const Value.absent(),
     this.cadenceRpm = const Value.absent(),
     this.power = const Value.absent(),
+    this.speedFromSensor = const Value.absent(),
   }) : trackId = Value(trackId),
        time = Value(time),
        latitude = Value(latitude),
@@ -1136,6 +1243,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
     Expression<int>? heartRate,
     Expression<double>? cadenceRpm,
     Expression<int>? power,
+    Expression<bool>? speedFromSensor,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1148,6 +1256,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
       if (heartRate != null) 'heart_rate': heartRate,
       if (cadenceRpm != null) 'cadence_rpm': cadenceRpm,
       if (power != null) 'power': power,
+      if (speedFromSensor != null) 'speed_from_sensor': speedFromSensor,
     });
   }
 
@@ -1162,6 +1271,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
     Value<int?>? heartRate,
     Value<double?>? cadenceRpm,
     Value<int?>? power,
+    Value<bool?>? speedFromSensor,
   }) {
     return TrackPointsCompanion(
       id: id ?? this.id,
@@ -1174,6 +1284,7 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
       heartRate: heartRate ?? this.heartRate,
       cadenceRpm: cadenceRpm ?? this.cadenceRpm,
       power: power ?? this.power,
+      speedFromSensor: speedFromSensor ?? this.speedFromSensor,
     );
   }
 
@@ -1210,6 +1321,9 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
     if (power.present) {
       map['power'] = Variable<int>(power.value);
     }
+    if (speedFromSensor.present) {
+      map['speed_from_sensor'] = Variable<bool>(speedFromSensor.value);
+    }
     return map;
   }
 
@@ -1225,7 +1339,8 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
           ..write('speedMps: $speedMps, ')
           ..write('heartRate: $heartRate, ')
           ..write('cadenceRpm: $cadenceRpm, ')
-          ..write('power: $power')
+          ..write('power: $power, ')
+          ..write('speedFromSensor: $speedFromSensor')
           ..write(')'))
         .toString();
   }
@@ -1265,6 +1380,7 @@ typedef $$TracksTableCreateCompanionBuilder =
       Value<double> maxSpeedMps,
       Value<int?> batteryStartPercent,
       Value<int?> batteryEndPercent,
+      Value<String?> bikeProfileId,
     });
 typedef $$TracksTableUpdateCompanionBuilder =
     TracksCompanion Function({
@@ -1278,6 +1394,7 @@ typedef $$TracksTableUpdateCompanionBuilder =
       Value<double> maxSpeedMps,
       Value<int?> batteryStartPercent,
       Value<int?> batteryEndPercent,
+      Value<String?> bikeProfileId,
     });
 
 final class $$TracksTableReferences
@@ -1359,6 +1476,11 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<int> get batteryEndPercent => $composableBuilder(
     column: $table.batteryEndPercent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bikeProfileId => $composableBuilder(
+    column: $table.bikeProfileId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1446,6 +1568,11 @@ class $$TracksTableOrderingComposer
     column: $table.batteryEndPercent,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get bikeProfileId => $composableBuilder(
+    column: $table.bikeProfileId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TracksTableAnnotationComposer
@@ -1496,6 +1623,11 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<int> get batteryEndPercent => $composableBuilder(
     column: $table.batteryEndPercent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get bikeProfileId => $composableBuilder(
+    column: $table.bikeProfileId,
     builder: (column) => column,
   );
 
@@ -1563,6 +1695,7 @@ class $$TracksTableTableManager
                 Value<double> maxSpeedMps = const Value.absent(),
                 Value<int?> batteryStartPercent = const Value.absent(),
                 Value<int?> batteryEndPercent = const Value.absent(),
+                Value<String?> bikeProfileId = const Value.absent(),
               }) => TracksCompanion(
                 id: id,
                 name: name,
@@ -1574,6 +1707,7 @@ class $$TracksTableTableManager
                 maxSpeedMps: maxSpeedMps,
                 batteryStartPercent: batteryStartPercent,
                 batteryEndPercent: batteryEndPercent,
+                bikeProfileId: bikeProfileId,
               ),
           createCompanionCallback:
               ({
@@ -1587,6 +1721,7 @@ class $$TracksTableTableManager
                 Value<double> maxSpeedMps = const Value.absent(),
                 Value<int?> batteryStartPercent = const Value.absent(),
                 Value<int?> batteryEndPercent = const Value.absent(),
+                Value<String?> bikeProfileId = const Value.absent(),
               }) => TracksCompanion.insert(
                 id: id,
                 name: name,
@@ -1598,6 +1733,7 @@ class $$TracksTableTableManager
                 maxSpeedMps: maxSpeedMps,
                 batteryStartPercent: batteryStartPercent,
                 batteryEndPercent: batteryEndPercent,
+                bikeProfileId: bikeProfileId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -1660,6 +1796,7 @@ typedef $$TrackPointsTableCreateCompanionBuilder =
       Value<int?> heartRate,
       Value<double?> cadenceRpm,
       Value<int?> power,
+      Value<bool?> speedFromSensor,
     });
 typedef $$TrackPointsTableUpdateCompanionBuilder =
     TrackPointsCompanion Function({
@@ -1673,6 +1810,7 @@ typedef $$TrackPointsTableUpdateCompanionBuilder =
       Value<int?> heartRate,
       Value<double?> cadenceRpm,
       Value<int?> power,
+      Value<bool?> speedFromSensor,
     });
 
 final class $$TrackPointsTableReferences
@@ -1749,6 +1887,11 @@ class $$TrackPointsTableFilterComposer
 
   ColumnFilters<int> get power => $composableBuilder(
     column: $table.power,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get speedFromSensor => $composableBuilder(
+    column: $table.speedFromSensor,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1830,6 +1973,11 @@ class $$TrackPointsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get speedFromSensor => $composableBuilder(
+    column: $table.speedFromSensor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$TracksTableOrderingComposer get trackId {
     final $$TracksTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -1891,6 +2039,11 @@ class $$TrackPointsTableAnnotationComposer
 
   GeneratedColumn<int> get power =>
       $composableBuilder(column: $table.power, builder: (column) => column);
+
+  GeneratedColumn<bool> get speedFromSensor => $composableBuilder(
+    column: $table.speedFromSensor,
+    builder: (column) => column,
+  );
 
   $$TracksTableAnnotationComposer get trackId {
     final $$TracksTableAnnotationComposer composer = $composerBuilder(
@@ -1954,6 +2107,7 @@ class $$TrackPointsTableTableManager
                 Value<int?> heartRate = const Value.absent(),
                 Value<double?> cadenceRpm = const Value.absent(),
                 Value<int?> power = const Value.absent(),
+                Value<bool?> speedFromSensor = const Value.absent(),
               }) => TrackPointsCompanion(
                 id: id,
                 trackId: trackId,
@@ -1965,6 +2119,7 @@ class $$TrackPointsTableTableManager
                 heartRate: heartRate,
                 cadenceRpm: cadenceRpm,
                 power: power,
+                speedFromSensor: speedFromSensor,
               ),
           createCompanionCallback:
               ({
@@ -1978,6 +2133,7 @@ class $$TrackPointsTableTableManager
                 Value<int?> heartRate = const Value.absent(),
                 Value<double?> cadenceRpm = const Value.absent(),
                 Value<int?> power = const Value.absent(),
+                Value<bool?> speedFromSensor = const Value.absent(),
               }) => TrackPointsCompanion.insert(
                 id: id,
                 trackId: trackId,
@@ -1989,6 +2145,7 @@ class $$TrackPointsTableTableManager
                 heartRate: heartRate,
                 cadenceRpm: cadenceRpm,
                 power: power,
+                speedFromSensor: speedFromSensor,
               ),
           withReferenceMapper: (p0) => p0
               .map(

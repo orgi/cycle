@@ -14,9 +14,11 @@ final hardwareButtonServiceProvider = Provider<HardwareButtonService>((ref) {
   return service;
 });
 
-/// Wires the volume keys to recording: volume-up starts, volume-down stops, but
-/// only while the setting is enabled. Watched by the home screen to keep it
-/// alive. The returned bool mirrors the enabled state.
+/// Wires the volume keys to recording: volume-up starts a ride (or, if one is
+/// already recording, cycles the bike profile — see [RecordingController.
+/// cycleBikeProfile]); volume-down stops. Only while the setting is enabled.
+/// Watched by the home screen to keep it alive. The returned bool mirrors the
+/// enabled state.
 final hardwareButtonControllerProvider =
     NotifierProvider<HardwareButtonController, bool>(
         HardwareButtonController.new);
@@ -42,7 +44,13 @@ class HardwareButtonController extends Notifier<bool> {
     final recording = ref.read(recordingProvider.notifier);
     switch (button) {
       case HardwareButton.volumeUp:
-        unawaited(recording.start());
+        if (ref.read(recordingProvider)) {
+          // Already recording: a 2nd/3rd/… press corrects the bike profile
+          // for this ride instead of a no-op.
+          unawaited(recording.cycleBikeProfile());
+        } else {
+          unawaited(recording.start());
+        }
       case HardwareButton.volumeDown:
         unawaited(recording.stop());
     }

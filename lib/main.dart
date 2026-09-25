@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'features/dashboard/application/ride_providers.dart';
+import 'features/map/application/map_providers.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -10,9 +14,20 @@ void main() {
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
+
+  // GPS is the top priority: start acquiring a fix the instant the app
+  // launches, before the map/UI finish building, so a lock is ready as early
+  // as possible. We own the container so we can warm the location stream up
+  // here; keeping the subscription alive for the app's lifetime holds the one
+  // continuous GPS stream open (see GeolocatorLocationService).
+  final container = ProviderContainer();
+  unawaited(container.read(locationServiceProvider).ensurePermission());
+  container.listen(currentPositionProvider, (_, _) {}, fireImmediately: true);
+
   runApp(
-    const ProviderScope(
-      child: CycleApp(),
+    UncontrolledProviderScope(
+      container: container,
+      child: const CycleApp(),
     ),
   );
 }

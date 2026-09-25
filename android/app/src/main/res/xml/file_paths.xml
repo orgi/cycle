@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider path spec for "Share backup" (cycle/share channel). Covers the
+     whole app-specific external files dir (getExternalStorageDirectory()), the
+     same root BackupService/GpxExportService/RouteImportService already write
+     backups/exports/routes into. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-files-path name="external_files" path="."/>
+</paths>
