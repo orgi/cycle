@@ -17,6 +17,7 @@ import '../support/fakes.dart';
 void main() {
   late ProviderContainer container;
   late RecordingScreenWakeService wake;
+  late RecordingLocationPowerControl gpsGate;
   late FakeLocationService location;
   late FakeSensorService sensors;
   late AppDatabase db;
@@ -25,6 +26,7 @@ void main() {
       ProviderContainer(
         overrides: [
           screenWakeServiceProvider.overrideWithValue(wake),
+          locationPowerControlProvider.overrideWithValue(gpsGate),
           locationServiceProvider.overrideWithValue(location),
           sensorServiceProvider.overrideWithValue(sensors),
           appDatabaseProvider.overrideWithValue(db),
@@ -40,6 +42,7 @@ void main() {
 
   setUp(() {
     wake = RecordingScreenWakeService();
+    gpsGate = RecordingLocationPowerControl();
     location = FakeLocationService();
     sensors = FakeSensorService();
     db = AppDatabase(NativeDatabase.memory());
@@ -242,5 +245,16 @@ void main() {
 
     await container.read(recordingProvider.notifier).cycleBikeProfile();
     expect(container.read(bikeProfilesProvider).activeId, 'p1');
+  });
+
+  test('tells the native GPS gate when a ride is and is not recording',
+      () async {
+    // Backgrounding an idle app drops the GPS request; backgrounding a
+    // recording ride must not, so the native side needs the recording state.
+    await container.read(recordingProvider.notifier).start();
+    expect(gpsGate.calls, [true]);
+
+    await container.read(recordingProvider.notifier).stop();
+    expect(gpsGate.calls, [true, false]);
   });
 }

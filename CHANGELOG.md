@@ -9,6 +9,19 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **Battery drain with no ride running.** The GPS receiver was kept running continuously
+  from app launch until Android killed the process — including after a ride was stopped and
+  while the app sat in the background with the screen off. That drain is invisible to the
+  per-ride battery stat (which is only sampled between Start and Stop), which is why
+  Android's per-app battery usage read noticeably higher than the recorded rides accounted
+  for. The GPS request is now held only while the app is in the foreground **or** a ride is
+  recording; a backgrounded recording ride is unaffected and keeps exactly the same single,
+  continuously-held request as before.
+- **Keep-screen-on released out from under a map download.** Keep-awake was a single global
+  flag with two owners, so stopping a ride while a region download was in flight let the
+  screen sleep — the OS then suspended the app and the download dropped (it resumed from its
+  `.part` file on retry). Keep-awake is now reference-counted per owner and stays on until
+  the last owner releases it.
 - **Sensors auto-connect on launch again (direct connect).** After the switch to passive
   reconnection, a paired sensor that was present and advertising (e.g. a worn HR strap)
   often would not link on launch — passive Android `autoConnect` frequently never connects a

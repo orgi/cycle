@@ -4,6 +4,7 @@ import 'package:mapsforge_flutter_core/model.dart' show BoundingBox;
 import '../../../core/models/geo_sample.dart';
 import '../../../core/services/map_download_service.dart';
 import '../../../core/services/map_storage_service.dart';
+import '../../../core/services/screen_wake_service.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../domain/map_region.dart';
@@ -154,7 +155,7 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
     // OS doesn't suspend the app and drop the connection. An interrupted
     // download still resumes from its .part file on retry.
     final wake = ref.read(screenWakeServiceProvider);
-    await wake.enable();
+    await wake.enable(ScreenWakeService.ownerMapDownload);
     try {
       await ref.read(mapDownloadServiceProvider).download(
             region,
@@ -168,8 +169,9 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
       final reason = e is MapDownloadException ? e.message : describeDownloadError(e);
       _set(region.id, MapDownloadProgress(progress: 0, error: reason));
     } finally {
-      // Don't release the wakelock if a ride is recording — it owns it too.
-      if (!ref.read(recordingProvider)) await wake.disable();
+      // Release only this owner's claim: a recording ride holds its own, and
+      // keep-awake stays on until the last owner lets go (see ScreenWakeService).
+      await wake.disable(ScreenWakeService.ownerMapDownload);
     }
   }
 

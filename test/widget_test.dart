@@ -1,5 +1,6 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/services/battery_service.dart';
+import 'package:cycle/core/services/location_power_control.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/dashboard/presentation/widgets/start_stop_button.dart';
@@ -24,6 +25,8 @@ void main() {
           sensorServiceProvider.overrideWithValue(FakeSensorService()),
           locationServiceProvider.overrideWithValue(FakeLocationService()),
           screenWakeServiceProvider.overrideWithValue(wake),
+          locationPowerControlProvider
+              .overrideWithValue(const NoopLocationPowerControl()),
           appDatabaseProvider.overrideWithValue(db),
           recordingForegroundServiceProvider
               .overrideWithValue(const NoopRecordingForegroundService()),

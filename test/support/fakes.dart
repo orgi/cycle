@@ -5,6 +5,7 @@ import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
+import 'package:cycle/core/services/location_power_control.dart';
 import 'package:cycle/core/services/location_service.dart';
 import 'package:cycle/core/services/route_import_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
@@ -29,16 +30,25 @@ class FakeLocationService implements LocationService {
   Stream<GeoSample> positions() => _controller.stream;
 }
 
-/// A [ScreenWakeService] that records how often it was toggled.
-class RecordingScreenWakeService implements ScreenWakeService {
+/// A [LocationPowerControl] that records the recording-active flags pushed to
+/// the native GPS gate.
+class RecordingLocationPowerControl implements LocationPowerControl {
+  final List<bool> calls = [];
+
+  @override
+  Future<void> setRecordingActive(bool active) async => calls.add(active);
+}
+
+/// A [ScreenWakeService] that records how often keep-awake actually toggled
+/// (owner reference-counting lives in the base class, so these count real
+/// transitions, not every enable/disable call).
+class RecordingScreenWakeService extends ScreenWakeService {
   int enableCount = 0;
   int disableCount = 0;
 
   @override
-  Future<void> enable() async => enableCount++;
-
-  @override
-  Future<void> disable() async => disableCount++;
+  Future<void> applyEnabled(bool on) async =>
+      on ? enableCount++ : disableCount++;
 }
 
 /// A [SensorService] driven by the test: set [discoverable] sensors, drive

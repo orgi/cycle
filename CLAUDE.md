@@ -96,6 +96,29 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     and warms `currentPositionProvider` (+ `ensurePermission`) immediately, before
     `runApp`, so acquisition begins the instant the app starts rather than when the map
     screen finishes building (behind the async map load). GPS is the priority sensor.
+  * **The GPS request is held only while it has a consumer** (`MainActivity.updateLocationUpdates`):
+    Dart is listening AND (the app is in the foreground OR a ride is recording). It used to
+    stay registered for the whole process lifetime — `removeUpdates` ran only in `onDestroy`,
+    and `onCancel` never fires because Dart never cancels the stream — so the receiver kept
+    navigating at 1 Hz after a ride was stopped, in the background, screen off, until Android
+    reclaimed the process. That drain is invisible to the per-ride battery stat (sampled only
+    between Start and Stop), which is what made Android's per-app battery usage read several
+    percent higher than the recorded rides accounted for. Recording state is pushed across the
+    `cycle/location_control` MethodChannel (`lib/core/services/location_power_control.dart`,
+    from `RecordingController.start`/`resume`/`stop`); the foreground half the activity knows
+    from `onResume`/`onPause`. **This is a lifecycle gate, not a duty cycle** — while the
+    request is registered it is still the ONE continuous 1 Hz request, started/stopped only on
+    a foreground/background or recording transition, never per fix. Do NOT "save more" by
+    raising the interval when idle: a longer interval lets the receiver duty-cycle, which is
+    the same "never settles into a lock" failure documented above, for little real saving.
+    **`setRecordingActive(true)` must be the FIRST thing `start()`/`resume()` do**, before the
+    wakelock/DB write/foreground-service start — starting the foreground service can push the
+    activity through `onPause` (it may raise a notification-permission dialog), and a pause
+    evaluated while the gate still reads "not recording" drops the GPS request one second into
+    the ride. Caught on the emulator via `dumpsys location` (a `-registration` right after the
+    volume-key start, with no re-registration); the four-state probe — foreground idle /
+    background idle / foreground recording / background recording — is what makes this visible,
+    so re-run it after touching either side of the gate.
   * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
     at the source when the GPS chip's own accuracy estimate is worse than 10 m
     (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
@@ -214,7 +237,14 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `routes/` folder (Android external files dir / iOS documents) and pick from an in-app list;
   a bundled `assets/routes/monaco_loop.gpx` is the "Follow demo route". We deliberately do
   **not** use `file_picker` — see Known gotchas.
-* **Keep-awake:** `wakelock_plus`.
+* **Keep-awake:** `wakelock_plus` — note this is `FLAG_KEEP_SCREEN_ON` on the activity
+  window, NOT a `PowerManager` wakelock, so it is inert while the app is backgrounded and
+  dies with the process; there is nothing to "leak" and no battery to save by releasing it
+  on pause. It has **more than one owner** (a recording ride, an in-flight map download), so
+  `ScreenWakeService` reference-counts by owner key and only calls the platform on a
+  transition — a single global flag meant `RecordingController.stop()` released the screen
+  out from under a running region download (screen sleeps → OS suspends the app → download
+  drops, resuming from its `.part` file only on retry).
 
 Code is organised under `lib/` as `core/` (services, models, metrics, utils) and
 `features/<feature>/` split into `presentation/` · `application/` (Riverpod) · `domain/`.
