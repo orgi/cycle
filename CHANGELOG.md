@@ -9,6 +9,19 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Start/stop with gloves on.** Three new ways to start or stop a ride without touching the screen:
+  - **Volume buttons on iPhone** (up = start, down = stop), like on Android. iOS has no official
+    way to read them, so Cycle watches the volume level and resets it after each press. While
+    Cycle is open the media volume stays at half; your own level comes back when you leave the
+    app. Only while Cycle is open, like on Android. The Start/Stop button is now hidden by
+    default on iPhone too; turn off "Volume keys start/stop" in Settings to get it back.
+  - **Hand over the screen** (iPhone, Settings → Controls, off by default): hold a hand over the
+    top of the screen for 2 seconds to start or stop a ride. A brief cover does nothing. The
+    screen goes dark while covered.
+  - **Auto-start** (Settings → Controls, off by default): a ride starts by itself once you ride
+    faster than 8 km/h for 5 seconds. Stopping stays manual. After a ride ends it only re-arms
+    once you've stood still for a minute, so it doesn't instantly restart the ride you just
+    stopped.
 - **iPhone support (sideload pilot).** CI now builds an unsigned `.ipa` on every run (artifact
   `ios-ipa-unsigned`), which can be signed with a free Apple ID and installed from Linux with
   Impactor. No Mac or paid developer account needed. Step-by-step guide:

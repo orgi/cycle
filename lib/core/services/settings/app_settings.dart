@@ -48,6 +48,8 @@ class AppSettings {
     this.mapZoom = 16,
     this.autoPauseEnabled = true,
     this.autoPauseSpeedKmh = 5.0,
+    this.autoStartEnabled = false,
+    this.proximityHoldEnabled = false,
   });
 
   /// Distance/speed units shown in the UI.
@@ -56,7 +58,8 @@ class AppSettings {
   /// Wheel circumference used to derive speed from a BLE CSC sensor.
   final double wheelCircumferenceMeters;
 
-  /// When true, the phone's volume keys start/stop recording (Android).
+  /// When true, the phone's volume keys start/stop recording (Android, and iOS
+  /// via the volume-level workaround in `AppDelegate.swift`).
   final bool hardwareButtonsEnabled;
 
   /// When true, show the on-screen Start/Stop button. Off by default — recording
@@ -81,9 +84,17 @@ class AppSettings {
   /// Speed (km/h) below which the ride auto-pauses.
   final double autoPauseSpeedKmh;
 
+  /// When true, a ride starts by itself once you're riding (see
+  /// `AutoStartDetector`). Stopping stays manual. Off by default.
+  final bool autoStartEnabled;
+
+  /// When true, holding a hand over the top of the screen for ~2 s starts or
+  /// stops a ride (proximity sensor; iOS). Off by default.
+  final bool proximityHoldEnabled;
+
   /// Whether the home screen shows the Start/Stop button: on request, or
   /// whenever the volume keys can't start a ride — switched off, or on a
-  /// platform that can't intercept them (iOS).
+  /// platform that can't intercept them.
   bool startStopButtonVisible({required bool volumeKeysSupported}) =>
       showStartStopButton || !hardwareButtonsEnabled || !volumeKeysSupported;
 
@@ -97,6 +108,8 @@ class AppSettings {
     int? mapZoom,
     bool? autoPauseEnabled,
     double? autoPauseSpeedKmh,
+    bool? autoStartEnabled,
+    bool? proximityHoldEnabled,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -112,6 +125,8 @@ class AppSettings {
         mapZoom: mapZoom ?? this.mapZoom,
         autoPauseEnabled: autoPauseEnabled ?? this.autoPauseEnabled,
         autoPauseSpeedKmh: autoPauseSpeedKmh ?? this.autoPauseSpeedKmh,
+        autoStartEnabled: autoStartEnabled ?? this.autoStartEnabled,
+        proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
       );
 
   Map<String, dynamic> toJson() => {
@@ -124,6 +139,8 @@ class AppSettings {
         'map_zoom': mapZoom,
         'auto_pause': autoPauseEnabled,
         'auto_pause_kmh': autoPauseSpeedKmh,
+        'auto_start': autoStartEnabled,
+        'proximity_hold': proximityHoldEnabled,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -144,6 +161,8 @@ class AppSettings {
         autoPauseEnabled: json['auto_pause'] as bool? ?? true,
         autoPauseSpeedKmh:
             (json['auto_pause_kmh'] as num?)?.toDouble() ?? 5.0,
+        autoStartEnabled: json['auto_start'] as bool? ?? false,
+        proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
       );
 
   @override
@@ -157,7 +176,9 @@ class AppSettings {
       other.colorScheme == colorScheme &&
       other.mapZoom == mapZoom &&
       other.autoPauseEnabled == autoPauseEnabled &&
-      other.autoPauseSpeedKmh == autoPauseSpeedKmh;
+      other.autoPauseSpeedKmh == autoPauseSpeedKmh &&
+      other.autoStartEnabled == autoStartEnabled &&
+      other.proximityHoldEnabled == proximityHoldEnabled;
 
   @override
   int get hashCode => Object.hash(
@@ -169,5 +190,7 @@ class AppSettings {
       colorScheme,
       mapZoom,
       autoPauseEnabled,
-      autoPauseSpeedKmh);
+      autoPauseSpeedKmh,
+      autoStartEnabled,
+      proximityHoldEnabled);
 }

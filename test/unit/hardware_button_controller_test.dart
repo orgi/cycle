@@ -10,6 +10,7 @@ import 'package:cycle/features/settings/application/hardware_button_providers.da
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +23,11 @@ void main() {
   late FakeSensorService sensors;
   late AppDatabase db;
 
-  ProviderContainer build({bool enabled = true, BikeProfilesState? bikeProfiles}) {
+  ProviderContainer build({
+    bool enabled = true,
+    bool proximityHold = false,
+    BikeProfilesState? bikeProfiles,
+  }) {
     buttons = FakeHardwareButtonService();
     location = FakeLocationService();
     sensors = FakeSensorService();
@@ -30,7 +35,11 @@ void main() {
     return ProviderContainer(overrides: [
       hardwareButtonServiceProvider.overrideWithValue(buttons),
       settingsStoreProvider.overrideWithValue(
-          FakeSettingsStore(AppSettings(hardwareButtonsEnabled: enabled))),
+          FakeSettingsStore(AppSettings(
+              hardwareButtonsEnabled: enabled,
+              proximityHoldEnabled: proximityHold))),
+      proximityHoldDurationProvider
+          .overrideWithValue(const Duration(milliseconds: 50)),
       locationServiceProvider.overrideWithValue(location),
       screenWakeServiceProvider.overrideWithValue(RecordingScreenWakeService()),
       sensorServiceProvider.overrideWithValue(sensors),
@@ -135,5 +144,70 @@ void main() {
         .setWheelCircumference(2.2);
     await settle();
     expect(sensors.wheelCircumference, closeTo(2.2, 1e-9));
+  });
+
+  group('proximity hold (iOS)', () {
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    Future<void> hold() async {
+      buttons.cover(true);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      buttons.cover(false);
+      await settle();
+    }
+
+    test('a hold starts a ride, the next hold stops it', () async {
+      container = build(proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      expect(buttons.proximityEnabled, isTrue);
+
+      await hold();
+      expect(container.read(recordingProvider), isTrue);
+      await hold();
+      expect(container.read(recordingProvider), isFalse);
+    });
+
+    test('a brief cover does nothing', () async {
+      container = build(proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+
+      buttons.cover(true);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      buttons.cover(false);
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      expect(container.read(recordingProvider), isFalse);
+    });
+
+    test('off by default: the sensor is not even monitored', () async {
+      container = build();
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      expect(buttons.proximityEnabled, isFalse);
+
+      await hold();
+      expect(container.read(recordingProvider), isFalse);
+    });
+
+    test('works independently of the volume-key setting', () async {
+      container = build(enabled: false, proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      await hold();
+      expect(container.read(recordingProvider), isTrue);
+    });
+  });
+
+  test('proximity hold is never enabled on Android (not wired natively)',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    container = build(proximityHold: true);
+    container.listen(hardwareButtonControllerProvider, (_, _) {});
+    await settle();
+    expect(buttons.proximityEnabled, isFalse);
+    debugDefaultTargetPlatformOverride = null;
   });
 }

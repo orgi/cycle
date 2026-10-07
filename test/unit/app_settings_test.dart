@@ -14,9 +14,13 @@ void main() {
       selectedMapFileName: 'Bayern.map',
       colorScheme: AppColorScheme.bw,
       mapZoom: 14,
+      autoStartEnabled: true,
+      proximityHoldEnabled: true,
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
+    expect(back.autoStartEnabled, isTrue);
+    expect(back.proximityHoldEnabled, isTrue);
     expect(back.colorScheme, AppColorScheme.bw);
     expect(back.showStartStopButton, isTrue);
     expect(back.mapZoom, 14);
@@ -42,6 +46,15 @@ void main() {
     // Explicit null resets to automatic.
     expect(pinned.copyWith(selectedMapFileName: null).selectedMapFileName,
         isNull);
+  });
+
+  test('auto-start and hand-over-screen are opt-in', () {
+    const d = AppSettings();
+    expect(d.autoStartEnabled, isFalse);
+    expect(d.proximityHoldEnabled, isFalse);
+    final fromOld = AppSettings.fromJson(const {'units': 'metric'});
+    expect(fromOld.autoStartEnabled, isFalse);
+    expect(fromOld.proximityHoldEnabled, isFalse);
   });
 
   test('AppSettings.fromJson tolerates missing/garbage fields', () {

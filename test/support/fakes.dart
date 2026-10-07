@@ -219,13 +219,28 @@ class FakeHardwareButtonService implements HardwareButtonService {
 
   void press(HardwareButton button) => _controller.add(button);
 
-  Future<void> dispose() => _controller.close();
+  Future<void> dispose() async {
+    await _controller.close();
+    await _proximity.close();
+  }
 
   @override
   Stream<HardwareButton> get events => _controller.stream;
 
   @override
   Future<void> setEnabled(bool value) async => enabled = value;
+
+  final StreamController<bool> _proximity = StreamController<bool>.broadcast();
+  bool proximityEnabled = false;
+
+  /// Simulates the proximity sensor being covered (true) or uncovered.
+  void cover(bool covered) => _proximity.add(covered);
+
+  @override
+  Stream<bool> get proximity => _proximity.stream;
+
+  @override
+  Future<void> setProximityEnabled(bool value) async => proximityEnabled = value;
 }
 
 /// An in-memory [SettingsStore] seeded with [initial].

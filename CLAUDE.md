@@ -457,9 +457,29 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
   setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
   session / accessibility service — out of scope); iOS can't intercept volume keys (no-op), so
-  there the Start/Stop button is **always shown** and the volume-key settings are hidden
-  (`AppSettings.startStopButtonVisible` + `volumeKeysSupported`); otherwise a fresh iOS
-  install would have no way to start a ride.
+  **iOS volume keys (workaround):** iOS has no public API to intercept them
+  (`AVCaptureEventInteraction` needs a running camera session), so `AppDelegate.swift`'s
+  `HardwareButtons` implements the same `cycle/hardware_buttons` protocol by keeping an ambient
+  (`mixWithOthers`) audio session active, KVO-observing `AVAudioSession.outputVolume`, and
+  resetting the volume to 0.5 after each press via an off-screen `MPVolumeView` slider (which
+  also suppresses the system HUD). Direction = new level above/below 0.5; changes within 0.6s of
+  the previous one are key-repeat and ignored (one event per hold). Attached only while the app
+  is active (rider's own volume saved and restored on resign-active), so — like Android — a
+  backgrounded ride can't be stopped from a pocket. Unofficial: an iOS update could break it,
+  and it can only be verified on the real iPhone. `volumeKeysSupported` (Android + iOS) gates
+  the settings switches and `AppSettings.startStopButtonVisible` (button shown when volume
+  keys are off or unsupported).
+  **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
+  `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over
+  the same channel (`UIDevice.isProximityMonitoringEnabled`, active only while foreground +
+  enabled); the "covered ≥2s, once per cover" rule is Dart (`lib/core/controls/
+  proximity_hold_detector.dart`), and `HardwareButtonController` toggles recording on a hold.
+  (2) **auto-start** (`lib/core/controls/auto_start_detector.dart` + `AutoStartController` in
+  `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
+  ≥8 km/h sustained 5s on the shared GPS stream (no extra GPS cost) starts a ride; after a
+  ride it stays disarmed until <3 km/h for 60s, so stopping while rolling doesn't instantly
+  restart. Stop stays manual. Front-camera gestures and accelerometer "knock" detection were
+  considered and rejected (camera battery/heat/indicator; handlebar vibration false triggers).
   **Settings screen** (`/settings`, gear in the map app bar):
   units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
   wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),
