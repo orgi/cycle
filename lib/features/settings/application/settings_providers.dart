@@ -43,6 +43,15 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setAutoPauseSpeedKmh(double kmh) =>
       update(state.copyWith(autoPauseSpeedKmh: kmh));
 
+  Future<void> setAutoStartEnabled(bool enabled) =>
+      update(state.copyWith(autoStartEnabled: enabled));
+
+  Future<void> setProximityHoldEnabled(bool enabled) =>
+      update(state.copyWith(proximityHoldEnabled: enabled));
+
+  Future<void> setVibrateOnStartStop(bool enabled) =>
+      update(state.copyWith(vibrateOnStartStop: enabled));
+
   /// [fileName] of the map to display, or null to auto-pick by location.
   Future<void> setSelectedMap(String? fileName) =>
       update(state.copyWith(selectedMapFileName: fileName));

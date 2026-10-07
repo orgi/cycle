@@ -18,6 +18,7 @@ import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../backup/application/backup_providers.dart';
+import '../../dashboard/application/auto_start_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../tracks/application/oruxmaps_import_service.dart';
 import '../../tracks/application/oruxmaps_providers.dart';
@@ -598,9 +599,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // to start.
     final showStartStop = settings.startStopButtonVisible(
         volumeKeysSupported: volumeKeysSupported);
-    // Keep the volume-key control + wheel-size sync alive while the home screen
-    // is mounted.
+    // Keep the volume-key/proximity control, auto-start + wheel-size sync
+    // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
+    ref.watch(autoStartControllerProvider);
     ref.watch(sensorSettingsSyncProvider);
     // Reconnect previously-paired BLE sensors on launch.
     final pairedSensors = ref.watch(sensorConnectionProvider);

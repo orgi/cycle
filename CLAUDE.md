@@ -325,6 +325,9 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `adb install -r`) and never tell the user to delete the app. Test iPhone: **iPhone 12 mini**.
   The `test` job (analyze + tests) gates the `ios`/`android` jobs, so a lint failure silently
   means no iOS build; `third_party/**` is excluded from analysis for that reason.
+  CI runs on **every push to any branch** (no `pull_request` trigger — it doubled every run
+  for a branch with an open PR; the PR shows the push run's checks), skipped only for pushes
+  that touch nothing but `docs/**`/`*.md`. Artifacts keep 30 days.
 * **Release signing (stable key):** release builds are signed with a fixed key
   (`android/app/cycle-release.jks` + `android/key.properties`, **both gitignored**) wired in
   `android/app/build.gradle.kts`. This lets a release APK be updated in place (`adb install -r`)
@@ -457,9 +460,39 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
   setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
   session / accessibility service — out of scope); iOS can't intercept volume keys (no-op), so
-  there the Start/Stop button is **always shown** and the volume-key settings are hidden
-  (`AppSettings.startStopButtonVisible` + `volumeKeysSupported`); otherwise a fresh iOS
-  install would have no way to start a ride.
+  **iOS volume keys (workaround):** iOS has no public API to intercept them
+  (`AVCaptureEventInteraction` needs a running camera session), so `AppDelegate.swift`'s
+  `HardwareButtons` implements the same `cycle/hardware_buttons` protocol by keeping an ambient
+  (`mixWithOthers`) audio session active, KVO-observing `AVAudioSession.outputVolume`, and
+  resetting the volume to 0.5 after each press via an off-screen `MPVolumeView` slider (which
+  also suppresses the system HUD). Direction = new level above/below 0.5; changes within 0.6s of
+  the previous one are key-repeat and ignored (one event per hold). Attached only while the app
+  is active (rider's own volume saved and restored on resign-active), so — like Android — a
+  backgrounded ride can't be stopped from a pocket. Unofficial: an iOS update could break it,
+  and it can only be verified on the real iPhone. `volumeKeysSupported` (Android + iOS) gates
+  the settings switches and `AppSettings.startStopButtonVisible` (button shown when volume
+  keys are off or unsupported).
+  **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
+  `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over
+  the same channel (`UIDevice.isProximityMonitoringEnabled`, active only while foreground +
+  enabled); the "covered ≥2s, once per cover" rule is Dart (`lib/core/controls/
+  proximity_hold_detector.dart`), and `HardwareButtonController` toggles recording on a hold.
+  (2) **auto-start** (`lib/core/controls/auto_start_detector.dart` + `AutoStartController` in
+  `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
+  ≥8 km/h sustained 5s on the shared GPS stream (no extra GPS cost) starts a ride; after a
+  ride it stays disarmed until <3 km/h for 60s, so stopping while rolling doesn't instantly
+  restart. Stop stays manual.
+  **Vibration confirmation** (`AppSettings.vibrateOnStartStop`, default on): `RecordingController`
+  calls `_confirm(RideFeedback…)` — started = 1 pulse, stopped = 2, bike switched via
+  `cycleBikeProfile` = 3 — at the *start* of `start()`/`stop()` (unawaited, after the
+  already-recording guard), so it's felt instantly for every trigger (volume, proximity hold —
+  where it's the "you can take your hand away" cue, since the screen is dark — auto-start, the
+  on-screen button). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
+  `vibrate(n)`: Android `VibrationEffect.createWaveform` (350 ms on / 250 ms off, `VIBRATE`
+  permission); iOS repeats `kSystemSoundID_Vibrate` every 0.6 s — the strongest buzz an app can
+  trigger (a Taptic impact or Flutter's `HapticFeedback` is too subtle to feel through a
+  handlebar mount). Front-camera gestures and accelerometer "knock" detection were
+  considered and rejected (camera battery/heat/indicator; handlebar vibration false triggers).
   **Settings screen** (`/settings`, gear in the map app bar):
   units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
   wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),

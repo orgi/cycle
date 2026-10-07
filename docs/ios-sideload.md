@@ -101,9 +101,17 @@ once the plain USB route works.
 
 ## What differs from Android
 
-* **Start/Stop is the on-screen button.** iOS gives apps no access to the
-  volume keys, so the button is always shown and the volume-key settings are
-  hidden.
+* **Volume buttons start/stop a ride** (up = start, down = stop), as on
+  Android, but through a workaround because iOS has no official API for it.
+  While Cycle is open, the media volume is held at half; your own level comes
+  back when you leave the app. If the buttons ever stop working (e.g. after an
+  iOS update), turn off *Volume keys start/stop* in Settings and the on-screen
+  Start/Stop button comes back.
+* **Glove-friendly extras** in Settings → Controls (both off by default):
+  *Hand over screen start/stop* (hold a hand over the top of the screen for
+  2 s) and *Auto-start ride* (starts by itself once you ride above 8 km/h).
+  *Vibrate on start/stop* (on by default) confirms every start (1 buzz), stop
+  (2) and bike switch (3).
 * **GPS** runs through one continuous Core Location request
   (`AppleLocationService`). It keeps recording with the screen off (iOS shows
   the blue location pill) and is released when the app is backgrounded with no

@@ -76,15 +76,16 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           const _Header('Controls'),
-          // Volume-key start/stop is Android-only; on iOS the Start/Stop
-          // button is always shown instead, so neither switch applies.
+          // Volume-key start/stop where the platform can capture the keys;
+          // elsewhere the Start/Stop button is always shown instead.
           if (volumeKeysSupported) ...[
             SwitchListTile(
               key: const Key('hardwareButtonsSwitch'),
               title: const Text('Volume keys start/stop'),
               subtitle: const Text(
-                'Use the phone\'s volume buttons to start/stop recording '
-                '(Android only; not available on iOS).',
+                'Volume up starts a ride, volume down stops it. Works with '
+                'gloves. On iPhone the media volume is held at half while '
+                'Cycle is open.',
               ),
               value: settings.hardwareButtonsEnabled,
               onChanged: controller.setHardwareButtons,
@@ -100,6 +101,38 @@ class SettingsScreen extends ConsumerWidget {
               onChanged: controller.setShowStartStopButton,
             ),
           ],
+          if (proximityHoldSupported)
+            SwitchListTile(
+              key: const Key('proximityHoldSwitch'),
+              title: const Text('Hand over screen start/stop'),
+              subtitle: const Text(
+                'Hold a hand over the top of the screen for 2 seconds to start '
+                'or stop a ride. Works with gloves. The screen goes dark while '
+                'covered.',
+              ),
+              value: settings.proximityHoldEnabled,
+              onChanged: controller.setProximityHoldEnabled,
+            ),
+          SwitchListTile(
+            key: const Key('autoStartSwitch'),
+            title: const Text('Auto-start ride'),
+            subtitle: const Text(
+              'Start recording by itself once you ride faster than 8 km/h for '
+              'a few seconds. Stop manually.',
+            ),
+            value: settings.autoStartEnabled,
+            onChanged: controller.setAutoStartEnabled,
+          ),
+          SwitchListTile(
+            key: const Key('vibrateStartStopSwitch'),
+            title: const Text('Vibrate on start/stop'),
+            subtitle: const Text(
+              'Confirms by feel: 1 buzz = ride started, 2 = stopped, '
+              '3 = bike switched.',
+            ),
+            value: settings.vibrateOnStartStop,
+            onChanged: controller.setVibrateOnStartStop,
+          ),
           SwitchListTile(
             key: const Key('autoPauseSwitch'),
             title: const Text('Auto-pause'),

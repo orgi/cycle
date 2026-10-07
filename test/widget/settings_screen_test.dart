@@ -58,28 +58,53 @@ void main() {
     expect((await store.load()).hardwareButtonsEnabled, isFalse);
   });
 
-  testWidgets('hides the Android-only volume-key switches on iOS',
-      (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+  Future<void> pumpSettings(WidgetTester tester, FakeSettingsStore store) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+          settingsStoreProvider.overrideWithValue(store),
           bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
         ],
         child: const MaterialApp(home: SettingsScreen()),
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  testWidgets('iOS shows the volume-key and hand-over-screen switches',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final store = FakeSettingsStore();
+    await pumpSettings(tester, store);
 
     await tester.scrollUntilVisible(
-      find.byKey(const Key('autoPauseSwitch')),
+      find.byKey(const Key('autoStartSwitch')),
       200,
     );
-    expect(find.byKey(const Key('hardwareButtonsSwitch')), findsNothing);
-    expect(find.byKey(const Key('showStartStopSwitch')), findsNothing);
+    expect(find.byKey(const Key('hardwareButtonsSwitch')), findsOneWidget);
+    expect(find.byKey(const Key('showStartStopSwitch')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('proximityHoldSwitch')));
+    await tester.pumpAndSettle();
+    expect((await store.load()).proximityHoldEnabled, isTrue);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android has no hand-over-screen switch; auto-start toggles',
+      (tester) async {
+    final store = FakeSettingsStore();
+    await pumpSettings(tester, store);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('autoStartSwitch')),
+      200,
+    );
+    expect(find.byKey(const Key('proximityHoldSwitch')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('autoStartSwitch')));
+    await tester.pumpAndSettle();
+    expect((await store.load()).autoStartEnabled, isTrue);
   });
 
   testWidgets('edits the wheel circumference via the dialog', (tester) async {
@@ -192,6 +217,10 @@ void main() {
       find.byKey(const Key('removeDuplicatesTile')),
       200,
     );
+    // Fully on screen, not just peeking in at the bottom edge (where a tap
+    // misses).
+    await tester.ensureVisible(find.byKey(const Key('removeDuplicatesTile')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('removeDuplicatesTile')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('removeDuplicatesConfirm')));
