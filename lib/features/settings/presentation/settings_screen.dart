@@ -124,6 +124,16 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: controller.setAutoStartEnabled,
           ),
           SwitchListTile(
+            key: const Key('vibrateStartStopSwitch'),
+            title: const Text('Vibrate on start/stop'),
+            subtitle: const Text(
+              'Confirms by feel: 1 buzz = ride started, 2 = stopped, '
+              '3 = bike switched.',
+            ),
+            value: settings.vibrateOnStartStop,
+            onChanged: controller.setVibrateOnStartStop,
+          ),
+          SwitchListTile(
             key: const Key('autoPauseSwitch'),
             title: const Text('Auto-pause'),
             subtitle: const Text(

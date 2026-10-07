@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Flutter
 import MediaPlayer
 import UIKit
@@ -6,6 +7,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var hardwareButtons: HardwareButtons?
+  private var hapticsChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -16,8 +18,26 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    hardwareButtons = HardwareButtons(
-      messenger: engineBridge.applicationRegistrar.messenger())
+    let messenger = engineBridge.applicationRegistrar.messenger()
+    hardwareButtons = HardwareButtons(messenger: messenger)
+
+    // Start/stop confirmation buzzes (`HapticsService` in Dart): `vibrate(n)` =
+    // n distinct pulses, so start (1) / stop (2) / bike switch (3) can be told
+    // apart by feel. The classic system vibrate is the strongest buzz an app
+    // can trigger — a Taptic "impact" is too subtle to feel through a handlebar
+    // mount — and its length is fixed (~0.4 s), so pulses are spaced 0.6 s.
+    let haptics = FlutterMethodChannel(name: "cycle/haptics", binaryMessenger: messenger)
+    haptics.setMethodCallHandler { call, result in
+      guard call.method == "vibrate" else { return result(FlutterMethodNotImplemented) }
+      let count = min(max((call.arguments as? Int) ?? 1, 1), 5)
+      for i in 0..<count {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6 * Double(i)) {
+          AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+        }
+      }
+      result(nil)
+    }
+    hapticsChannel = haptics
   }
 }
 

@@ -50,6 +50,7 @@ class AppSettings {
     this.autoPauseSpeedKmh = 5.0,
     this.autoStartEnabled = false,
     this.proximityHoldEnabled = false,
+    this.vibrateOnStartStop = true,
   });
 
   /// Distance/speed units shown in the UI.
@@ -92,6 +93,11 @@ class AppSettings {
   /// stops a ride (proximity sensor; iOS). Off by default.
   final bool proximityHoldEnabled;
 
+  /// When true, the phone vibrates to confirm a ride start (1 pulse), stop
+  /// (2) or bike-profile switch (3) — whatever triggered it. On by default:
+  /// the hands-free triggers are used without looking at the screen.
+  final bool vibrateOnStartStop;
+
   /// Whether the home screen shows the Start/Stop button: on request, or
   /// whenever the volume keys can't start a ride — switched off, or on a
   /// platform that can't intercept them.
@@ -110,6 +116,7 @@ class AppSettings {
     double? autoPauseSpeedKmh,
     bool? autoStartEnabled,
     bool? proximityHoldEnabled,
+    bool? vibrateOnStartStop,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -127,6 +134,7 @@ class AppSettings {
         autoPauseSpeedKmh: autoPauseSpeedKmh ?? this.autoPauseSpeedKmh,
         autoStartEnabled: autoStartEnabled ?? this.autoStartEnabled,
         proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
+        vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
       );
 
   Map<String, dynamic> toJson() => {
@@ -141,6 +149,7 @@ class AppSettings {
         'auto_pause_kmh': autoPauseSpeedKmh,
         'auto_start': autoStartEnabled,
         'proximity_hold': proximityHoldEnabled,
+        'vibrate_start_stop': vibrateOnStartStop,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -163,6 +172,7 @@ class AppSettings {
             (json['auto_pause_kmh'] as num?)?.toDouble() ?? 5.0,
         autoStartEnabled: json['auto_start'] as bool? ?? false,
         proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
+        vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
       );
 
   @override
@@ -178,7 +188,8 @@ class AppSettings {
       other.autoPauseEnabled == autoPauseEnabled &&
       other.autoPauseSpeedKmh == autoPauseSpeedKmh &&
       other.autoStartEnabled == autoStartEnabled &&
-      other.proximityHoldEnabled == proximityHoldEnabled;
+      other.proximityHoldEnabled == proximityHoldEnabled &&
+      other.vibrateOnStartStop == vibrateOnStartStop;
 
   @override
   int get hashCode => Object.hash(
@@ -192,5 +203,6 @@ class AppSettings {
       autoPauseEnabled,
       autoPauseSpeedKmh,
       autoStartEnabled,
-      proximityHoldEnabled);
+      proximityHoldEnabled,
+      vibrateOnStartStop);
 }

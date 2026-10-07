@@ -5,6 +5,7 @@ import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/sensors/sensor_snapshot_merger.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
+import 'package:cycle/core/services/haptics_service.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/location_power_control.dart';
 import 'package:cycle/core/services/location_service.dart';
@@ -241,6 +242,14 @@ class FakeHardwareButtonService implements HardwareButtonService {
 
   @override
   Future<void> setProximityEnabled(bool value) async => proximityEnabled = value;
+}
+
+/// A [HapticsService] that records the confirmations that would be felt.
+class RecordingHapticsService implements HapticsService {
+  final List<RideFeedback> felt = [];
+
+  @override
+  Future<void> confirm(RideFeedback feedback) async => felt.add(feedback);
 }
 
 /// An in-memory [SettingsStore] seeded with [initial].

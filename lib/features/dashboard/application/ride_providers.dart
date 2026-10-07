@@ -17,6 +17,7 @@ import '../../../core/services/location_power_control.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/native_location_service.dart';
 import '../../../core/services/fg_task_recording_service.dart';
+import '../../../core/services/haptics_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/settings/app_settings.dart';
@@ -59,6 +60,10 @@ final screenWakeServiceProvider = Provider<ScreenWakeService>(
   (ref) => WakelockScreenWakeService(),
 );
 
+/// Vibration that confirms ride start/stop/bike switch. Overridable in tests.
+final hapticsServiceProvider =
+    Provider<HapticsService>((ref) => const NativeHapticsService());
+
 /// Battery level source for the ride drain stat. No-op in tests.
 final batteryServiceProvider =
     Provider<BatteryService>((ref) => NativeBatteryService());
@@ -96,8 +101,17 @@ class RecordingController extends Notifier<bool> {
   @override
   bool build() => false;
 
+  /// Confirms [feedback] by vibration (if enabled). Fired up front, not after
+  /// the DB/foreground-service work, so it's felt the instant the trigger
+  /// registers; unawaited, so it never delays the ride itself.
+  void _confirm(RideFeedback feedback) {
+    if (!ref.read(settingsProvider).vibrateOnStartStop) return;
+    unawaited(ref.read(hapticsServiceProvider).confirm(feedback));
+  }
+
   Future<void> start() async {
     if (state) return;
+    _confirm(RideFeedback.started);
     // Flag the ride to the native GPS gate FIRST, before anything that can push
     // the activity through onPause (the foreground service can raise a
     // notification-permission dialog) — otherwise that pause sees "not
@@ -139,6 +153,7 @@ class RecordingController extends Notifier<bool> {
     final activeId = ref.read(bikeProfilesProvider).activeId;
     final i = profiles.indexWhere((p) => p.id == activeId);
     final next = profiles[(i + 1) % profiles.length];
+    _confirm(RideFeedback.bikeProfileChanged);
     await setBikeProfile(next.id);
   }
 
@@ -163,6 +178,7 @@ class RecordingController extends Notifier<bool> {
   Future<void> stop() async {
     if (!state) return;
     state = false; // stop recording points before finalising
+    _confirm(RideFeedback.stopped);
     final id = _trackId;
     _trackId = null;
     if (id != null) {

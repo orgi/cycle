@@ -11,6 +11,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
@@ -60,6 +63,7 @@ class MainActivity : FlutterActivity() {
     private val oruxmapsChannel = "cycle/incoming_oruxmaps"
     private val shareChannel = "cycle/share"
     private val oauthChannel = "cycle/oauth"
+    private val hapticsChannel = "cycle/haptics"
     private val buttonsChannel = "cycle/hardware_buttons"
     private val fileAccessChannel = "cycle/file_access"
     private val pickDocumentChannel = "cycle/pick_document"
@@ -188,6 +192,19 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "setEnabled" -> {
                     buttonsEnabled = call.arguments as? Boolean ?: false
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Start/stop confirmation buzzes (`HapticsService` in Dart): `vibrate(n)`
+        // = n distinct pulses, so start (1) / stop (2) / bike switch (3) can be
+        // told apart by feel, e.g. through gloves on the handlebar.
+        MethodChannel(messenger, hapticsChannel).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "vibrate" -> {
+                    vibratePulses((call.arguments as? Int) ?: 1)
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -400,6 +417,25 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIntent(intent)
+    }
+
+    private fun vibratePulses(count: Int) {
+        val n = count.coerceIn(1, 5)
+        val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (!vibrator.hasVibrator()) return
+        // [delay, on, off, on, ...]: 350 ms pulses, 250 ms apart.
+        val timings = LongArray(n * 2) { i -> if (i == 0) 0L else if (i % 2 == 1) 350L else 250L }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(timings, -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(timings, -1)
+        }
     }
 
     // When hardware-button control is enabled, the volume keys toggle recording

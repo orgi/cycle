@@ -481,7 +481,17 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
   ≥8 km/h sustained 5s on the shared GPS stream (no extra GPS cost) starts a ride; after a
   ride it stays disarmed until <3 km/h for 60s, so stopping while rolling doesn't instantly
-  restart. Stop stays manual. Front-camera gestures and accelerometer "knock" detection were
+  restart. Stop stays manual.
+  **Vibration confirmation** (`AppSettings.vibrateOnStartStop`, default on): `RecordingController`
+  calls `_confirm(RideFeedback…)` — started = 1 pulse, stopped = 2, bike switched via
+  `cycleBikeProfile` = 3 — at the *start* of `start()`/`stop()` (unawaited, after the
+  already-recording guard), so it's felt instantly for every trigger (volume, proximity hold —
+  where it's the "you can take your hand away" cue, since the screen is dark — auto-start, the
+  on-screen button). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
+  `vibrate(n)`: Android `VibrationEffect.createWaveform` (350 ms on / 250 ms off, `VIBRATE`
+  permission); iOS repeats `kSystemSoundID_Vibrate` every 0.6 s — the strongest buzz an app can
+  trigger (a Taptic impact or Flutter's `HapticFeedback` is too subtle to feel through a
+  handlebar mount). Front-camera gestures and accelerometer "knock" detection were
   considered and rejected (camera battery/heat/indicator; handlebar vibration false triggers).
   **Settings screen** (`/settings`, gear in the map app bar):
   units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),

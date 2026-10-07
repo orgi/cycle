@@ -110,6 +110,8 @@ once the plain USB route works.
 * **Glove-friendly extras** in Settings → Controls (both off by default):
   *Hand over screen start/stop* (hold a hand over the top of the screen for
   2 s) and *Auto-start ride* (starts by itself once you ride above 8 km/h).
+  *Vibrate on start/stop* (on by default) confirms every start (1 buzz), stop
+  (2) and bike switch (3).
 * **GPS** runs through one continuous Core Location request
   (`AppleLocationService`). It keeps recording with the screen off (iOS shows
   the blue location pill) and is released when the app is backgrounded with no

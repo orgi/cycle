@@ -22,6 +22,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
     faster than 8 km/h for 5 seconds. Stopping stays manual. After a ride ends it only re-arms
     once you've stood still for a minute, so it doesn't instantly restart the ride you just
     stopped.
+  - **Vibration confirms it** (Settings → Controls, on by default): 1 buzz = ride started,
+    2 = stopped, 3 = bike switched (volume up during a ride), whatever triggered it. With the
+    hand over the screen, the buzz comes the moment the 2 seconds are reached, while the screen
+    is still dark, so you know you can take your hand away.
 - **iPhone support (sideload pilot).** CI now builds an unsigned `.ipa` on every run (artifact
   `ios-ipa-unsigned`), which can be signed with a free Apple ID and installed from Linux with
   Impactor. No Mac or paid developer account needed. Step-by-step guide:
