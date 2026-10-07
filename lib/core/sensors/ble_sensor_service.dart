@@ -44,6 +44,13 @@ class BleSensorService implements SensorService {
   final Set<String> _targets = {};
   final Set<String> _autoConnectRegistered = {};
 
+  /// What *should* be pursued, independent of whether we're currently
+  /// suspended. [suspendConnections] tears down the live links but keeps this,
+  /// so [resumeConnections] can restore exactly what was there — and a bike
+  /// switch while suspended updates the plan without waking the radio.
+  final Set<String> _desiredTargets = {};
+  bool _suspended = false;
+
   // Bounded direct-connect retry window (no scanning). Re-armed on startup and
   // on ride start; ticks periodically to direct-connect any target that isn't
   // linked yet, and stops at the deadline or once all targets are connected.
@@ -103,6 +110,8 @@ class BleSensorService implements SensorService {
 
   @override
   Future<void> connect(String deviceId, {bool autoConnect = false}) async {
+    _desiredTargets.add(deviceId);
+    if (_suspended) return; // recorded; restored by resumeConnections()
     _targets.add(deviceId);
     _connected[deviceId] ??= ConnectedSensor(
       id: deviceId,
@@ -157,6 +166,7 @@ class BleSensorService implements SensorService {
   /// so GPS-safe. Shared by initial connect, [reconnect], the retry window, and
   /// post-drop recovery.
   Future<void> _attemptDirectConnect(String deviceId) async {
+    if (_suspended || !_targets.contains(deviceId)) return;
     _ensureConnSub(deviceId);
     try {
       await BluetoothDevice.fromId(deviceId).connect(
@@ -167,13 +177,23 @@ class BleSensorService implements SensorService {
       );
     } catch (_) {
       // Asleep / out of range — register passive autoConnect so it links when
-      // it next advertises (quiet on the radio, no scan).
+      // it next advertises (quiet on the radio, no scan). Unless we were
+      // suspended (or the target dropped) while this 12s attempt was in
+      // flight: re-registering here would quietly re-create the very
+      // registration the suspension just tore down, and nothing would clear it
+      // until the app next came to the foreground.
+      if (_suspended || !_targets.contains(deviceId)) return;
       await _registerAutoConnect(deviceId);
     }
   }
 
   @override
-  Future<void> disconnect(String deviceId) => _removeTarget(deviceId);
+  Future<void> disconnect(String deviceId) {
+    // Deliberate unpair/deselect — forget it, unlike a suspend teardown which
+    // keeps the target so it comes back on resume.
+    _desiredTargets.remove(deviceId);
+    return _removeTarget(deviceId);
+  }
 
   @override
   Future<void> reconnect(String deviceId) async {
@@ -202,12 +222,44 @@ class BleSensorService implements SensorService {
 
   @override
   Future<void> setActiveTargets(Set<String> ids) async {
+    _desiredTargets
+      ..clear()
+      ..addAll(ids);
+    // Suspended: record the plan only. Waking the radio to apply a target set
+    // nothing is listening to is exactly the drain the suspension exists to
+    // avoid; resumeConnections() applies it.
+    if (_suspended) return;
     for (final id in _targets.difference(ids).toList()) {
       await _removeTarget(id);
     }
     for (final id in ids.difference(_targets).toList()) {
       await connect(id);
     }
+  }
+
+  @override
+  Future<void> suspendConnections() async {
+    if (_suspended) return;
+    _suspended = true;
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _retryDeadline = null;
+    // Tear down every live link + pending autoConnect registration. The
+    // desired set is untouched, so resumeConnections() puts it all back.
+    for (final id in _targets.toList()) {
+      await _removeTarget(id);
+    }
+  }
+
+  @override
+  Future<void> resumeConnections() async {
+    if (!_suspended) return;
+    _suspended = false;
+    if (_desiredTargets.isEmpty) return;
+    for (final id in _desiredTargets) {
+      await connect(id);
+    }
+    _armRetryWindow(immediate: true);
   }
 
   void _ensureConnSub(String deviceId) {
@@ -234,6 +286,7 @@ class BleSensorService implements SensorService {
   /// whenever the sensor next advertises (wakes / back in range), with no
   /// app-level scanning — quiet on the radio, so it doesn't fight the GPS.
   Future<void> _registerAutoConnect(String deviceId) async {
+    if (_suspended || !_targets.contains(deviceId)) return;
     if (_autoConnectRegistered.contains(deviceId)) return;
     _autoConnectRegistered.add(deviceId);
     _ensureConnSub(deviceId);
@@ -245,6 +298,14 @@ class BleSensorService implements SensorService {
 
   /// Discover services + subscribe to measurements after a (re)connect.
   Future<void> _onConnected(BluetoothDevice device, String deviceId) async {
+    // A connect that landed after we suspended (or after the target was
+    // dropped): let it go rather than wiring up subscriptions nothing reads.
+    if (_suspended || !_targets.contains(deviceId)) {
+      try {
+        await device.disconnect();
+      } catch (_) {}
+      return;
+    }
     try {
       _autoConnectRegistered.remove(deviceId);
       final services = await device.discoverServices();

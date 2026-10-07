@@ -227,6 +227,32 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   (`RecordingController.start`/`resume`), so a sensor that wasn't ready at launch (just
   mounted / waking on the bike) still links without a tap. Direct connect only — NEVER a
   scan — so it stays clear of the GPS radio; it's bounded, not the removed perpetual loop.
+  **Links are released while the app is backgrounded with no ride**
+  (`SensorService.suspendConnections`/`resumeConnections`, driven by `SensorPowerGate` in
+  `lib/features/sensors/application/sensor_power_gate.dart`, owned from `main()`) — the
+  Bluetooth counterpart of the GPS lifecycle gate. A pending `autoConnect` registration never
+  expires, so a paired sensor the rider isn't carrying keeps the BT controller reaching for it
+  as long as the process lives: measured on the real A33 after a weekend of app-open standby as
+  **~169 mAh (~3% of the battery) blamed on Cycle, nearly all of it screen-off**, with six GATT
+  client registrations held open and — importantly — *zero* BLE scan time, so this is the cost
+  of passive autoConnect itself, not of scanning. The gate condition is background AND not
+  recording (a backgrounded recording ride keeps everything), with a 3s grace period (short on purpose: Android's cached-app freezer can freeze a
+  backgrounded process within seconds, and a timer that loses that race never fires) so a
+  quick app-switch doesn't churn registrations. `BleSensorService` keeps the desired target set
+  separately from the live one, so a bike-profile switch while suspended updates the plan
+  without waking the radio; resuming goes through the ordinary direct-connect path plus the
+  bounded retry window, adding no scan. Verify with
+  `adb shell dumpsys bluetooth_manager | grep -c "app: com.cycleapp.cycle"` — the GATT client
+  count should fall to zero shortly after backgrounding without a ride, and come back on resume.
+  **Expect a ~1-minute tail before it reaches zero, and don't read a spot check as a leak.**
+  flutter_blue_plus serialises connect calls in its own queue and a call already handed to it
+  runs to its ~10s timeout whatever the app does, so after a suspension the queued attempts
+  drain one at a time — each registering and unregistering a GATT client — for up to a minute.
+  Verified on a real A33: `SUSPEND` at 00:51:35, last client unregistered 00:52:31, then a
+  sustained 0 with no further churn. A single sample taken during that tail reads 1 and looks
+  exactly like a stuck registration; sample repeatedly over ~90s instead. Cancelling those
+  queued connects on suspend would shorten the tail — `_removeTarget`'s `disconnect()` does not
+  abort one that FBP has already started.
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`

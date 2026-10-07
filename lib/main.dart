@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'features/dashboard/application/ride_providers.dart';
 import 'features/map/application/map_providers.dart';
+import 'features/sensors/application/sensor_power_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,10 @@ void main() {
   final container = ProviderContainer();
   unawaited(container.read(locationServiceProvider).ensurePermission());
   container.listen(currentPositionProvider, (_, _) {}, fireImmediately: true);
+  // Release BLE sensor links while backgrounded with no ride (the Bluetooth
+  // counterpart of the GPS lifecycle gate). Owned here so it covers the whole
+  // app lifetime, not one screen's.
+  container.read(sensorPowerGateProvider);
 
   runApp(
     UncontrolledProviderScope(

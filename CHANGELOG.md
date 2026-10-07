@@ -9,6 +9,17 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **Bluetooth drain while the app sits open in standby.** Paired sensors kept a pending
+  connection registration for as long as the app was alive, so a phone left in standby over a
+  weekend with Cycle open still had the Bluetooth controller trying to reach sensors that
+  weren't there — measured on a Galaxy A33 as ~169 mAh (about 3% of the battery) blamed on
+  Cycle, almost all of it with the screen off, with six GATT client registrations held open.
+  Sensor links are now released when the app is backgrounded with no ride running, and
+  restored when it returns to the foreground (after a 3-second grace period, so flicking to
+  another app and back changes nothing). A ride recording in the background keeps its sensors,
+  exactly like the GPS gate, and restoring uses the existing direct-connect path — still no
+  scanning. (Connection attempts already in flight run to their ~10s timeout, so the last
+  registrations clear up to a minute after the app is backgrounded.)
 - **Battery drain with no ride running.** The GPS receiver was kept running continuously
   from app launch until Android killed the process — including after a ride was stopped and
   while the app sat in the background with the screen off. That drain is invisible to the

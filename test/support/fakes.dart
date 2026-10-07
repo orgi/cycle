@@ -138,6 +138,16 @@ class FakeSensorService implements SensorService {
   @override
   Stream<SensorSnapshot> snapshots() => _snapshots.stream;
 
+  /// Counts of gate-driven suspend/resume calls, for the sensor power gate.
+  int suspendCount = 0;
+  int resumeCount = 0;
+
+  @override
+  Future<void> suspendConnections() async => suspendCount++;
+
+  @override
+  Future<void> resumeConnections() async => resumeCount++;
+
   @override
   Future<void> setActiveTargets(Set<String> ids) async {
     for (final c in _connected.map((c) => c.id).toList()) {
