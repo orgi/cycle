@@ -253,6 +253,24 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   exactly like a stuck registration; sample repeatedly over ~90s instead. Cancelling those
   queued connects on suspend would shorten the tail — `_removeTarget`'s `disconnect()` does not
   abort one that FBP has already started.
+  **Sensor values live only as long as their sensor's link** (`SensorSnapshotMerger`,
+  `lib/core/sensors/sensor_snapshot_merger.dart`, pure + unit-tested; used by both
+  `BleSensorService` and the test fake). Each linked device keeps its own partial snapshot; the
+  merged one is recomputed from the devices present, and a disconnect/removal drops that
+  device's contribution and **re-emits**. It used to be one global snapshot built with
+  `copyWith(x ?? this.x)` — which can never set a field back to null — and nothing cleared or
+  re-emitted on disconnect, so (a) a removed HR strap's last bpm stayed on the dashboard and was
+  stamped onto every point of the *next* ride (`RideController._latestSnapshot` →
+  `recordPoint`), corrupting its average; same for cadence and power; and (b) a cadence-only
+  CSC sensor's results always carry `speed = null` ("hold"), so with one global snapshot every
+  cadence notification re-broadcast a departed speed sensor's last wheel speed, which
+  `RideController._onSnapshot` fed to `SpeedFusion.updateBle` stamped *now* — a fresh BLE
+  reading — keeping the speed tile "from sensor" green. (RideController's "speed sensor
+  dropped → clearBle" check can't help: speed and cadence sensors are the same
+  `SensorKind.speedCadence`.) The CSC hold is preserved — *within* a live link a null field
+  keeps that device's last value — but it ends with the link. `stale_sensor_values_test.dart`
+  reproduces all three field symptoms end-to-end; mutation-checked (making `remove` a no-op
+  fails exactly those three, with the linked-sensor control still passing).
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`

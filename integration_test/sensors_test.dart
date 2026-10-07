@@ -51,5 +51,18 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('connected_hr-1')), findsOneWidget);
+
+    // Back on the home screen the HR tile shows the live value…
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    sensors.emitReading('hr-1', const SensorSnapshot(heartRate: 150));
+    await tester.pumpAndSettle();
+    expect(find.text('150'), findsOneWidget);
+
+    // …and when the strap's link drops, the value goes with it rather than
+    // lingering on the dashboard (and into the next ride's average).
+    sensors.dropLink('hr-1');
+    await tester.pumpAndSettle();
+    expect(find.text('150'), findsNothing);
   });
 }

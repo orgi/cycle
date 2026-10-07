@@ -9,6 +9,15 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **Stale sensor values after a sensor disconnects.** When a sensor's link dropped (heart-rate
+  strap taken off, sensor out of range or asleep), its last value stayed on the dashboard
+  indefinitely — and was **recorded onto every point of the next ride**, so a ride without the
+  strap got the old heart rate as its average. Cadence and power were affected the same way.
+  The speed tile could also stay "from sensor" green with no speed sensor connected: a cadence
+  sensor's notifications kept re-broadcasting the departed speed sensor's last wheel speed,
+  which the speed fusion took as a fresh reading. Sensor values now live only as long as their
+  sensor's link; on disconnect the tile falls back to "—" and nothing is recorded for it. Rides
+  recorded before this fix keep whatever values they were given.
 - **Bluetooth drain while the app sits open in standby.** Paired sensors kept a pending
   connection registration for as long as the app was alive, so a phone left in standby over a
   weekend with Cycle open still had the Bluetooth controller trying to reach sensors that

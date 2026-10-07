@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/sensors/sensor_snapshot_merger.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
@@ -71,6 +72,27 @@ class FakeSensorService implements SensorService {
 
   void emitSnapshot(SensorSnapshot snapshot) => _snapshots.add(snapshot);
 
+  // Same per-device merge the real service uses, so tests exercise the real
+  // "a value lives only as long as its sensor's link" semantics.
+  final SensorSnapshotMerger _merger = SensorSnapshotMerger();
+
+  /// A reading from one linked device (like a real GATT notification).
+  void emitReading(String deviceId, SensorSnapshot reading) =>
+      _snapshots.add(_merger.update(deviceId, reading));
+
+  /// The link to [deviceId] drops on its own (strap taken off, out of range):
+  /// it stays a target but its readings go, exactly like the real service.
+  void dropLink(String deviceId) {
+    final i = _connected.indexWhere((c) => c.id == deviceId);
+    if (i >= 0) {
+      final c = _connected[i];
+      _connected[i] = ConnectedSensor(
+          id: c.id, name: c.name, kinds: c.kinds, connected: false);
+      _connectedCtrl.add(List.of(_connected));
+    }
+    if (_merger.remove(deviceId)) _snapshots.add(_merger.merged);
+  }
+
   Future<void> dispose() async {
     await _snapshots.close();
     await _connectedCtrl.close();
@@ -109,6 +131,7 @@ class FakeSensorService implements SensorService {
   Future<void> disconnect(String deviceId) async {
     _connected.removeWhere((c) => c.id == deviceId);
     _connectedCtrl.add(List.of(_connected));
+    if (_merger.remove(deviceId)) _snapshots.add(_merger.merged);
   }
 
   /// Device ids [reconnect] was called for, in order (for test assertions).

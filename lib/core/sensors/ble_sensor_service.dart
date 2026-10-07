@@ -6,6 +6,7 @@ import 'csc_calculator.dart';
 import 'gatt.dart';
 import 'gatt_parsers.dart';
 import 'sensor_service.dart';
+import 'sensor_snapshot_merger.dart';
 
 /// Real [SensorService] backed by flutter_blue_plus. Scans for the standard
 /// cycling GATT services, connects, subscribes to the measurement
@@ -28,7 +29,9 @@ class BleSensorService implements SensorService {
   final StreamController<List<ConnectedSensor>> _connectedCtrl =
       StreamController<List<ConnectedSensor>>.broadcast();
 
-  SensorSnapshot _snapshot = const SensorSnapshot();
+  // Per-device readings, merged across linked sensors only — see
+  // SensorSnapshotMerger for why one global snapshot leaked stale values.
+  final SensorSnapshotMerger _merger = SensorSnapshotMerger();
   final Map<String, ConnectedSensor> _connected = {};
   final Map<String, CscCalculator> _csc = {};
   final Map<String, List<StreamSubscription<dynamic>>> _subs = {};
@@ -348,6 +351,7 @@ class BleSensorService implements SensorService {
     }
     _subs.remove(deviceId);
     _csc.remove(deviceId);
+    _clearReadings(deviceId);
     final existing = _connected[deviceId];
     if (existing != null) {
       _connected[deviceId] = ConnectedSensor(
@@ -373,6 +377,7 @@ class BleSensorService implements SensorService {
       await s.cancel();
     }
     _csc.remove(deviceId);
+    _clearReadings(deviceId);
     _connected.remove(deviceId);
     _emitConnected();
     try {
@@ -388,21 +393,27 @@ class BleSensorService implements SensorService {
 
   void _onData(String deviceId, SensorKind kind, List<int> data) {
     if (data.isEmpty) return;
-    switch (kind) {
-      case SensorKind.heartRate:
-        _snapshot = _snapshot.copyWith(
-            heartRate: GattParsers.parseHeartRate(data).bpm);
-      case SensorKind.speedCadence:
-        final result = _csc[deviceId]!.update(GattParsers.parseCsc(data));
-        _snapshot = _snapshot.copyWith(
-          wheelSpeedMps: result.speedMetersPerSecond,
-          cadenceRpm: result.cadenceRpm,
-        );
-      case SensorKind.power:
-        _snapshot =
-            _snapshot.copyWith(power: GattParsers.parsePower(data).watts);
-    }
-    _snapshots.add(_snapshot);
+    final reading = switch (kind) {
+      SensorKind.heartRate =>
+        SensorSnapshot(heartRate: GattParsers.parseHeartRate(data).bpm),
+      SensorKind.speedCadence => () {
+          final result = _csc[deviceId]!.update(GattParsers.parseCsc(data));
+          return SensorSnapshot(
+            wheelSpeedMps: result.speedMetersPerSecond,
+            cadenceRpm: result.cadenceRpm,
+          );
+        }(),
+      SensorKind.power =>
+        SensorSnapshot(power: GattParsers.parsePower(data).watts),
+    };
+    _snapshots.add(_merger.update(deviceId, reading));
+  }
+
+  /// Forgets everything [deviceId] contributed and tells listeners, so the
+  /// dashboard falls back to "—" and the next recorded point doesn't inherit a
+  /// value from a sensor that's no longer there.
+  void _clearReadings(String deviceId) {
+    if (_merger.remove(deviceId)) _snapshots.add(_merger.merged);
   }
 
   Set<SensorKind> _kindsFromServices(List<Guid> serviceUuids) {
