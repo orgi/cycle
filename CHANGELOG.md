@@ -9,6 +9,39 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Fixed
+- **Stale sensor values after a sensor disconnects.** When a sensor's link dropped (heart-rate
+  strap taken off, sensor out of range or asleep), its last value stayed on the dashboard
+  indefinitely — and was **recorded onto every point of the next ride**, so a ride without the
+  strap got the old heart rate as its average. Cadence and power were affected the same way.
+  The speed tile could also stay "from sensor" green with no speed sensor connected: a cadence
+  sensor's notifications kept re-broadcasting the departed speed sensor's last wheel speed,
+  which the speed fusion took as a fresh reading. Sensor values now live only as long as their
+  sensor's link; on disconnect the tile falls back to "—" and nothing is recorded for it. Rides
+  recorded before this fix keep whatever values they were given.
+- **Bluetooth drain while the app sits open in standby.** Paired sensors kept a pending
+  connection registration for as long as the app was alive, so a phone left in standby over a
+  weekend with Cycle open still had the Bluetooth controller trying to reach sensors that
+  weren't there — measured on a Galaxy A33 as ~169 mAh (about 3% of the battery) blamed on
+  Cycle, almost all of it with the screen off, with six GATT client registrations held open.
+  Sensor links are now released when the app is backgrounded with no ride running, and
+  restored when it returns to the foreground (after a 3-second grace period, so flicking to
+  another app and back changes nothing). A ride recording in the background keeps its sensors,
+  exactly like the GPS gate, and restoring uses the existing direct-connect path — still no
+  scanning. (Connection attempts already in flight run to their ~10s timeout, so the last
+  registrations clear up to a minute after the app is backgrounded.)
+- **Battery drain with no ride running.** The GPS receiver was kept running continuously
+  from app launch until Android killed the process — including after a ride was stopped and
+  while the app sat in the background with the screen off. That drain is invisible to the
+  per-ride battery stat (which is only sampled between Start and Stop), which is why
+  Android's per-app battery usage read noticeably higher than the recorded rides accounted
+  for. The GPS request is now held only while the app is in the foreground **or** a ride is
+  recording; a backgrounded recording ride is unaffected and keeps exactly the same single,
+  continuously-held request as before.
+- **Keep-screen-on released out from under a map download.** Keep-awake was a single global
+  flag with two owners, so stopping a ride while a region download was in flight let the
+  screen sleep — the OS then suspended the app and the download dropped (it resumed from its
+  `.part` file on retry). Keep-awake is now reference-counted per owner and stays on until
+  the last owner releases it.
 - **Sensors auto-connect on launch again (direct connect).** After the switch to passive
   reconnection, a paired sensor that was present and advertising (e.g. a worn HR strap)
   often would not link on launch — passive Android `autoConnect` frequently never connects a

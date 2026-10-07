@@ -167,6 +167,21 @@ abstract class SensorService {
   /// (which owns pairing) is responsible for remembering it stays paired.
   Future<void> setActiveTargets(Set<String> ids);
 
+  /// Releases every live BLE link and pending connection registration, for
+  /// when the app is backgrounded with no ride running. The desired target set
+  /// is remembered, so [resumeConnections] restores it.
+  ///
+  /// Pending `autoConnect` registrations are cheap per second but not free: a
+  /// weekend of app-open standby had the phone blaming Cycle for ~169 mAh of
+  /// Bluetooth (~3% of the battery) with six GATT client registrations held
+  /// open and no ride in sight. Nothing reads a sensor value while the app is
+  /// backgrounded and not recording, so nothing needs to stay linked.
+  Future<void> suspendConnections() async {}
+
+  /// Re-establishes the targets that were active when [suspendConnections] was
+  /// called (direct connect + the bounded retry window — never a scan).
+  Future<void> resumeConnections() async {}
+
   /// Sets the wheel circumference (metres) used to derive speed from a CSC
   /// sensor. Applies to sensors connected after this call. Concrete default is
   /// a no-op so fakes/implementations need not override it.

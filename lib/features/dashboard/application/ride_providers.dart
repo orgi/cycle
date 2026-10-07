@@ -12,6 +12,7 @@ import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/services/battery_service.dart';
+import '../../../core/services/location_power_control.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/native_location_service.dart';
 import '../../../core/services/fg_task_recording_service.dart';
@@ -35,9 +36,18 @@ final locationServiceProvider = Provider<LocationService>(
       : GeolocatorLocationService(),
 );
 
+/// Tells the native layer whether a ride is recording, so the continuous GPS
+/// request is held while a backgrounded ride records and dropped when the app
+/// is backgrounded with no ride running. No-op off Android.
+final locationPowerControlProvider = Provider<LocationPowerControl>(
+  (ref) => defaultTargetPlatform == TargetPlatform.android
+      ? const NativeLocationPowerControl()
+      : const NoopLocationPowerControl(),
+);
+
 /// Keep-screen-awake service. Overridden with a no-op in tests.
 final screenWakeServiceProvider = Provider<ScreenWakeService>(
-  (ref) => const WakelockScreenWakeService(),
+  (ref) => WakelockScreenWakeService(),
 );
 
 /// Battery level source for the ride drain stat. No-op in tests.
@@ -75,7 +85,12 @@ class RecordingController extends Notifier<bool> {
 
   Future<void> start() async {
     if (state) return;
-    await ref.read(screenWakeServiceProvider).enable();
+    // Flag the ride to the native GPS gate FIRST, before anything that can push
+    // the activity through onPause (the foreground service can raise a
+    // notification-permission dialog) — otherwise that pause sees "not
+    // recording" and drops the GPS request mid-ride.
+    await ref.read(locationPowerControlProvider).setRecordingActive(true);
+    await ref.read(screenWakeServiceProvider).enable(ScreenWakeService.ownerRecording);
     ref.read(rideControllerProvider.notifier).reset();
     final battery = await ref.read(batteryServiceProvider).level();
     final bikeProfileId = ref.read(bikeProfilesProvider).activeId;
@@ -118,7 +133,9 @@ class RecordingController extends Notifier<bool> {
   /// to the same track, its stats carried over.
   Future<void> resume(int trackId) async {
     if (state) return;
-    await ref.read(screenWakeServiceProvider).enable();
+    // See start(): the gate is told before anything that can pause the activity.
+    await ref.read(locationPowerControlProvider).setRecordingActive(true);
+    await ref.read(screenWakeServiceProvider).enable(ScreenWakeService.ownerRecording);
     final points = await ref.read(appDatabaseProvider).pointsFor(trackId);
     ref.read(rideControllerProvider.notifier).resumeFrom(points);
     _trackId = trackId;
@@ -149,7 +166,10 @@ class RecordingController extends Notifier<bool> {
           );
     }
     await ref.read(recordingForegroundServiceProvider).stop();
-    await ref.read(screenWakeServiceProvider).disable();
+    // No ride: the GPS request may now be dropped whenever the app goes to the
+    // background (it stays on while the app is in the foreground).
+    await ref.read(locationPowerControlProvider).setRecordingActive(false);
+    await ref.read(screenWakeServiceProvider).disable(ScreenWakeService.ownerRecording);
   }
 
   /// Persists one sample to the current ride (no-op when not recording).

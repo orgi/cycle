@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:cycle/core/sensors/sensor_snapshot_merger.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_store.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
+import 'package:cycle/core/services/location_power_control.dart';
 import 'package:cycle/core/services/location_service.dart';
 import 'package:cycle/core/services/route_import_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
@@ -29,16 +31,25 @@ class FakeLocationService implements LocationService {
   Stream<GeoSample> positions() => _controller.stream;
 }
 
-/// A [ScreenWakeService] that records how often it was toggled.
-class RecordingScreenWakeService implements ScreenWakeService {
+/// A [LocationPowerControl] that records the recording-active flags pushed to
+/// the native GPS gate.
+class RecordingLocationPowerControl implements LocationPowerControl {
+  final List<bool> calls = [];
+
+  @override
+  Future<void> setRecordingActive(bool active) async => calls.add(active);
+}
+
+/// A [ScreenWakeService] that records how often keep-awake actually toggled
+/// (owner reference-counting lives in the base class, so these count real
+/// transitions, not every enable/disable call).
+class RecordingScreenWakeService extends ScreenWakeService {
   int enableCount = 0;
   int disableCount = 0;
 
   @override
-  Future<void> enable() async => enableCount++;
-
-  @override
-  Future<void> disable() async => disableCount++;
+  Future<void> applyEnabled(bool on) async =>
+      on ? enableCount++ : disableCount++;
 }
 
 /// A [SensorService] driven by the test: set [discoverable] sensors, drive
@@ -60,6 +71,27 @@ class FakeSensorService implements SensorService {
   final List<ConnectedSensor> _connected = [];
 
   void emitSnapshot(SensorSnapshot snapshot) => _snapshots.add(snapshot);
+
+  // Same per-device merge the real service uses, so tests exercise the real
+  // "a value lives only as long as its sensor's link" semantics.
+  final SensorSnapshotMerger _merger = SensorSnapshotMerger();
+
+  /// A reading from one linked device (like a real GATT notification).
+  void emitReading(String deviceId, SensorSnapshot reading) =>
+      _snapshots.add(_merger.update(deviceId, reading));
+
+  /// The link to [deviceId] drops on its own (strap taken off, out of range):
+  /// it stays a target but its readings go, exactly like the real service.
+  void dropLink(String deviceId) {
+    final i = _connected.indexWhere((c) => c.id == deviceId);
+    if (i >= 0) {
+      final c = _connected[i];
+      _connected[i] = ConnectedSensor(
+          id: c.id, name: c.name, kinds: c.kinds, connected: false);
+      _connectedCtrl.add(List.of(_connected));
+    }
+    if (_merger.remove(deviceId)) _snapshots.add(_merger.merged);
+  }
 
   Future<void> dispose() async {
     await _snapshots.close();
@@ -99,6 +131,7 @@ class FakeSensorService implements SensorService {
   Future<void> disconnect(String deviceId) async {
     _connected.removeWhere((c) => c.id == deviceId);
     _connectedCtrl.add(List.of(_connected));
+    if (_merger.remove(deviceId)) _snapshots.add(_merger.merged);
   }
 
   /// Device ids [reconnect] was called for, in order (for test assertions).
@@ -127,6 +160,16 @@ class FakeSensorService implements SensorService {
 
   @override
   Stream<SensorSnapshot> snapshots() => _snapshots.stream;
+
+  /// Counts of gate-driven suspend/resume calls, for the sensor power gate.
+  int suspendCount = 0;
+  int resumeCount = 0;
+
+  @override
+  Future<void> suspendConnections() async => suspendCount++;
+
+  @override
+  Future<void> resumeConnections() async => resumeCount++;
 
   @override
   Future<void> setActiveTargets(Set<String> ids) async {
