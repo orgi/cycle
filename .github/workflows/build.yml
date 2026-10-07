@@ -2,7 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # iphone-pilot: every push builds the sideloadable .ipa (docs/ios-sideload.md)
+    # with no manual "Run workflow" click.
+    branches: [main, iphone-pilot]
   pull_request:
   workflow_dispatch:
 
@@ -62,16 +64,21 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      # No Apple signing identity/provisioning profile is configured here, so
-      # this produces an unsigned build for CI verification, not App Store /
-      # TestFlight distribution.
+      # No Apple signing identity is configured here (free Apple ID, no paid
+      # developer account), so this builds UNSIGNED and packages it as an .ipa
+      # (Payload/Runner.app, zipped). A sideloader on the user's machine
+      # (Impactor — see docs/ios-sideload.md) signs it with their free Apple ID
+      # and installs it over USB.
       - name: Build iOS (unsigned)
         run: flutter build ios --release --no-codesign
-      - name: Zip Runner.app
+      - name: Package unsigned .ipa
         run: |
-          cd build/ios/iphoneos
-          zip -r Runner.app.zip Runner.app
+          version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | tr '+' '-')
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
+          (cd build/ipa && zip -qry "cycle-${version}-unsigned.ipa" Payload)
+          ls -la build/ipa
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-app-unsigned
-          path: build/ios/iphoneos/Runner.app.zip
+          name: ios-ipa-unsigned
+          path: build/ipa/*.ipa

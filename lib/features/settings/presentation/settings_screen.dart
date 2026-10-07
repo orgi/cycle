@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/app_version.dart';
+import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../tracks/application/track_providers.dart';
@@ -75,26 +76,30 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           const _Header('Controls'),
-          SwitchListTile(
-            key: const Key('hardwareButtonsSwitch'),
-            title: const Text('Volume keys start/stop'),
-            subtitle: const Text(
-              'Use the phone\'s volume buttons to start/stop recording '
-              '(Android only; not available on iOS).',
+          // Volume-key start/stop is Android-only; on iOS the Start/Stop
+          // button is always shown instead, so neither switch applies.
+          if (volumeKeysSupported) ...[
+            SwitchListTile(
+              key: const Key('hardwareButtonsSwitch'),
+              title: const Text('Volume keys start/stop'),
+              subtitle: const Text(
+                'Use the phone\'s volume buttons to start/stop recording '
+                '(Android only; not available on iOS).',
+              ),
+              value: settings.hardwareButtonsEnabled,
+              onChanged: controller.setHardwareButtons,
             ),
-            value: settings.hardwareButtonsEnabled,
-            onChanged: controller.setHardwareButtons,
-          ),
-          SwitchListTile(
-            key: const Key('showStartStopSwitch'),
-            title: const Text('Show Start/Stop button'),
-            subtitle: const Text(
-              'Off by default — use the volume keys. Always shown when the '
-              'volume keys are disabled.',
+            SwitchListTile(
+              key: const Key('showStartStopSwitch'),
+              title: const Text('Show Start/Stop button'),
+              subtitle: const Text(
+                'Off by default — use the volume keys. Always shown when the '
+                'volume keys are disabled.',
+              ),
+              value: settings.showStartStopButton,
+              onChanged: controller.setShowStartStopButton,
             ),
-            value: settings.showStartStopButton,
-            onChanged: controller.setShowStartStopButton,
-          ),
+          ],
           SwitchListTile(
             key: const Key('autoPauseSwitch'),
             title: const Text('Auto-pause'),

@@ -74,6 +74,15 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `NativeLocationService` (`lib/core/services/native_location_service.dart`,
   `locationServiceProvider` picks it on Android). This is exactly what OruxMaps does, and —
   proven on the real A33 via `dumpsys location` — the only thing that holds a solid fix here.
+  **iOS uses `AppleLocationService`** (`lib/core/services/apple_location_service.dart`): ONE
+  continuous Core Location request via geolocator's `getPositionStream` (`AppleSettings`:
+  `fitness`, `pauseLocationUpdatesAutomatically: false`, background updates on with
+  `UIBackgroundModes: location`). The "don't use `getPositionStream`" rule below is about
+  geolocator's *Android* implementation on the A33; on iOS the stream is Core Location's own
+  continuous updates, the standard way to track. It also implements `LocationPowerControl`,
+  so the GPS lifecycle gate below runs **in Dart** on iOS (`AppLifecycleListener` +
+  recording state; `locationPowerControlProvider` returns the same instance). The
+  `flutter_foreground_task` service is Android-only (`NoopRecordingForegroundService` on iOS).
   Other platforms fall back to `GeolocatorLocationService` (`location_service.dart`).
   Permission still goes through geolocator (that part is fine); only the position stream is
   native.
@@ -96,6 +105,29 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     and warms `currentPositionProvider` (+ `ensurePermission`) immediately, before
     `runApp`, so acquisition begins the instant the app starts rather than when the map
     screen finishes building (behind the async map load). GPS is the priority sensor.
+  * **The GPS request is held only while it has a consumer** (`MainActivity.updateLocationUpdates`):
+    Dart is listening AND (the app is in the foreground OR a ride is recording). It used to
+    stay registered for the whole process lifetime — `removeUpdates` ran only in `onDestroy`,
+    and `onCancel` never fires because Dart never cancels the stream — so the receiver kept
+    navigating at 1 Hz after a ride was stopped, in the background, screen off, until Android
+    reclaimed the process. That drain is invisible to the per-ride battery stat (sampled only
+    between Start and Stop), which is what made Android's per-app battery usage read several
+    percent higher than the recorded rides accounted for. Recording state is pushed across the
+    `cycle/location_control` MethodChannel (`lib/core/services/location_power_control.dart`,
+    from `RecordingController.start`/`resume`/`stop`); the foreground half the activity knows
+    from `onResume`/`onPause`. **This is a lifecycle gate, not a duty cycle** — while the
+    request is registered it is still the ONE continuous 1 Hz request, started/stopped only on
+    a foreground/background or recording transition, never per fix. Do NOT "save more" by
+    raising the interval when idle: a longer interval lets the receiver duty-cycle, which is
+    the same "never settles into a lock" failure documented above, for little real saving.
+    **`setRecordingActive(true)` must be the FIRST thing `start()`/`resume()` do**, before the
+    wakelock/DB write/foreground-service start — starting the foreground service can push the
+    activity through `onPause` (it may raise a notification-permission dialog), and a pause
+    evaluated while the gate still reads "not recording" drops the GPS request one second into
+    the ride. Caught on the emulator via `dumpsys location` (a `-registration` right after the
+    volume-key start, with no re-registration); the four-state probe — foreground idle /
+    background idle / foreground recording / background recording — is what makes this visible,
+    so re-run it after touching either side of the gate.
   * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
     at the source when the GPS chip's own accuracy estimate is worse than 10 m
     (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
@@ -204,6 +236,50 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   (`RecordingController.start`/`resume`), so a sensor that wasn't ready at launch (just
   mounted / waking on the bike) still links without a tap. Direct connect only — NEVER a
   scan — so it stays clear of the GPS radio; it's bounded, not the removed perpetual loop.
+  **Links are released while the app is backgrounded with no ride**
+  (`SensorService.suspendConnections`/`resumeConnections`, driven by `SensorPowerGate` in
+  `lib/features/sensors/application/sensor_power_gate.dart`, owned from `main()`) — the
+  Bluetooth counterpart of the GPS lifecycle gate. A pending `autoConnect` registration never
+  expires, so a paired sensor the rider isn't carrying keeps the BT controller reaching for it
+  as long as the process lives: measured on the real A33 after a weekend of app-open standby as
+  **~169 mAh (~3% of the battery) blamed on Cycle, nearly all of it screen-off**, with six GATT
+  client registrations held open and — importantly — *zero* BLE scan time, so this is the cost
+  of passive autoConnect itself, not of scanning. The gate condition is background AND not
+  recording (a backgrounded recording ride keeps everything), with a 3s grace period (short on purpose: Android's cached-app freezer can freeze a
+  backgrounded process within seconds, and a timer that loses that race never fires) so a
+  quick app-switch doesn't churn registrations. `BleSensorService` keeps the desired target set
+  separately from the live one, so a bike-profile switch while suspended updates the plan
+  without waking the radio; resuming goes through the ordinary direct-connect path plus the
+  bounded retry window, adding no scan. Verify with
+  `adb shell dumpsys bluetooth_manager | grep -c "app: com.cycleapp.cycle"` — the GATT client
+  count should fall to zero shortly after backgrounding without a ride, and come back on resume.
+  **Expect a ~1-minute tail before it reaches zero, and don't read a spot check as a leak.**
+  flutter_blue_plus serialises connect calls in its own queue and a call already handed to it
+  runs to its ~10s timeout whatever the app does, so after a suspension the queued attempts
+  drain one at a time — each registering and unregistering a GATT client — for up to a minute.
+  Verified on a real A33: `SUSPEND` at 00:51:35, last client unregistered 00:52:31, then a
+  sustained 0 with no further churn. A single sample taken during that tail reads 1 and looks
+  exactly like a stuck registration; sample repeatedly over ~90s instead. Cancelling those
+  queued connects on suspend would shorten the tail — `_removeTarget`'s `disconnect()` does not
+  abort one that FBP has already started.
+  **Sensor values live only as long as their sensor's link** (`SensorSnapshotMerger`,
+  `lib/core/sensors/sensor_snapshot_merger.dart`, pure + unit-tested; used by both
+  `BleSensorService` and the test fake). Each linked device keeps its own partial snapshot; the
+  merged one is recomputed from the devices present, and a disconnect/removal drops that
+  device's contribution and **re-emits**. It used to be one global snapshot built with
+  `copyWith(x ?? this.x)` — which can never set a field back to null — and nothing cleared or
+  re-emitted on disconnect, so (a) a removed HR strap's last bpm stayed on the dashboard and was
+  stamped onto every point of the *next* ride (`RideController._latestSnapshot` →
+  `recordPoint`), corrupting its average; same for cadence and power; and (b) a cadence-only
+  CSC sensor's results always carry `speed = null` ("hold"), so with one global snapshot every
+  cadence notification re-broadcast a departed speed sensor's last wheel speed, which
+  `RideController._onSnapshot` fed to `SpeedFusion.updateBle` stamped *now* — a fresh BLE
+  reading — keeping the speed tile "from sensor" green. (RideController's "speed sensor
+  dropped → clearBle" check can't help: speed and cadence sensors are the same
+  `SensorKind.speedCadence`.) The CSC hold is preserved — *within* a live link a null field
+  keeps that device's last value — but it ends with the link. `stale_sensor_values_test.dart`
+  reproduces all three field symptoms end-to-end; mutation-checked (making `remove` a no-op
+  fails exactly those three, with the linked-sensor control still passing).
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`
@@ -214,7 +290,14 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `routes/` folder (Android external files dir / iOS documents) and pick from an in-app list;
   a bundled `assets/routes/monaco_loop.gpx` is the "Follow demo route". We deliberately do
   **not** use `file_picker` — see Known gotchas.
-* **Keep-awake:** `wakelock_plus`.
+* **Keep-awake:** `wakelock_plus` — note this is `FLAG_KEEP_SCREEN_ON` on the activity
+  window, NOT a `PowerManager` wakelock, so it is inert while the app is backgrounded and
+  dies with the process; there is nothing to "leak" and no battery to save by releasing it
+  on pause. It has **more than one owner** (a recording ride, an in-flight map download), so
+  `ScreenWakeService` reference-counts by owner key and only calls the platform on a
+  transition — a single global flag meant `RecordingController.stop()` released the screen
+  out from under a running region download (screen sleeps → OS suspends the app → download
+  drops, resuming from its `.part` file only on retry).
 
 Code is organised under `lib/` as `core/` (services, models, metrics, utils) and
 `features/<feature>/` split into `presentation/` · `application/` (Riverpod) · `domain/`.
@@ -233,7 +316,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   * `tool/fl flutter test integration_test`   (GUI tests — needs the emulator image)
 * Caches live in gitignored `/.cache/` so they persist between runs.
 * **iOS cannot be built/tested on this Linux host** (needs macOS/Xcode). Keep all Dart
-  code and `ios/` config cross-platform; build/test iOS later on a Mac or macOS CI.
+  code and `ios/` config cross-platform. iOS builds come from **GitHub Actions**
+  (`.github/workflows/build.yml` `ios` job, `macos-latest`, free since the repo is public):
+  an **unsigned** `.ipa` artifact (`ios-ipa-unsigned`) that the user signs with a **free
+  Apple ID** and installs over USB from Linux with **Impactor** (Flatpak
+  `dev.khcrysalis.PlumeImpactor`); full steps in `docs/ios-sideload.md`. Free signing expires
+  after **7 days**: re-install the same `.ipa` over the top (data is kept, the same rule as
+  `adb install -r`) and never tell the user to delete the app. Test iPhone: **iPhone 12 mini**.
+  The `test` job (analyze + tests) gates the `ios`/`android` jobs, so a lint failure silently
+  means no iOS build; `third_party/**` is excluded from analysis for that reason.
 * **Release signing (stable key):** release builds are signed with a fixed key
   (`android/app/cycle-release.jks` + `android/key.properties`, **both gitignored**) wired in
   `android/app/build.gradle.kts`. This lets a release APK be updated in place (`adb install -r`)
@@ -365,7 +456,10 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   (plugin-free). Consumes both down+up (ignores key-repeat) so the volume neither changes nor
   shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
   setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
-  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op).
+  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op), so
+  there the Start/Stop button is **always shown** and the volume-key settings are hidden
+  (`AppSettings.startStopButtonVisible` + `volumeKeysSupported`); otherwise a fresh iOS
+  install would have no way to start a ride.
   **Settings screen** (`/settings`, gear in the map app bar):
   units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
   wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),

@@ -78,4 +78,32 @@ void main() {
       expect(formatSpeed(30, UnitSystem.metric), '30.00');
     });
   });
+
+  group('startStopButtonVisible', () {
+    const defaults = AppSettings();
+
+    test('hidden by default where the volume keys work (Android)', () {
+      expect(defaults.startStopButtonVisible(volumeKeysSupported: true),
+          isFalse);
+    });
+
+    test('always shown where the volume keys cannot start a ride (iOS)', () {
+      // Otherwise a fresh iOS install has no way at all to start a ride.
+      expect(defaults.startStopButtonVisible(volumeKeysSupported: false),
+          isTrue);
+    });
+
+    test('shown when requested or when the volume keys are switched off', () {
+      expect(
+          defaults
+              .copyWith(showStartStopButton: true)
+              .startStopButtonVisible(volumeKeysSupported: true),
+          isTrue);
+      expect(
+          defaults
+              .copyWith(hardwareButtonsEnabled: false)
+              .startStopButtonVisible(volumeKeysSupported: true),
+          isTrue);
+    });
+  });
 }

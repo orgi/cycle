@@ -84,8 +84,21 @@ class MainActivity : FlutterActivity() {
     // often got no fix at all; getPositionStream never engaged the receiver on
     // this hardware. A raw LocationManager request keeps the GPS navigating.
     private val locationChannel = "cycle/location"
+    private val locationControlChannel = "cycle/location_control"
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
+    private var locationEvents: EventChannel.EventSink? = null
+
+    // The GPS request is held only while it has a consumer: Dart is listening
+    // AND (the app is in the foreground OR a ride is recording). Leaving it
+    // registered for the whole process lifetime kept the receiver navigating at
+    // 1 Hz long after a ride ended — in the background, screen off, until
+    // Android reclaimed the process — which is invisible to the per-ride
+    // battery stat but very much visible in Android's per-app battery usage.
+    // A backgrounded *recording* ride keeps it: the foreground service is alive
+    // and every fix is a recorded track point.
+    private var isForeground = true
+    private var recordingActive = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -277,21 +290,62 @@ class MainActivity : FlutterActivity() {
         EventChannel(messenger, locationChannel).setStreamHandler(
             object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
-                    startLocationUpdates(events)
+                    locationEvents = events
+                    updateLocationUpdates()
                 }
 
                 override fun onCancel(arguments: Any?) {
-                    stopLocationUpdates()
+                    locationEvents = null
+                    updateLocationUpdates()
                 }
             },
         )
 
+        // Dart tells us when a ride is recording, so a backgrounded ride keeps
+        // the GPS request while a backgrounded idle app drops it.
+        MethodChannel(messenger, locationControlChannel).setMethodCallHandler { call, result ->
+            if (call.method == "setRecordingActive") {
+                recordingActive = call.arguments as? Boolean ?: false
+                updateLocationUpdates()
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
         handleIntent(intent)
     }
 
-    /// One continuous GPS request; every fix is streamed to Dart. Kept open for
-    /// the app's lifetime (Dart holds the subscription), so the GPS stays
-    /// navigating instead of cold-restarting per fix.
+    /// Registers or drops the GPS request to match the current state. The
+    /// request itself is never cycled per fix — once registered it stays
+    /// continuously open (the only thing that holds a lock on this hardware);
+    /// this only starts/stops it on a foreground/background or recording
+    /// transition.
+    private fun updateLocationUpdates() {
+        val events = locationEvents
+        val wanted = events != null && (isForeground || recordingActive)
+        if (wanted && locationListener == null) {
+            startLocationUpdates(events!!)
+        } else if (!wanted && locationListener != null) {
+            stopLocationUpdates()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isForeground = true
+        updateLocationUpdates()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isForeground = false
+        updateLocationUpdates()
+    }
+
+    /// One continuous GPS request; every fix is streamed to Dart. Held open for
+    /// as long as it has a consumer (see updateLocationUpdates), so the GPS
+    /// stays navigating instead of cold-restarting per fix.
     private fun startLocationUpdates(events: EventChannel.EventSink) {
         val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationManager = lm
