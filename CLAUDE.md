@@ -74,6 +74,15 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `NativeLocationService` (`lib/core/services/native_location_service.dart`,
   `locationServiceProvider` picks it on Android). This is exactly what OruxMaps does, and —
   proven on the real A33 via `dumpsys location` — the only thing that holds a solid fix here.
+  **iOS uses `AppleLocationService`** (`lib/core/services/apple_location_service.dart`): ONE
+  continuous Core Location request via geolocator's `getPositionStream` (`AppleSettings`:
+  `fitness`, `pauseLocationUpdatesAutomatically: false`, background updates on with
+  `UIBackgroundModes: location`). The "don't use `getPositionStream`" rule below is about
+  geolocator's *Android* implementation on the A33; on iOS the stream is Core Location's own
+  continuous updates, the standard way to track. It also implements `LocationPowerControl`,
+  so the GPS lifecycle gate below runs **in Dart** on iOS (`AppLifecycleListener` +
+  recording state; `locationPowerControlProvider` returns the same instance). The
+  `flutter_foreground_task` service is Android-only (`NoopRecordingForegroundService` on iOS).
   Other platforms fall back to `GeolocatorLocationService` (`location_service.dart`).
   Permission still goes through geolocator (that part is fine); only the position stream is
   native.
@@ -307,7 +316,15 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   * `tool/fl flutter test integration_test`   (GUI tests — needs the emulator image)
 * Caches live in gitignored `/.cache/` so they persist between runs.
 * **iOS cannot be built/tested on this Linux host** (needs macOS/Xcode). Keep all Dart
-  code and `ios/` config cross-platform; build/test iOS later on a Mac or macOS CI.
+  code and `ios/` config cross-platform. iOS builds come from **GitHub Actions**
+  (`.github/workflows/build.yml` `ios` job, `macos-latest`, free since the repo is public):
+  an **unsigned** `.ipa` artifact (`ios-ipa-unsigned`) that the user signs with a **free
+  Apple ID** and installs over USB from Linux with **Impactor** (Flatpak
+  `dev.khcrysalis.PlumeImpactor`); full steps in `docs/ios-sideload.md`. Free signing expires
+  after **7 days**: re-install the same `.ipa` over the top (data is kept, the same rule as
+  `adb install -r`) and never tell the user to delete the app. Test iPhone: **iPhone 12 mini**.
+  The `test` job (analyze + tests) gates the `ios`/`android` jobs, so a lint failure silently
+  means no iOS build; `third_party/**` is excluded from analysis for that reason.
 * **Release signing (stable key):** release builds are signed with a fixed key
   (`android/app/cycle-release.jks` + `android/key.properties`, **both gitignored**) wired in
   `android/app/build.gradle.kts`. This lets a release APK be updated in place (`adb install -r`)
@@ -439,7 +456,10 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   (plugin-free). Consumes both down+up (ignores key-repeat) so the volume neither changes nor
   shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
   setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
-  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op).
+  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op), so
+  there the Start/Stop button is **always shown** and the volume-key settings are hidden
+  (`AppSettings.startStopButtonVisible` + `volumeKeysSupported`); otherwise a fresh iOS
+  install would have no way to start a ride.
   **Settings screen** (`/settings`, gear in the map app bar):
   units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
   wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),

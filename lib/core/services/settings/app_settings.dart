@@ -81,6 +81,12 @@ class AppSettings {
   /// Speed (km/h) below which the ride auto-pauses.
   final double autoPauseSpeedKmh;
 
+  /// Whether the home screen shows the Start/Stop button: on request, or
+  /// whenever the volume keys can't start a ride — switched off, or on a
+  /// platform that can't intercept them (iOS).
+  bool startStopButtonVisible({required bool volumeKeysSupported}) =>
+      showStartStopButton || !hardwareButtonsEnabled || !volumeKeysSupported;
+
   AppSettings copyWith({
     UnitSystem? units,
     double? wheelCircumferenceMeters,

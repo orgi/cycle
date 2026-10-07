@@ -1,6 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+/// Whether this platform can capture the volume keys to start/stop a ride.
+/// Only Android can (`MainActivity.dispatchKeyEvent`); iOS gives apps no way
+/// to intercept them, so volume-key settings are meaningless there.
+bool get volumeKeysSupported => defaultTargetPlatform == TargetPlatform.android;
 
 /// A physical key the rider can use to control recording.
 enum HardwareButton { volumeUp, volumeDown }

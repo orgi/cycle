@@ -4,9 +4,29 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
-	<!-- Live GPS tracking while riding. Background location is added in M4. -->
+	<!-- Live GPS tracking while riding. "When in use" is all Cycle requests: a
+	     ride started in the foreground keeps recording with the screen off via
+	     the `location` background mode below (iOS shows the blue location pill).
+	     The Always text is required by geolocator's plugin build regardless. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Cycle uses your location to measure speed, distance and your route while you ride.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Cycle uses your location to keep recording your ride while the screen is off.</string>
+	<!-- location: keep a recording ride's GPS running when backgrounded (the
+	     Dart-side gate in AppleLocationService releases it when no ride runs).
+	     bluetooth-central: keep BLE sensor notifications flowing meanwhile. -->
+	<!-- Expose the app's Documents folder in the Files app ("On My iPhone →
+	     Cycle"): the iOS equivalent of Android's external files dir, where the
+	     routes/ folder, backups and GPX exports live. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>bluetooth-central</string>
+	</array>
 	<!-- BLE cycling sensors (heart rate, speed/cadence, power). -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Cycle connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>

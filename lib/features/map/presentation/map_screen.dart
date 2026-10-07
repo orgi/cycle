@@ -12,6 +12,7 @@ import '../../../core/models/geo_sample.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_visibility.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
+import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
@@ -593,9 +594,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final units = settings.units;
     final speedUnit = units.speedLabel;
     // Hidden by default (volume keys start/stop); shown on request, and always
-    // when the volume keys are off so there is a way to start.
-    final showStartStop =
-        settings.showStartStopButton || !settings.hardwareButtonsEnabled;
+    // when the volume keys can't start a ride (off, or iOS) so there is a way
+    // to start.
+    final showStartStop = settings.startStopButtonVisible(
+        volumeKeysSupported: volumeKeysSupported);
     // Keep the volume-key control + wheel-size sync alive while the home screen
     // is mounted.
     ref.watch(hardwareButtonControllerProvider);

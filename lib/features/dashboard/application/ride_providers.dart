@@ -11,6 +11,7 @@ import '../../../core/models/ride_metrics.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
+import '../../../core/services/apple_location_service.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_power_control.dart';
 import '../../../core/services/location_service.dart';
@@ -29,21 +30,29 @@ import '../../tracks/application/track_repair.dart';
 /// Android uses the native continuous `LocationManager` stream
 /// ([NativeLocationService]) — geolocator's polling cold-restarts the GPS and
 /// its stream doesn't engage the receiver on the target hardware (see that
-/// class + CLAUDE.md). Other platforms fall back to geolocator.
+/// class + CLAUDE.md). iOS uses one continuous Core Location stream
+/// ([AppleLocationService]). Other platforms fall back to geolocator polling.
 final locationServiceProvider = Provider<LocationService>(
-  (ref) => defaultTargetPlatform == TargetPlatform.android
-      ? NativeLocationService()
-      : GeolocatorLocationService(),
+  (ref) => switch (defaultTargetPlatform) {
+    TargetPlatform.android => NativeLocationService(),
+    TargetPlatform.iOS => AppleLocationService(),
+    _ => GeolocatorLocationService(),
+  },
 );
 
 /// Tells the native layer whether a ride is recording, so the continuous GPS
 /// request is held while a backgrounded ride records and dropped when the app
-/// is backgrounded with no ride running. No-op off Android.
-final locationPowerControlProvider = Provider<LocationPowerControl>(
-  (ref) => defaultTargetPlatform == TargetPlatform.android
-      ? const NativeLocationPowerControl()
-      : const NoopLocationPowerControl(),
-);
+/// is backgrounded with no ride running. On iOS the gate lives in Dart, in the
+/// location service itself ([AppleLocationService]). No-op elsewhere.
+final locationPowerControlProvider = Provider<LocationPowerControl>((ref) {
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return const NativeLocationPowerControl();
+  }
+  final service = ref.watch(locationServiceProvider);
+  return service is LocationPowerControl
+      ? service as LocationPowerControl
+      : const NoopLocationPowerControl();
+});
 
 /// Keep-screen-awake service. Overridden with a no-op in tests.
 final screenWakeServiceProvider = Provider<ScreenWakeService>(
@@ -64,9 +73,13 @@ final appDatabaseProvider = Provider<AppDatabase>((ref) {
 /// Keeps recording alive in the background: a real Android foreground service
 /// (persistent notification, `location` type), started without a callback/
 /// TaskHandler so the plugin doesn't spin up a second Flutter engine — see
-/// FgTaskRecordingService's doc comment.
+/// FgTaskRecordingService's doc comment. iOS has no foreground services — a
+/// backgrounded ride stays alive through `UIBackgroundModes: location` and the
+/// continuous Core Location stream instead — so it gets the no-op.
 final recordingForegroundServiceProvider = Provider<RecordingForegroundService>(
-  (ref) => const FgTaskRecordingService(),
+  (ref) => defaultTargetPlatform == TargetPlatform.iOS
+      ? const NoopRecordingForegroundService()
+      : const FgTaskRecordingService(),
 );
 
 /// Whether a ride is currently being recorded. Recording persists a [Tracks]

@@ -8,7 +8,22 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Added
+- **iPhone support (sideload pilot).** CI now builds an unsigned `.ipa` on every run (artifact
+  `ios-ipa-unsigned`), which can be signed with a free Apple ID and installed from Linux with
+  Impactor. No Mac or paid developer account needed. Step-by-step guide:
+  `docs/ios-sideload.md`.
+  - GPS on iOS uses one continuous Core Location request (cycling-tuned, never auto-paused),
+    not the one-shot polling fallback. It keeps recording with the screen off and is released
+    when the app is backgrounded with no ride, the same lifecycle gate as on Android.
+  - The Start/Stop button is always shown on iOS (apps can't use the volume keys there), and
+    the Android-only volume-key settings are hidden.
+  - The app's folder (`routes/`, backups, GPX exports) appears in the iOS Files app.
+
 ### Fixed
+- **CI never got past `flutter analyze`.** The analyzer also linted the vendored
+  `third_party/mapsforge_flutter` copy and failed on upstream's own warnings, so the Android
+  and iOS CI builds were always skipped. Vendored code is now excluded from analysis.
 - **Stale sensor values after a sensor disconnects.** When a sensor's link dropped (heart-rate
   strap taken off, sensor out of range or asleep), its last value stayed on the dashboard
   indefinitely — and was **recorded onto every point of the next ride**, so a ride without the

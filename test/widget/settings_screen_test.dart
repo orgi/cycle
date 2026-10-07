@@ -7,6 +7,7 @@ import 'package:cycle/features/settings/application/bike_profile_providers.dart'
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/settings_screen.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -55,6 +56,30 @@ void main() {
     await tester.tap(find.byKey(const Key('hardwareButtonsSwitch')));
     await tester.pumpAndSettle();
     expect((await store.load()).hardwareButtonsEnabled, isFalse);
+  });
+
+  testWidgets('hides the Android-only volume-key switches on iOS',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('autoPauseSwitch')),
+      200,
+    );
+    expect(find.byKey(const Key('hardwareButtonsSwitch')), findsNothing);
+    expect(find.byKey(const Key('showStartStopSwitch')), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('edits the wheel circumference via the dialog', (tester) async {
