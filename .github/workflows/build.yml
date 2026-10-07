@@ -2,7 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # iphone-pilot: every push builds the sideloadable .ipa (docs/ios-sideload.md)
+    # with no manual "Run workflow" click.
+    branches: [main, iphone-pilot]
   pull_request:
   workflow_dispatch:
 
