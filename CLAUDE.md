@@ -325,6 +325,9 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   `adb install -r`) and never tell the user to delete the app. Test iPhone: **iPhone 12 mini**.
   The `test` job (analyze + tests) gates the `ios`/`android` jobs, so a lint failure silently
   means no iOS build; `third_party/**` is excluded from analysis for that reason.
+  CI runs on **every push to any branch** (no `pull_request` trigger — it doubled every run
+  for a branch with an open PR; the PR shows the push run's checks), skipped only for pushes
+  that touch nothing but `docs/**`/`*.md`. Artifacts keep 30 days.
 * **Release signing (stable key):** release builds are signed with a fixed key
   (`android/app/cycle-release.jks` + `android/key.properties`, **both gitignored**) wired in
   `android/app/build.gradle.kts`. This lets a release APK be updated in place (`adb install -r`)

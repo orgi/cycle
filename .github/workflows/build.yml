@@ -1,11 +1,18 @@
 name: Build
 
 on:
+  # Every push to any branch builds (incl. the sideloadable iOS .ipa, see
+  # docs/ios-sideload.md), so there's never a manual "Run workflow" click. No
+  # separate pull_request trigger: it ran everything twice for a branch with an
+  # open PR, and the PR shows the push run's checks for its head commit anyway.
+  # Free and unlimited while the repo is public; if it ever goes private, macOS
+  # minutes count 10x against the free quota — restrict the ios job again then.
   push:
-    # iphone-pilot: every push builds the sideloadable .ipa (docs/ios-sideload.md)
-    # with no manual "Run workflow" click.
-    branches: [main, iphone-pilot]
-  pull_request:
+    branches: ["**"]
+    # Skipped only when EVERY changed file matches, so code commits always build.
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
   workflow_dispatch:
 
 concurrency:
@@ -47,10 +54,12 @@ jobs:
         run: flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 30
           name: android-apk-armeabi-v7a-32bit
           path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 30
           name: android-apk-arm64-v8a-64bit
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
@@ -80,5 +89,6 @@ jobs:
           ls -la build/ipa
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 30
           name: ios-ipa-unsigned
           path: build/ipa/*.ipa
