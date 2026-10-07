@@ -56,10 +56,25 @@ re-use the previous one.
 
 ### 4. Sign and install with Impactor
 
-1. Start Impactor. Sign in with your Apple ID (a 2FA code is requested the first
-   time). A separate, throw-away Apple ID works just as well if you'd rather not
-   use your main one.
-2. Select the connected iPhone, drop the `.ipa` in, and install.
+Install **before** touching Developer Mode: installing doesn't need it, and the
+Developer Mode switch only appears on the iPhone after the first install.
+
+Labels below are English / German. Impactor follows the desktop language.
+
+1. **Sign in (once):** ⚙ gear icon (top right) → **Add Account** / *Account
+   Hinzufügen* → Apple ID email + password → the 2FA code shown on the iPhone.
+   Go back with the ‹ arrow (top right). A separate, throw-away Apple ID works
+   just as well if you'd rather not use your main one.
+2. **Pick the iPhone** in the dropdown at the top. It reads **No Device** until
+   the phone is plugged in, unlocked and trusted.
+3. **Add the `.ipa`.** There is no "add" button. Either drag the file into the
+   window (**Drag & drop an IPA here** / *IPA per Drag & Drop hier ablegen*), or
+   click the bottom-right button **Import .ipa / .tipa** / *Importiere eine
+   .ipa / .tipa Datei*.
+4. On the app screen that opens, click **Install** / *Installieren*. If it is
+   greyed out, no device is selected in step 2.
+
+The Cycle icon then appears on the home screen but won't open until step 5.
 
 Impactor registers the device, creates the free certificate and profile, and
 re-signs the app. It keeps the bundle ID stable across installs, which is what
@@ -67,11 +82,14 @@ keeps the database when you re-install.
 
 ### 5. iPhone: first run only
 
-1. **Developer Mode** (iOS 16+): Settings → Privacy & Security → **Developer
-   Mode** → On → restart → confirm. The switch only appears after the first
-   developer-signed install, so do step 4 first.
+1. **Developer Mode** (iOS 16+): Settings → Privacy & Security → scroll to
+   the very bottom (next to Lockdown Mode) → **Developer Mode** → On → restart
+   → confirm. German: *Einstellungen → Datenschutz & Sicherheit → ganz unten,
+   neben Blockierungsmodus → Entwicklermodus*. It is only listed once step 4
+   has installed an app.
 2. **Trust the developer**: Settings → General → **VPN & Device Management** →
-   your Apple ID → **Trust**.
+   your Apple ID → **Trust**. German: *Allgemein → VPN & Geräteverwaltung →
+   … vertrauen*.
 3. Open Cycle. Allow **Location → While Using the App** and **Bluetooth**.
 
 ## Optional: refresh without a computer
@@ -102,6 +120,21 @@ once the plain USB route works.
 
 ## Troubleshooting
 
+* **No Developer Mode / *Entwicklermodus* entry after installing**: seen on the
+  iPhone 12 mini with iOS 26.5. Reveal it over USB from Linux, then force-quit
+  and reopen Settings:
+  ```bash
+  idevicedevmodectl reveal   # Debian/Ubuntu: apt install libimobiledevice-utils
+  idevicedevmodectl list     # shows DeveloperMode enabled/disabled
+  ```
+* **Drag & drop into Impactor does nothing / the file isn't visible** (KDE or
+  GNOME on Wayland): Impactor's UI toolkit doesn't accept dropped files under
+  Wayland, and the Flatpak has no access to your files by default. Run it once
+  like this:
+  ```bash
+  flatpak override --user --filesystem=~/Downloads:ro dev.khcrysalis.PlumeImpactor
+  flatpak run --nosocket=wayland dev.khcrysalis.PlumeImpactor
+  ```
 * **"Untrusted Developer"** on launch: do step 5.2.
 * **App won't open after a week**: it expired. Repeat step 4 with the same
   `.ipa`; your data is kept.
