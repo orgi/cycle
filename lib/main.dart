@@ -8,6 +8,7 @@ import 'app.dart';
 import 'features/dashboard/application/ride_providers.dart';
 import 'features/map/application/map_providers.dart';
 import 'features/sensors/application/sensor_power_gate.dart';
+import 'features/sync/application/sync_providers.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,4 +36,8 @@ void main() {
       child: const CycleApp(),
     ),
   );
+
+  // Ride sync + trash/backup housekeeping. After runApp and self-delayed
+  // (SyncController.startupDelay), so it never competes with GPS/map startup.
+  container.read(syncControllerProvider);
 }

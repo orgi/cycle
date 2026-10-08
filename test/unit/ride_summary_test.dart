@@ -16,6 +16,7 @@ Track _track({
     durationSeconds: durationSeconds,
     avgSpeedMps: durationSeconds > 0 ? distanceMeters / durationSeconds : 0,
     maxSpeedMps: 0,
+    pointsPurged: false,
   );
 }
 

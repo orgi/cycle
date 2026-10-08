@@ -281,6 +281,66 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   reproduces all three field symptoms end-to-end; mutation-checked (making `remove` a no-op
   fails exactly those three, with the linked-sensor control still passing).
 * **Local DB:** `drift` (SQLite) for tracks/trackpoints. [M4]
+  **Deleting a ride is a soft delete** (schema v5): `AppDatabase.deleteTrack` sets
+  `deletedAt` (the "Recently deleted" trash, `RecentlyDeletedScreen`); `allTracks`/
+  `watchTracks`/`tracksMatching` hide trashed rows, `allTracksIncludingDeleted` doesn't (use it
+  for import dedup, so an old backup can't resurrect a deleted ride). `restoreTrack` undoes it;
+  `purgeTrack` drops the points and keeps the row as a `pointsPurged` deletion marker for sync
+  (or erases it outright for a duplicate whose start time is still live, or an unfinished crash
+  artefact). `purgeExpiredTrash` runs at launch with `AppSettings.retentionDays` (default 30).
+  **Never migrate the only copy:** `AppDatabase._open` calls `backupBeforeMigration`
+  (`lib/core/db/migration_backup.dart`), which `VACUUM INTO`s `backups/cycle_backup_pre_v<N>_…`
+  through a raw sqlite3 connection before drift opens/migrates an older-schema DB — bump
+  `AppDatabase.kSchemaVersion` and this happens automatically for every future migration.
+* **Ride sync (WebDAV / Nextcloud):** `lib/core/sync/` (pure Dart, no plugin) + `features/sync/`.
+  Settings → Data → Sync. Syncs through a `Cycle/` folder on the user's own WebDAV server
+  (Nextcloud first-class: Login Flow v2 in `nextcloud_login_flow.dart` gets an app password via
+  the browser; any WebDAV works with user + app password).
+  * **Data model:** a ride's identity is its `startedAt` in whole seconds (same key every import
+    dedups on). It syncs as four separately-versioned parts — name, bike, geometry (points +
+    stats), deleted — each with a `SyncClock` (`<15-digit epoch ms>@<deviceId>`, string-ordered;
+    `null` = pre-sync, oldest). Every `AppDatabase` edit method stamps its part's clock
+    (`renameTrack`→name, `setTrackBikeProfile`/`assign*`→bike, `finalizeTrack`/
+    `updateTrackStats`/`touchGeometry`→geometry, `deleteTrack`/`restoreTrack`→deleted); a new
+    edit path that bypasses these won't sync — stamp it. The device id lives in the DB
+    (`SyncMeta`).
+  * **Merge (`RideDoc.merge`)** is per-part last-writer-wins over a total order (clock, then a
+    content tie-break), so it's commutative + associative and phones converge in any order. An
+    edit newer than the deletion clears `deletedAt` **without rewriting the deleted clock** —
+    rewriting it made the result order-dependent (caught by the "order independent" unit test).
+    Comparison keys use `\u0001` as separator so a missing clock sorts *below* real ones (a `|`
+    separator sorted it above — conflict resolution was inverted until a test caught it). A
+    purged copy beats an unpurged one with the same geometry clock (the purge spreads); restore
+    re-stamps geometry so restored points beat a purged copy.
+  * **Server layout — no shared index:** `rides/<startSec>~<deviceId>.json.gz` (each device
+    writes only its own file names) + `profiles/<deviceId>.json`. A round (`SyncService`):
+    PROPFIND → download only files whose ETag changed (cache: `SyncRemoteFiles` with the
+    file's points-less doc) → merge into the DB (`LocalRideStore.apply`) → upload a ride only if
+    no remote file already has exactly its signature → delete other copies the merged state
+    `covers`, with `If-Match` so a copy changed meanwhile survives. Steady state is one file per
+    ride. Unfinished rides (`endedAt == null`) and anything during recording are never synced.
+  * **When:** only while the app is open (no background scheduler, by decision): startup (after
+    `SyncController.startupDelay`, behind GPS), native network-change events (`cycle/network`
+    EventChannel — `ConnectivityManager.registerDefaultNetworkCallback` in `MainActivity.kt`,
+    `NWPathMonitor` in `AppDelegate.swift`, both registered only while foregrounded), app
+    resume, ride stop, "Sync now"; debounced 30 s, single-flight. Each round first probes the
+    configured addresses in order (primary/LAN, then optional fallback/public) with a ~3 s
+    PROPFIND; none answering = `SyncUnreachable`, shown quietly, not as an error.
+  * **LAN servers:** plain `http://` only with the explicit "Allow http" switch; self-signed
+    TLS by pinning the cert's SHA-256 (`WebDavClient` `badCertificateCallback`, fingerprint
+    shown in a trust dialog). `dart:io` sockets aren't subject to Android's network-security
+    config or iOS ATS; iOS needs `NSLocalNetworkUsageDescription` (Info.plist) for LAN hosts.
+  * **Safety backups:** `backups/cycle_backup_pre_first_sync_…` before a device's first sync;
+    `cycle_backup_auto_…` (at most daily) before a round that would delete/replace data on the
+    phone; only the `auto` ones are pruned after `retentionDays`.
+  * **Bike profiles** sync name/colour/deletion (`ProfilesDoc`, per-profile clock) but not
+    `sensorIds` (sensor ids differ per phone — iOS ids are per-device) or the active profile. A
+    fresh install's untouched "Bike 1" is dropped on its first sync if the server already has
+    profiles and no local ride uses it.
+  * Tests: `test/support/fake_webdav_server.dart` (real sockets, ETag/If-Match) drives
+    multi-phone convergence (`sync_service_test.dart`), widget tests and the emulator GUI test
+    (`integration_test/sync_test.dart`). Widget tests must set `HttpOverrides.global = null` —
+    flutter_test answers every real HTTP request with 400 otherwise.
 * **GPX:** `gpx` package — used for both ride export [M4] and follow-route import [M5].
 * **Follow route [M5]:** `lib/features/routing/` — parse a GPX into a `FollowRoute`
   (cumulative distances), `RouteNavigator` does nearest-segment projection for

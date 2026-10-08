@@ -183,6 +183,8 @@ void main() {
       find.byKey(const Key('recalculateDistancesTile')),
       200,
     );
+    await tester.ensureVisible(find.byKey(const Key('recalculateDistancesTile')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('recalculateDistancesTile')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('recalculateDistancesConfirm')));

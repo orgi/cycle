@@ -6,6 +6,8 @@ import android.content.Intent
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -55,6 +57,10 @@ import java.io.File
  *    is off-limits to every app including SAF itself on Android 11+) — no
  *    plugin, since `file_picker` doesn't build on this project's AGP 9 setup
  *    (see CLAUDE.md's Known gotchas).
+ *  - `cycle/network` (EventChannel): an event whenever the phone gains a
+ *    default network, the cue for ride sync to check whether its server is
+ *    reachable now. Registered only while the activity is in the foreground —
+ *    sync runs only while the app is open.
  */
 class MainActivity : FlutterActivity() {
     private val TAG = "CycleGpx"
@@ -103,6 +109,10 @@ class MainActivity : FlutterActivity() {
     // and every fix is a recorded track point.
     private var isForeground = true
     private var recordingActive = false
+
+    private val networkChannel = "cycle/network"
+    private var networkEvents: EventChannel.EventSink? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -330,7 +340,48 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        EventChannel(messenger, networkChannel).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    networkEvents = events
+                    updateNetworkCallback()
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    networkEvents = null
+                    updateNetworkCallback()
+                }
+            },
+        )
+
         handleIntent(intent)
+    }
+
+    /// Network-change events for sync, only while Dart listens and the app is
+    /// in the foreground. `onAvailable` also fires right after registering when
+    /// a network is already up (Dart debounces).
+    private fun updateNetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val wanted = networkEvents != null && isForeground
+        if (wanted && networkCallback == null) {
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    runOnUiThread { networkEvents?.success("available") }
+                }
+            }
+            try {
+                cm.registerDefaultNetworkCallback(callback)
+                networkCallback = callback
+            } catch (e: Exception) {
+                Log.w(TAG, "network callback failed: ${e.message}")
+            }
+        } else if (!wanted && networkCallback != null) {
+            try {
+                cm.unregisterNetworkCallback(networkCallback!!)
+            } catch (_: Exception) {
+            }
+            networkCallback = null
+        }
     }
 
     /// Registers or drops the GPS request to match the current state. The
@@ -352,12 +403,14 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         isForeground = true
         updateLocationUpdates()
+        updateNetworkCallback()
     }
 
     override fun onPause() {
         super.onPause()
         isForeground = false
         updateLocationUpdates()
+        updateNetworkCallback()
     }
 
     /// One continuous GPS request; every fix is streamed to Dart. Held open for
@@ -410,6 +463,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         stopLocationUpdates()
+        networkEvents = null
+        updateNetworkCallback()
         super.onDestroy()
     }
 

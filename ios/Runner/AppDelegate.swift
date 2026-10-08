@@ -2,12 +2,15 @@ import AVFoundation
 import AudioToolbox
 import Flutter
 import MediaPlayer
+import Network
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var hardwareButtons: HardwareButtons?
   private var hapticsChannel: FlutterMethodChannel?
+  private var networkEvents: NetworkEvents?
+  private var oauthChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -38,6 +41,105 @@ import UIKit
       result(nil)
     }
     hapticsChannel = haptics
+
+    // Ride sync: "the phone gained a network" events (see NetworkEvents).
+    networkEvents = NetworkEvents(messenger: messenger)
+
+    // `cycle/oauth` — iOS half of the Android channel: `openUrl` opens a page
+    // in the browser (Nextcloud login). Capturing a `cycle://` redirect back
+    // (Strava) isn't wired on iOS, so `consumeRedirect` reports none.
+    let oauth = FlutterMethodChannel(name: "cycle/oauth", binaryMessenger: messenger)
+    oauth.setMethodCallHandler { call, result in
+      switch call.method {
+      case "openUrl":
+        guard let s = call.arguments as? String, let url = URL(string: s) else {
+          return result(FlutterError(code: "bad_args", message: "url required", details: nil))
+        }
+        UIApplication.shared.open(url) { ok in
+          ok ? result(nil)
+            : result(FlutterError(code: "open_failed", message: "cannot open \(s)", details: nil))
+        }
+      case "consumeRedirect":
+        result(nil)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+    oauthChannel = oauth
+  }
+}
+
+/// `cycle/network` EventChannel — iOS half of `MainActivity.kt`'s network
+/// callback: emits an event whenever a usable network path appears or the
+/// interface changes (e.g. Wi-Fi at home), the cue for ride sync to check
+/// whether its server is reachable. Monitors only while Dart listens and the
+/// app is active — sync runs only while the app is open.
+final class NetworkEvents: NSObject, FlutterStreamHandler {
+  private var sink: FlutterEventSink?
+  private var monitor: NWPathMonitor?
+  private var isActive = UIApplication.shared.applicationState == .active
+  private var lastSignature: String?
+
+  init(messenger: FlutterBinaryMessenger) {
+    super.init()
+    FlutterEventChannel(name: "cycle/network", binaryMessenger: messenger)
+      .setStreamHandler(self)
+    let center = NotificationCenter.default
+    center.addObserver(
+      self, selector: #selector(didBecomeActive),
+      name: UIApplication.didBecomeActiveNotification, object: nil)
+    center.addObserver(
+      self, selector: #selector(willResignActive),
+      name: UIApplication.willResignActiveNotification, object: nil)
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink)
+    -> FlutterError?
+  {
+    sink = events
+    apply()
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    sink = nil
+    apply()
+    return nil
+  }
+
+  @objc private func didBecomeActive() {
+    isActive = true
+    apply()
+  }
+
+  @objc private func willResignActive() {
+    isActive = false
+    apply()
+  }
+
+  private func apply() {
+    let wanted = sink != nil && isActive
+    if wanted && monitor == nil {
+      let m = NWPathMonitor()
+      m.pathUpdateHandler = { [weak self] path in
+        guard path.status == .satisfied else {
+          DispatchQueue.main.async { self?.lastSignature = nil }
+          return
+        }
+        let signature = path.availableInterfaces.map { $0.name }.joined(separator: ",")
+        DispatchQueue.main.async {
+          guard let self = self, signature != self.lastSignature else { return }
+          self.lastSignature = signature
+          self.sink?("available")
+        }
+      }
+      m.start(queue: DispatchQueue(label: "cycle.network"))
+      monitor = m
+    } else if !wanted, let m = monitor {
+      m.cancel()
+      monitor = nil
+      lastSignature = nil
+    }
   }
 }
 

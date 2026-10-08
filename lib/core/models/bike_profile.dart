@@ -6,6 +6,7 @@ class BikeProfile {
     required this.name,
     required this.colorArgb,
     this.sensorIds,
+    this.clock,
   });
 
   /// Stable id (not the display name, so renaming doesn't orphan past rides).
@@ -19,6 +20,12 @@ class BikeProfile {
   /// hasn't set it.
   final Set<String>? sensorIds;
 
+  /// Sync edit clock (`SyncClock`) of the last name/colour change; null for a
+  /// profile last edited before sync existed. [sensorIds] isn't synced — the
+  /// same sensor can have a different id on another phone (iOS ids are
+  /// per-device), so it stays local.
+  final String? clock;
+
   /// [clearSensorIds] explicitly resets [sensorIds] to `null` ("all paired
   /// sensors") — needed because `copyWith(sensorIds: null)` alone can't be
   /// told apart from "leave unchanged".
@@ -27,12 +34,14 @@ class BikeProfile {
     int? colorArgb,
     Set<String>? sensorIds,
     bool clearSensorIds = false,
+    String? clock,
   }) =>
       BikeProfile(
         id: id,
         name: name ?? this.name,
         colorArgb: colorArgb ?? this.colorArgb,
         sensorIds: clearSensorIds ? null : (sensorIds ?? this.sensorIds),
+        clock: clock ?? this.clock,
       );
 
   Map<String, dynamic> toJson() => {
@@ -40,6 +49,7 @@ class BikeProfile {
         'name': name,
         'color': colorArgb,
         if (sensorIds != null) 'sensor_ids': sensorIds!.toList(),
+        if (clock != null) 'clock': clock,
       };
 
   factory BikeProfile.fromJson(Map<String, dynamic> json) => BikeProfile(
@@ -49,6 +59,7 @@ class BikeProfile {
         sensorIds: (json['sensor_ids'] as List?)
             ?.map((e) => e as String)
             .toSet(),
+        clock: json['clock'] as String?,
       );
 
   @override
@@ -57,6 +68,7 @@ class BikeProfile {
       other.id == id &&
       other.name == name &&
       other.colorArgb == colorArgb &&
+      other.clock == clock &&
       _sensorIdsEqual(other.sensorIds, sensorIds);
 
   @override
@@ -64,6 +76,7 @@ class BikeProfile {
         id,
         name,
         colorArgb,
+        clock,
         sensorIds == null ? null : Object.hashAllUnordered(sensorIds!),
       );
 }

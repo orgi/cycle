@@ -133,6 +133,76 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _nameClockMeta = const VerificationMeta(
+    'nameClock',
+  );
+  @override
+  late final GeneratedColumn<String> nameClock = GeneratedColumn<String>(
+    'name_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bikeClockMeta = const VerificationMeta(
+    'bikeClock',
+  );
+  @override
+  late final GeneratedColumn<String> bikeClock = GeneratedColumn<String>(
+    'bike_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _geometryClockMeta = const VerificationMeta(
+    'geometryClock',
+  );
+  @override
+  late final GeneratedColumn<String> geometryClock = GeneratedColumn<String>(
+    'geometry_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedClockMeta = const VerificationMeta(
+    'deletedClock',
+  );
+  @override
+  late final GeneratedColumn<String> deletedClock = GeneratedColumn<String>(
+    'deleted_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pointsPurgedMeta = const VerificationMeta(
+    'pointsPurged',
+  );
+  @override
+  late final GeneratedColumn<bool> pointsPurged = GeneratedColumn<bool>(
+    'points_purged',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("points_purged" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -146,6 +216,12 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
     batteryStartPercent,
     batteryEndPercent,
     bikeProfileId,
+    nameClock,
+    bikeClock,
+    geometryClock,
+    deletedClock,
+    deletedAt,
+    pointsPurged,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -245,6 +321,51 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         ),
       );
     }
+    if (data.containsKey('name_clock')) {
+      context.handle(
+        _nameClockMeta,
+        nameClock.isAcceptableOrUnknown(data['name_clock']!, _nameClockMeta),
+      );
+    }
+    if (data.containsKey('bike_clock')) {
+      context.handle(
+        _bikeClockMeta,
+        bikeClock.isAcceptableOrUnknown(data['bike_clock']!, _bikeClockMeta),
+      );
+    }
+    if (data.containsKey('geometry_clock')) {
+      context.handle(
+        _geometryClockMeta,
+        geometryClock.isAcceptableOrUnknown(
+          data['geometry_clock']!,
+          _geometryClockMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deleted_clock')) {
+      context.handle(
+        _deletedClockMeta,
+        deletedClock.isAcceptableOrUnknown(
+          data['deleted_clock']!,
+          _deletedClockMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('points_purged')) {
+      context.handle(
+        _pointsPurgedMeta,
+        pointsPurged.isAcceptableOrUnknown(
+          data['points_purged']!,
+          _pointsPurgedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -298,6 +419,30 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, Track> {
         DriftSqlType.string,
         data['${effectivePrefix}bike_profile_id'],
       ),
+      nameClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_clock'],
+      ),
+      bikeClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bike_clock'],
+      ),
+      geometryClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}geometry_clock'],
+      ),
+      deletedClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deleted_clock'],
+      ),
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      pointsPurged: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}points_purged'],
+      )!,
     );
   }
 
@@ -319,6 +464,12 @@ class Track extends DataClass implements Insertable<Track> {
   final int? batteryStartPercent;
   final int? batteryEndPercent;
   final String? bikeProfileId;
+  final String? nameClock;
+  final String? bikeClock;
+  final String? geometryClock;
+  final String? deletedClock;
+  final DateTime? deletedAt;
+  final bool pointsPurged;
   const Track({
     required this.id,
     required this.name,
@@ -331,6 +482,12 @@ class Track extends DataClass implements Insertable<Track> {
     this.batteryStartPercent,
     this.batteryEndPercent,
     this.bikeProfileId,
+    this.nameClock,
+    this.bikeClock,
+    this.geometryClock,
+    this.deletedClock,
+    this.deletedAt,
+    required this.pointsPurged,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -354,6 +511,22 @@ class Track extends DataClass implements Insertable<Track> {
     if (!nullToAbsent || bikeProfileId != null) {
       map['bike_profile_id'] = Variable<String>(bikeProfileId);
     }
+    if (!nullToAbsent || nameClock != null) {
+      map['name_clock'] = Variable<String>(nameClock);
+    }
+    if (!nullToAbsent || bikeClock != null) {
+      map['bike_clock'] = Variable<String>(bikeClock);
+    }
+    if (!nullToAbsent || geometryClock != null) {
+      map['geometry_clock'] = Variable<String>(geometryClock);
+    }
+    if (!nullToAbsent || deletedClock != null) {
+      map['deleted_clock'] = Variable<String>(deletedClock);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['points_purged'] = Variable<bool>(pointsPurged);
     return map;
   }
 
@@ -378,6 +551,22 @@ class Track extends DataClass implements Insertable<Track> {
       bikeProfileId: bikeProfileId == null && nullToAbsent
           ? const Value.absent()
           : Value(bikeProfileId),
+      nameClock: nameClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameClock),
+      bikeClock: bikeClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bikeClock),
+      geometryClock: geometryClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(geometryClock),
+      deletedClock: deletedClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedClock),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      pointsPurged: Value(pointsPurged),
     );
   }
 
@@ -400,6 +589,12 @@ class Track extends DataClass implements Insertable<Track> {
       ),
       batteryEndPercent: serializer.fromJson<int?>(json['batteryEndPercent']),
       bikeProfileId: serializer.fromJson<String?>(json['bikeProfileId']),
+      nameClock: serializer.fromJson<String?>(json['nameClock']),
+      bikeClock: serializer.fromJson<String?>(json['bikeClock']),
+      geometryClock: serializer.fromJson<String?>(json['geometryClock']),
+      deletedClock: serializer.fromJson<String?>(json['deletedClock']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      pointsPurged: serializer.fromJson<bool>(json['pointsPurged']),
     );
   }
   @override
@@ -417,6 +612,12 @@ class Track extends DataClass implements Insertable<Track> {
       'batteryStartPercent': serializer.toJson<int?>(batteryStartPercent),
       'batteryEndPercent': serializer.toJson<int?>(batteryEndPercent),
       'bikeProfileId': serializer.toJson<String?>(bikeProfileId),
+      'nameClock': serializer.toJson<String?>(nameClock),
+      'bikeClock': serializer.toJson<String?>(bikeClock),
+      'geometryClock': serializer.toJson<String?>(geometryClock),
+      'deletedClock': serializer.toJson<String?>(deletedClock),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'pointsPurged': serializer.toJson<bool>(pointsPurged),
     };
   }
 
@@ -432,6 +633,12 @@ class Track extends DataClass implements Insertable<Track> {
     Value<int?> batteryStartPercent = const Value.absent(),
     Value<int?> batteryEndPercent = const Value.absent(),
     Value<String?> bikeProfileId = const Value.absent(),
+    Value<String?> nameClock = const Value.absent(),
+    Value<String?> bikeClock = const Value.absent(),
+    Value<String?> geometryClock = const Value.absent(),
+    Value<String?> deletedClock = const Value.absent(),
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? pointsPurged,
   }) => Track(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -450,6 +657,14 @@ class Track extends DataClass implements Insertable<Track> {
     bikeProfileId: bikeProfileId.present
         ? bikeProfileId.value
         : this.bikeProfileId,
+    nameClock: nameClock.present ? nameClock.value : this.nameClock,
+    bikeClock: bikeClock.present ? bikeClock.value : this.bikeClock,
+    geometryClock: geometryClock.present
+        ? geometryClock.value
+        : this.geometryClock,
+    deletedClock: deletedClock.present ? deletedClock.value : this.deletedClock,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    pointsPurged: pointsPurged ?? this.pointsPurged,
   );
   Track copyWithCompanion(TracksCompanion data) {
     return Track(
@@ -478,6 +693,18 @@ class Track extends DataClass implements Insertable<Track> {
       bikeProfileId: data.bikeProfileId.present
           ? data.bikeProfileId.value
           : this.bikeProfileId,
+      nameClock: data.nameClock.present ? data.nameClock.value : this.nameClock,
+      bikeClock: data.bikeClock.present ? data.bikeClock.value : this.bikeClock,
+      geometryClock: data.geometryClock.present
+          ? data.geometryClock.value
+          : this.geometryClock,
+      deletedClock: data.deletedClock.present
+          ? data.deletedClock.value
+          : this.deletedClock,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      pointsPurged: data.pointsPurged.present
+          ? data.pointsPurged.value
+          : this.pointsPurged,
     );
   }
 
@@ -494,7 +721,13 @@ class Track extends DataClass implements Insertable<Track> {
           ..write('maxSpeedMps: $maxSpeedMps, ')
           ..write('batteryStartPercent: $batteryStartPercent, ')
           ..write('batteryEndPercent: $batteryEndPercent, ')
-          ..write('bikeProfileId: $bikeProfileId')
+          ..write('bikeProfileId: $bikeProfileId, ')
+          ..write('nameClock: $nameClock, ')
+          ..write('bikeClock: $bikeClock, ')
+          ..write('geometryClock: $geometryClock, ')
+          ..write('deletedClock: $deletedClock, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('pointsPurged: $pointsPurged')
           ..write(')'))
         .toString();
   }
@@ -512,6 +745,12 @@ class Track extends DataClass implements Insertable<Track> {
     batteryStartPercent,
     batteryEndPercent,
     bikeProfileId,
+    nameClock,
+    bikeClock,
+    geometryClock,
+    deletedClock,
+    deletedAt,
+    pointsPurged,
   );
   @override
   bool operator ==(Object other) =>
@@ -527,7 +766,13 @@ class Track extends DataClass implements Insertable<Track> {
           other.maxSpeedMps == this.maxSpeedMps &&
           other.batteryStartPercent == this.batteryStartPercent &&
           other.batteryEndPercent == this.batteryEndPercent &&
-          other.bikeProfileId == this.bikeProfileId);
+          other.bikeProfileId == this.bikeProfileId &&
+          other.nameClock == this.nameClock &&
+          other.bikeClock == this.bikeClock &&
+          other.geometryClock == this.geometryClock &&
+          other.deletedClock == this.deletedClock &&
+          other.deletedAt == this.deletedAt &&
+          other.pointsPurged == this.pointsPurged);
 }
 
 class TracksCompanion extends UpdateCompanion<Track> {
@@ -542,6 +787,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
   final Value<int?> batteryStartPercent;
   final Value<int?> batteryEndPercent;
   final Value<String?> bikeProfileId;
+  final Value<String?> nameClock;
+  final Value<String?> bikeClock;
+  final Value<String?> geometryClock;
+  final Value<String?> deletedClock;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> pointsPurged;
   const TracksCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -554,6 +805,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.batteryStartPercent = const Value.absent(),
     this.batteryEndPercent = const Value.absent(),
     this.bikeProfileId = const Value.absent(),
+    this.nameClock = const Value.absent(),
+    this.bikeClock = const Value.absent(),
+    this.geometryClock = const Value.absent(),
+    this.deletedClock = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.pointsPurged = const Value.absent(),
   });
   TracksCompanion.insert({
     this.id = const Value.absent(),
@@ -567,6 +824,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
     this.batteryStartPercent = const Value.absent(),
     this.batteryEndPercent = const Value.absent(),
     this.bikeProfileId = const Value.absent(),
+    this.nameClock = const Value.absent(),
+    this.bikeClock = const Value.absent(),
+    this.geometryClock = const Value.absent(),
+    this.deletedClock = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.pointsPurged = const Value.absent(),
   }) : startedAt = Value(startedAt);
   static Insertable<Track> custom({
     Expression<int>? id,
@@ -580,6 +843,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Expression<int>? batteryStartPercent,
     Expression<int>? batteryEndPercent,
     Expression<String>? bikeProfileId,
+    Expression<String>? nameClock,
+    Expression<String>? bikeClock,
+    Expression<String>? geometryClock,
+    Expression<String>? deletedClock,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? pointsPurged,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -594,6 +863,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
         'battery_start_percent': batteryStartPercent,
       if (batteryEndPercent != null) 'battery_end_percent': batteryEndPercent,
       if (bikeProfileId != null) 'bike_profile_id': bikeProfileId,
+      if (nameClock != null) 'name_clock': nameClock,
+      if (bikeClock != null) 'bike_clock': bikeClock,
+      if (geometryClock != null) 'geometry_clock': geometryClock,
+      if (deletedClock != null) 'deleted_clock': deletedClock,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (pointsPurged != null) 'points_purged': pointsPurged,
     });
   }
 
@@ -609,6 +884,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
     Value<int?>? batteryStartPercent,
     Value<int?>? batteryEndPercent,
     Value<String?>? bikeProfileId,
+    Value<String?>? nameClock,
+    Value<String?>? bikeClock,
+    Value<String?>? geometryClock,
+    Value<String?>? deletedClock,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? pointsPurged,
   }) {
     return TracksCompanion(
       id: id ?? this.id,
@@ -622,6 +903,12 @@ class TracksCompanion extends UpdateCompanion<Track> {
       batteryStartPercent: batteryStartPercent ?? this.batteryStartPercent,
       batteryEndPercent: batteryEndPercent ?? this.batteryEndPercent,
       bikeProfileId: bikeProfileId ?? this.bikeProfileId,
+      nameClock: nameClock ?? this.nameClock,
+      bikeClock: bikeClock ?? this.bikeClock,
+      geometryClock: geometryClock ?? this.geometryClock,
+      deletedClock: deletedClock ?? this.deletedClock,
+      deletedAt: deletedAt ?? this.deletedAt,
+      pointsPurged: pointsPurged ?? this.pointsPurged,
     );
   }
 
@@ -661,6 +948,24 @@ class TracksCompanion extends UpdateCompanion<Track> {
     if (bikeProfileId.present) {
       map['bike_profile_id'] = Variable<String>(bikeProfileId.value);
     }
+    if (nameClock.present) {
+      map['name_clock'] = Variable<String>(nameClock.value);
+    }
+    if (bikeClock.present) {
+      map['bike_clock'] = Variable<String>(bikeClock.value);
+    }
+    if (geometryClock.present) {
+      map['geometry_clock'] = Variable<String>(geometryClock.value);
+    }
+    if (deletedClock.present) {
+      map['deleted_clock'] = Variable<String>(deletedClock.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (pointsPurged.present) {
+      map['points_purged'] = Variable<bool>(pointsPurged.value);
+    }
     return map;
   }
 
@@ -677,7 +982,13 @@ class TracksCompanion extends UpdateCompanion<Track> {
           ..write('maxSpeedMps: $maxSpeedMps, ')
           ..write('batteryStartPercent: $batteryStartPercent, ')
           ..write('batteryEndPercent: $batteryEndPercent, ')
-          ..write('bikeProfileId: $bikeProfileId')
+          ..write('bikeProfileId: $bikeProfileId, ')
+          ..write('nameClock: $nameClock, ')
+          ..write('bikeClock: $bikeClock, ')
+          ..write('geometryClock: $geometryClock, ')
+          ..write('deletedClock: $deletedClock, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('pointsPurged: $pointsPurged')
           ..write(')'))
         .toString();
   }
@@ -1346,16 +1657,491 @@ class TrackPointsCompanion extends UpdateCompanion<TrackPoint> {
   }
 }
 
+class $SyncRemoteFilesTable extends SyncRemoteFiles
+    with TableInfo<$SyncRemoteFilesTable, SyncRemoteFile> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncRemoteFilesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _etagMeta = const VerificationMeta('etag');
+  @override
+  late final GeneratedColumn<String> etag = GeneratedColumn<String>(
+    'etag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _metaMeta = const VerificationMeta('meta');
+  @override
+  late final GeneratedColumn<String> meta = GeneratedColumn<String>(
+    'meta',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [path, etag, meta];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_remote_files';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncRemoteFile> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    if (data.containsKey('etag')) {
+      context.handle(
+        _etagMeta,
+        etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
+      );
+    }
+    if (data.containsKey('meta')) {
+      context.handle(
+        _metaMeta,
+        meta.isAcceptableOrUnknown(data['meta']!, _metaMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_metaMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {path};
+  @override
+  SyncRemoteFile map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncRemoteFile(
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+      etag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}etag'],
+      ),
+      meta: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}meta'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncRemoteFilesTable createAlias(String alias) {
+    return $SyncRemoteFilesTable(attachedDatabase, alias);
+  }
+}
+
+class SyncRemoteFile extends DataClass implements Insertable<SyncRemoteFile> {
+  final String path;
+  final String? etag;
+  final String meta;
+  const SyncRemoteFile({required this.path, this.etag, required this.meta});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['path'] = Variable<String>(path);
+    if (!nullToAbsent || etag != null) {
+      map['etag'] = Variable<String>(etag);
+    }
+    map['meta'] = Variable<String>(meta);
+    return map;
+  }
+
+  SyncRemoteFilesCompanion toCompanion(bool nullToAbsent) {
+    return SyncRemoteFilesCompanion(
+      path: Value(path),
+      etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
+      meta: Value(meta),
+    );
+  }
+
+  factory SyncRemoteFile.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncRemoteFile(
+      path: serializer.fromJson<String>(json['path']),
+      etag: serializer.fromJson<String?>(json['etag']),
+      meta: serializer.fromJson<String>(json['meta']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'path': serializer.toJson<String>(path),
+      'etag': serializer.toJson<String?>(etag),
+      'meta': serializer.toJson<String>(meta),
+    };
+  }
+
+  SyncRemoteFile copyWith({
+    String? path,
+    Value<String?> etag = const Value.absent(),
+    String? meta,
+  }) => SyncRemoteFile(
+    path: path ?? this.path,
+    etag: etag.present ? etag.value : this.etag,
+    meta: meta ?? this.meta,
+  );
+  SyncRemoteFile copyWithCompanion(SyncRemoteFilesCompanion data) {
+    return SyncRemoteFile(
+      path: data.path.present ? data.path.value : this.path,
+      etag: data.etag.present ? data.etag.value : this.etag,
+      meta: data.meta.present ? data.meta.value : this.meta,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncRemoteFile(')
+          ..write('path: $path, ')
+          ..write('etag: $etag, ')
+          ..write('meta: $meta')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(path, etag, meta);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncRemoteFile &&
+          other.path == this.path &&
+          other.etag == this.etag &&
+          other.meta == this.meta);
+}
+
+class SyncRemoteFilesCompanion extends UpdateCompanion<SyncRemoteFile> {
+  final Value<String> path;
+  final Value<String?> etag;
+  final Value<String> meta;
+  final Value<int> rowid;
+  const SyncRemoteFilesCompanion({
+    this.path = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.meta = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncRemoteFilesCompanion.insert({
+    required String path,
+    this.etag = const Value.absent(),
+    required String meta,
+    this.rowid = const Value.absent(),
+  }) : path = Value(path),
+       meta = Value(meta);
+  static Insertable<SyncRemoteFile> custom({
+    Expression<String>? path,
+    Expression<String>? etag,
+    Expression<String>? meta,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (path != null) 'path': path,
+      if (etag != null) 'etag': etag,
+      if (meta != null) 'meta': meta,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncRemoteFilesCompanion copyWith({
+    Value<String>? path,
+    Value<String?>? etag,
+    Value<String>? meta,
+    Value<int>? rowid,
+  }) {
+    return SyncRemoteFilesCompanion(
+      path: path ?? this.path,
+      etag: etag ?? this.etag,
+      meta: meta ?? this.meta,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (etag.present) {
+      map['etag'] = Variable<String>(etag.value);
+    }
+    if (meta.present) {
+      map['meta'] = Variable<String>(meta.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncRemoteFilesCompanion(')
+          ..write('path: $path, ')
+          ..write('etag: $etag, ')
+          ..write('meta: $meta, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncMetaTable extends SyncMeta
+    with TableInfo<$SyncMetaTable, SyncMetaData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncMetaTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_meta';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncMetaData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  SyncMetaData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncMetaData(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncMetaTable createAlias(String alias) {
+    return $SyncMetaTable(attachedDatabase, alias);
+  }
+}
+
+class SyncMetaData extends DataClass implements Insertable<SyncMetaData> {
+  final String key;
+  final String value;
+  const SyncMetaData({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  SyncMetaCompanion toCompanion(bool nullToAbsent) {
+    return SyncMetaCompanion(key: Value(key), value: Value(value));
+  }
+
+  factory SyncMetaData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncMetaData(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  SyncMetaData copyWith({String? key, String? value}) =>
+      SyncMetaData(key: key ?? this.key, value: value ?? this.value);
+  SyncMetaData copyWithCompanion(SyncMetaCompanion data) {
+    return SyncMetaData(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetaData(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncMetaData &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class SyncMetaCompanion extends UpdateCompanion<SyncMetaData> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const SyncMetaCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncMetaCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       value = Value(value);
+  static Insertable<SyncMetaData> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncMetaCompanion copyWith({
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return SyncMetaCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetaCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $TracksTable tracks = $TracksTable(this);
   late final $TrackPointsTable trackPoints = $TrackPointsTable(this);
+  late final $SyncRemoteFilesTable syncRemoteFiles = $SyncRemoteFilesTable(
+    this,
+  );
+  late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [tracks, trackPoints];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    tracks,
+    trackPoints,
+    syncRemoteFiles,
+    syncMeta,
+  ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
     WritePropagation(
@@ -1381,6 +2167,12 @@ typedef $$TracksTableCreateCompanionBuilder =
       Value<int?> batteryStartPercent,
       Value<int?> batteryEndPercent,
       Value<String?> bikeProfileId,
+      Value<String?> nameClock,
+      Value<String?> bikeClock,
+      Value<String?> geometryClock,
+      Value<String?> deletedClock,
+      Value<DateTime?> deletedAt,
+      Value<bool> pointsPurged,
     });
 typedef $$TracksTableUpdateCompanionBuilder =
     TracksCompanion Function({
@@ -1395,6 +2187,12 @@ typedef $$TracksTableUpdateCompanionBuilder =
       Value<int?> batteryStartPercent,
       Value<int?> batteryEndPercent,
       Value<String?> bikeProfileId,
+      Value<String?> nameClock,
+      Value<String?> bikeClock,
+      Value<String?> geometryClock,
+      Value<String?> deletedClock,
+      Value<DateTime?> deletedAt,
+      Value<bool> pointsPurged,
     });
 
 final class $$TracksTableReferences
@@ -1481,6 +2279,36 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<String> get bikeProfileId => $composableBuilder(
     column: $table.bikeProfileId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameClock => $composableBuilder(
+    column: $table.nameClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bikeClock => $composableBuilder(
+    column: $table.bikeClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get geometryClock => $composableBuilder(
+    column: $table.geometryClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get pointsPurged => $composableBuilder(
+    column: $table.pointsPurged,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1573,6 +2401,36 @@ class $$TracksTableOrderingComposer
     column: $table.bikeProfileId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get nameClock => $composableBuilder(
+    column: $table.nameClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bikeClock => $composableBuilder(
+    column: $table.bikeClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get geometryClock => $composableBuilder(
+    column: $table.geometryClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get pointsPurged => $composableBuilder(
+    column: $table.pointsPurged,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TracksTableAnnotationComposer
@@ -1628,6 +2486,30 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<String> get bikeProfileId => $composableBuilder(
     column: $table.bikeProfileId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get nameClock =>
+      $composableBuilder(column: $table.nameClock, builder: (column) => column);
+
+  GeneratedColumn<String> get bikeClock =>
+      $composableBuilder(column: $table.bikeClock, builder: (column) => column);
+
+  GeneratedColumn<String> get geometryClock => $composableBuilder(
+    column: $table.geometryClock,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get pointsPurged => $composableBuilder(
+    column: $table.pointsPurged,
     builder: (column) => column,
   );
 
@@ -1696,6 +2578,12 @@ class $$TracksTableTableManager
                 Value<int?> batteryStartPercent = const Value.absent(),
                 Value<int?> batteryEndPercent = const Value.absent(),
                 Value<String?> bikeProfileId = const Value.absent(),
+                Value<String?> nameClock = const Value.absent(),
+                Value<String?> bikeClock = const Value.absent(),
+                Value<String?> geometryClock = const Value.absent(),
+                Value<String?> deletedClock = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> pointsPurged = const Value.absent(),
               }) => TracksCompanion(
                 id: id,
                 name: name,
@@ -1708,6 +2596,12 @@ class $$TracksTableTableManager
                 batteryStartPercent: batteryStartPercent,
                 batteryEndPercent: batteryEndPercent,
                 bikeProfileId: bikeProfileId,
+                nameClock: nameClock,
+                bikeClock: bikeClock,
+                geometryClock: geometryClock,
+                deletedClock: deletedClock,
+                deletedAt: deletedAt,
+                pointsPurged: pointsPurged,
               ),
           createCompanionCallback:
               ({
@@ -1722,6 +2616,12 @@ class $$TracksTableTableManager
                 Value<int?> batteryStartPercent = const Value.absent(),
                 Value<int?> batteryEndPercent = const Value.absent(),
                 Value<String?> bikeProfileId = const Value.absent(),
+                Value<String?> nameClock = const Value.absent(),
+                Value<String?> bikeClock = const Value.absent(),
+                Value<String?> geometryClock = const Value.absent(),
+                Value<String?> deletedClock = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> pointsPurged = const Value.absent(),
               }) => TracksCompanion.insert(
                 id: id,
                 name: name,
@@ -1734,6 +2634,12 @@ class $$TracksTableTableManager
                 batteryStartPercent: batteryStartPercent,
                 batteryEndPercent: batteryEndPercent,
                 bikeProfileId: bikeProfileId,
+                nameClock: nameClock,
+                bikeClock: bikeClock,
+                geometryClock: geometryClock,
+                deletedClock: deletedClock,
+                deletedAt: deletedAt,
+                pointsPurged: pointsPurged,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -2214,6 +3120,313 @@ typedef $$TrackPointsTableProcessedTableManager =
       TrackPoint,
       PrefetchHooks Function({bool trackId})
     >;
+typedef $$SyncRemoteFilesTableCreateCompanionBuilder =
+    SyncRemoteFilesCompanion Function({
+      required String path,
+      Value<String?> etag,
+      required String meta,
+      Value<int> rowid,
+    });
+typedef $$SyncRemoteFilesTableUpdateCompanionBuilder =
+    SyncRemoteFilesCompanion Function({
+      Value<String> path,
+      Value<String?> etag,
+      Value<String> meta,
+      Value<int> rowid,
+    });
+
+class $$SyncRemoteFilesTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncRemoteFilesTable> {
+  $$SyncRemoteFilesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get meta => $composableBuilder(
+    column: $table.meta,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncRemoteFilesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncRemoteFilesTable> {
+  $$SyncRemoteFilesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get meta => $composableBuilder(
+    column: $table.meta,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncRemoteFilesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncRemoteFilesTable> {
+  $$SyncRemoteFilesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get etag =>
+      $composableBuilder(column: $table.etag, builder: (column) => column);
+
+  GeneratedColumn<String> get meta =>
+      $composableBuilder(column: $table.meta, builder: (column) => column);
+}
+
+class $$SyncRemoteFilesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncRemoteFilesTable,
+          SyncRemoteFile,
+          $$SyncRemoteFilesTableFilterComposer,
+          $$SyncRemoteFilesTableOrderingComposer,
+          $$SyncRemoteFilesTableAnnotationComposer,
+          $$SyncRemoteFilesTableCreateCompanionBuilder,
+          $$SyncRemoteFilesTableUpdateCompanionBuilder,
+          (
+            SyncRemoteFile,
+            BaseReferences<
+              _$AppDatabase,
+              $SyncRemoteFilesTable,
+              SyncRemoteFile
+            >,
+          ),
+          SyncRemoteFile,
+          PrefetchHooks Function()
+        > {
+  $$SyncRemoteFilesTableTableManager(
+    _$AppDatabase db,
+    $SyncRemoteFilesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncRemoteFilesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncRemoteFilesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncRemoteFilesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> path = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<String> meta = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncRemoteFilesCompanion(
+                path: path,
+                etag: etag,
+                meta: meta,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String path,
+                Value<String?> etag = const Value.absent(),
+                required String meta,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncRemoteFilesCompanion.insert(
+                path: path,
+                etag: etag,
+                meta: meta,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncRemoteFilesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncRemoteFilesTable,
+      SyncRemoteFile,
+      $$SyncRemoteFilesTableFilterComposer,
+      $$SyncRemoteFilesTableOrderingComposer,
+      $$SyncRemoteFilesTableAnnotationComposer,
+      $$SyncRemoteFilesTableCreateCompanionBuilder,
+      $$SyncRemoteFilesTableUpdateCompanionBuilder,
+      (
+        SyncRemoteFile,
+        BaseReferences<_$AppDatabase, $SyncRemoteFilesTable, SyncRemoteFile>,
+      ),
+      SyncRemoteFile,
+      PrefetchHooks Function()
+    >;
+typedef $$SyncMetaTableCreateCompanionBuilder =
+    SyncMetaCompanion Function({
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$SyncMetaTableUpdateCompanionBuilder =
+    SyncMetaCompanion Function({
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$SyncMetaTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncMetaTable> {
+  $$SyncMetaTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncMetaTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncMetaTable> {
+  $$SyncMetaTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncMetaTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncMetaTable> {
+  $$SyncMetaTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$SyncMetaTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncMetaTable,
+          SyncMetaData,
+          $$SyncMetaTableFilterComposer,
+          $$SyncMetaTableOrderingComposer,
+          $$SyncMetaTableAnnotationComposer,
+          $$SyncMetaTableCreateCompanionBuilder,
+          $$SyncMetaTableUpdateCompanionBuilder,
+          (
+            SyncMetaData,
+            BaseReferences<_$AppDatabase, $SyncMetaTable, SyncMetaData>,
+          ),
+          SyncMetaData,
+          PrefetchHooks Function()
+        > {
+  $$SyncMetaTableTableManager(_$AppDatabase db, $SyncMetaTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncMetaTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncMetaTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncMetaTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncMetaCompanion(key: key, value: value, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncMetaCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncMetaTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncMetaTable,
+      SyncMetaData,
+      $$SyncMetaTableFilterComposer,
+      $$SyncMetaTableOrderingComposer,
+      $$SyncMetaTableAnnotationComposer,
+      $$SyncMetaTableCreateCompanionBuilder,
+      $$SyncMetaTableUpdateCompanionBuilder,
+      (
+        SyncMetaData,
+        BaseReferences<_$AppDatabase, $SyncMetaTable, SyncMetaData>,
+      ),
+      SyncMetaData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2222,4 +3435,8 @@ class $AppDatabaseManager {
       $$TracksTableTableManager(_db, _db.tracks);
   $$TrackPointsTableTableManager get trackPoints =>
       $$TrackPointsTableTableManager(_db, _db.trackPoints);
+  $$SyncRemoteFilesTableTableManager get syncRemoteFiles =>
+      $$SyncRemoteFilesTableTableManager(_db, _db.syncRemoteFiles);
+  $$SyncMetaTableTableManager get syncMeta =>
+      $$SyncMetaTableTableManager(_db, _db.syncMeta);
 }

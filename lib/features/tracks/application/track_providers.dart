@@ -13,6 +13,11 @@ final tracksProvider = StreamProvider<List<Track>>(
   (ref) => ref.watch(appDatabaseProvider).watchTracks(),
 );
 
+/// Rides in the trash that can still be restored, most recently deleted first.
+final deletedTracksProvider = StreamProvider<List<Track>>(
+  (ref) => ref.watch(appDatabaseProvider).watchDeletedTracks(),
+);
+
 /// Which bike profile the Rides list is filtered to, or `null` for all bikes
 /// (total). Not persisted — resets to "All" on next launch.
 final selectedBikeProfileFilterProvider =

@@ -14,6 +14,8 @@ import 'features/tracks/presentation/ride_classifier_screen.dart';
 import 'features/tracks/presentation/track_detail_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'features/tracks/presentation/tracks_screen.dart';
+import 'features/sync/presentation/sync_settings_screen.dart';
+import 'features/tracks/presentation/recently_deleted_screen.dart';
 import 'features/upload/presentation/upload_settings_screen.dart';
 
 /// App-wide router. The home screen combines the map + live stats; the download
@@ -52,6 +54,14 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const RideClassifierScreen(),
     ),
     GoRoute(path: '/backup', builder: (context, state) => const BackupScreen()),
+    GoRoute(
+      path: '/sync',
+      builder: (context, state) => const SyncSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/recently-deleted',
+      builder: (context, state) => const RecentlyDeletedScreen(),
+    ),
     GoRoute(
       path: '/oruxmaps-import',
       builder: (context, state) => const OruxMapsImportScreen(),

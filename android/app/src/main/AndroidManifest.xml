@@ -4,6 +4,10 @@
          Komoot). Without this a release build's HTTP calls fail instantly;
          debug/profile builds get it auto-added for tooling, which hid the bug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Ride sync: be told when the phone gains a network (Wi-Fi at home), the
+         cue to check whether the sync server is reachable now. Normal
+         permission, granted at install. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- "All files access" (opt-in, Settings → Data → Import from OruxMaps):
          lets a bulk OruxMaps oruxmapstracks.db import read it straight out of
          OruxMaps' own storage, which Android 11+ otherwise blocks every other

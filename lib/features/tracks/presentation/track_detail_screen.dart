@@ -88,8 +88,17 @@ class TrackDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    await ref.read(appDatabaseProvider).deleteTrack(trackId);
+    final messenger = ScaffoldMessenger.of(context);
+    final db = ref.read(appDatabaseProvider);
+    await db.deleteTrack(trackId);
     if (context.mounted) context.pop();
+    messenger.showSnackBar(SnackBar(
+      content: const Text('Ride moved to Recently deleted'),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () => db.restoreTrack(trackId),
+      ),
+    ));
   }
 
   Future<void> _cleanSpikes(BuildContext context, WidgetRef ref) async {

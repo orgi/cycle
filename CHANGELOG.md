@@ -9,6 +9,30 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Ride sync across phones, Android ⇄ iPhone (Settings → Data → Sync).** Rides, edits (name,
+  bike, cleaned/recalculated tracks), deletions and bike names are kept in step through a
+  folder `Cycle` on **your own server**: self-hosted **Nextcloud** (one-tap "Log in with
+  Nextcloud", which creates a revocable app password) or any WebDAV storage (e.g. Koofr).
+  No Cycle account and no cloud of ours.
+  - **Works with phones that are usually offline.** Everything is saved on the phone first;
+    sync catches up whenever the server can be reached: on app start, when the phone joins a
+    network (e.g. home Wi-Fi), when the app comes back to the front, after a ride, and with
+    **Sync now**. Never during a ride, and only while the app is open.
+  - **Servers only reachable at home are fine.** Up to two addresses (e.g. the LAN address,
+    then the public one) are tried in order with a short timeout; when neither answers, the
+    status just says "not reachable" and it tries again later. Plain `http://` can be allowed
+    for a home server, and a self-signed certificate can be trusted once by its fingerprint.
+  - **Conflicts resolve themselves without losing edits.** Each ride's name, bike, track and
+    deleted state are versioned separately, so renaming a ride on one phone and changing its
+    bike on another keeps both. Only the same detail changed on two phones before they synced
+    keeps the newer change. An edit made after a deletion keeps the ride.
+- **Recently deleted (Settings → Data).** Deleting a ride now moves it to a trash for 30 days
+  (adjustable) where it can be restored, also on the other phones, instead of erasing it at
+  once. Deleting from the ride list offers **Undo**.
+- **Automatic safety backups.** A full backup is taken before the database is upgraded for this
+  version, before the first sync, and (at most once a day) before any sync that would remove or
+  replace rides on the phone. They appear under Backup & restore. The automatic daily ones are
+  removed after the same 30 days; the others are kept until you delete them.
 - **Start/stop with gloves on.** Three new ways to start or stop a ride without touching the screen:
   - **Volume buttons on iPhone** (up = start, down = stop), like on Android. iOS has no official
     way to read them, so Cycle watches the volume level and resets it after each press. While
@@ -38,6 +62,9 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   - The app's folder (`routes/`, backups, GPX exports) appears in the iOS Files app.
 
 ### Fixed
+- **Restoring a backup lost the bike and sensor details.** Imported rides came in without their
+  bike profile and without the per-point "speed from sensor" flag. Both are kept now. A ride that
+  is in Recently deleted is no longer brought back by importing an older backup.
 - **CI never got past `flutter analyze`.** The analyzer also linted the vendored
   `third_party/mapsforge_flutter` copy and failed on upstream's own warnings, so the Android
   and iOS CI builds were always skipped. Vendored code is now excluded from analysis.

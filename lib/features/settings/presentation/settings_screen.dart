@@ -183,6 +183,31 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           const _Header('Data'),
           ListTile(
+            key: const Key('syncTile'),
+            leading: const Icon(Icons.sync),
+            title: const Text('Sync'),
+            subtitle: const Text(
+                'Keep rides in step across phones via Nextcloud / WebDAV'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/sync'),
+          ),
+          ListTile(
+            key: const Key('recentlyDeletedTile'),
+            leading: const Icon(Icons.restore_from_trash_outlined),
+            title: const Text('Recently deleted'),
+            subtitle: Text(
+                'Restore deleted rides (kept ${settings.retentionDays} days)'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/recently-deleted'),
+          ),
+          ListTile(
+            key: const Key('retentionTile'),
+            leading: const Icon(Icons.history),
+            title: const Text('Keep deleted rides & safety backups'),
+            subtitle: Text('${settings.retentionDays} days'),
+            onTap: () => _editRetention(context, ref, settings),
+          ),
+          ListTile(
             key: const Key('backupRestoreTile'),
             leading: const Icon(Icons.save_alt),
             title: const Text('Backup & restore'),
@@ -276,8 +301,9 @@ class SettingsScreen extends ConsumerWidget {
         title: const Text('Remove duplicate rides?'),
         content: const Text(
           'Removes rides that share the exact same start time as another '
-          'ride, keeping the first-recorded copy of each — safe to run any '
-          'time, and a no-op if you have no duplicates. Use this if an '
+          'ride, keeping the first-recorded copy of each (the copies go to '
+          'Recently deleted) — safe to run any time, and a no-op if you have '
+          'no duplicates. Use this if an '
           'OruxMaps import ran twice at once (e.g. tapped again before a '
           'slow import finished) and left duplicate rides behind.',
         ),
@@ -306,6 +332,47 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _editRetention(
+    BuildContext context,
+    WidgetRef ref,
+    AppSettings settings,
+  ) async {
+    final controllerText =
+        TextEditingController(text: settings.retentionDays.toString());
+    final days = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Keep for (days)'),
+        content: TextField(
+          key: const Key('retentionField'),
+          controller: controllerText,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            helperText: 'Deleted rides stay restorable, and automatic safety '
+                'backups are kept, for this long (1–365)',
+            helperMaxLines: 3,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('retentionSave'),
+            onPressed: () =>
+                Navigator.pop(ctx, int.tryParse(controllerText.text.trim())),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (days != null && days >= 1 && days <= 365) {
+      await ref.read(settingsProvider.notifier).setRetentionDays(days);
+    }
   }
 
   Future<void> _editWheel(

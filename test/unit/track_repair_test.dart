@@ -209,15 +209,21 @@ void main() {
       expect(await db.allTracks(), hasLength(2));
     });
 
-    test('deleting a duplicate cascades to its points', () async {
+    test('a removed duplicate goes to the trash; purging it erases it',
+        () async {
       final first = await db.createTrack(t0);
       final dup = await db.createTrack(t0);
       await addPoint(dup, 0, 0, 0);
 
       await removeDuplicateTracks(db);
-
-      expect(await db.pointsFor(dup), isEmpty);
       expect((await db.allTracks()).single.id, first);
+      expect((await db.track(dup))!.deletedAt, isNotNull);
+
+      // The original still holds the start time, so the duplicate leaves no
+      // deletion marker behind (sync must not read the ride as deleted).
+      await db.purgeTrack(dup);
+      expect(await db.track(dup), isNull);
+      expect(await db.pointsFor(dup), isEmpty);
     });
   });
 }

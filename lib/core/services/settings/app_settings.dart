@@ -51,6 +51,7 @@ class AppSettings {
     this.autoStartEnabled = false,
     this.proximityHoldEnabled = false,
     this.vibrateOnStartStop = true,
+    this.retentionDays = 30,
   });
 
   /// Distance/speed units shown in the UI.
@@ -98,6 +99,10 @@ class AppSettings {
   /// the hands-free triggers are used without looking at the screen.
   final bool vibrateOnStartStop;
 
+  /// How long deleted rides stay restorable in "Recently deleted", and how
+  /// long automatic safety backups are kept, in days.
+  final int retentionDays;
+
   /// Whether the home screen shows the Start/Stop button: on request, or
   /// whenever the volume keys can't start a ride — switched off, or on a
   /// platform that can't intercept them.
@@ -117,6 +122,7 @@ class AppSettings {
     bool? autoStartEnabled,
     bool? proximityHoldEnabled,
     bool? vibrateOnStartStop,
+    int? retentionDays,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -135,6 +141,7 @@ class AppSettings {
         autoStartEnabled: autoStartEnabled ?? this.autoStartEnabled,
         proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
         vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
+        retentionDays: retentionDays ?? this.retentionDays,
       );
 
   Map<String, dynamic> toJson() => {
@@ -150,6 +157,7 @@ class AppSettings {
         'auto_start': autoStartEnabled,
         'proximity_hold': proximityHoldEnabled,
         'vibrate_start_stop': vibrateOnStartStop,
+        'retention_days': retentionDays,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -173,6 +181,7 @@ class AppSettings {
         autoStartEnabled: json['auto_start'] as bool? ?? false,
         proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
         vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
+        retentionDays: (json['retention_days'] as num?)?.toInt() ?? 30,
       );
 
   @override
@@ -189,7 +198,8 @@ class AppSettings {
       other.autoPauseSpeedKmh == autoPauseSpeedKmh &&
       other.autoStartEnabled == autoStartEnabled &&
       other.proximityHoldEnabled == proximityHoldEnabled &&
-      other.vibrateOnStartStop == vibrateOnStartStop;
+      other.vibrateOnStartStop == vibrateOnStartStop &&
+      other.retentionDays == retentionDays;
 
   @override
   int get hashCode => Object.hash(
@@ -204,5 +214,6 @@ class AppSettings {
       autoPauseSpeedKmh,
       autoStartEnabled,
       proximityHoldEnabled,
-      vibrateOnStartStop);
+      vibrateOnStartStop,
+      retentionDays);
 }

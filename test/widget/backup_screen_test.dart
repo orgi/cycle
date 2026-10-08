@@ -22,7 +22,14 @@ class _FakeBackupService implements BackupService {
   int importCalls = 0;
 
   @override
-  Future<File> exportBackup() async => File('fake_backup.sqlite');
+  Future<File> exportBackup({String label = ''}) async =>
+      File('fake_backup.sqlite');
+
+  @override
+  Future<File?> autoBackupOncePerDay({DateTime? now}) async => null;
+
+  @override
+  Future<int> pruneAutoBackups(Duration retention, {DateTime? now}) async => 0;
 
   @override
   Future<File> saveDownloadedBackup(String name, List<int> bytes) async =>

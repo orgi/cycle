@@ -52,6 +52,9 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setVibrateOnStartStop(bool enabled) =>
       update(state.copyWith(vibrateOnStartStop: enabled));
 
+  Future<void> setRetentionDays(int days) =>
+      update(state.copyWith(retentionDays: days.clamp(1, 365)));
+
   /// [fileName] of the map to display, or null to auto-pick by location.
   Future<void> setSelectedMap(String? fileName) =>
       update(state.copyWith(selectedMapFileName: fileName));
