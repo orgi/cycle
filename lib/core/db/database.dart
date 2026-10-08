@@ -4,6 +4,10 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../services/backup_service.dart';
+import '../sync/sync_clock.dart';
+import 'migration_backup.dart';
+
 part 'database.g.dart';
 
 /// One recorded ride.
@@ -23,6 +27,25 @@ class Tracks extends Table {
   // prefs — not a SQL foreign key, profiles live outside this DB). Null for
   // rides recorded before profiles existed, or if the profile was deleted.
   TextColumn get bikeProfileId => text().nullable()();
+
+  // Sync (schema v5). A ride is synced as four independently-versioned parts —
+  // name, bike, geometry (points + stats) and deleted — each with its own
+  // clock (`SyncClock`: zero-padded epoch ms + '@' + device id, so plain
+  // string comparison orders them). Null = never edited since v5, which sorts
+  // before every real clock. See `lib/core/sync/ride_doc.dart`.
+  TextColumn get nameClock => text().nullable()();
+  TextColumn get bikeClock => text().nullable()();
+  TextColumn get geometryClock => text().nullable()();
+  TextColumn get deletedClock => text().nullable()();
+
+  // Trash: a deleted ride keeps its row (and, until purged, its points) with
+  // [deletedAt] set, hidden from every list, restorable from "Recently
+  // deleted" for the retention period. After that its points are purged and
+  // [pointsPurged] is set, but the row stays as a tiny marker so sync knows the
+  // ride was deleted and an outdated phone can't bring it back.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  BoolColumn get pointsPurged =>
+      boolean().withDefault(const Constant(false))();
 }
 
 /// A single sample within a ride (position + optional sensor values).
@@ -45,12 +68,36 @@ class TrackPoints extends Table {
   BoolColumn get speedFromSensor => boolean().nullable()();
 }
 
-@DriftDatabase(tables: [Tracks, TrackPoints])
+/// Remote sync files this device has already seen, with the ETag it saw and
+/// the file's ride without points (`RideDoc.toMetaJson`) — so an unchanged
+/// file is never downloaded again, yet can still be compared and pruned.
+class SyncRemoteFiles extends Table {
+  TextColumn get path => text()();
+  TextColumn get etag => text().nullable()();
+  TextColumn get meta => text()();
+
+  @override
+  Set<Column> get primaryKey => {path};
+}
+
+/// Small key/value store that must live with the ride data (e.g. this
+/// installation's sync device id, used in every edit clock).
+class SyncMeta extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
+@DriftDatabase(tables: [Tracks, TrackPoints, SyncRemoteFiles, SyncMeta])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => kSchemaVersion;
+
+  static const kSchemaVersion = 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -65,6 +112,16 @@ class AppDatabase extends _$AppDatabase {
           if (from < 4) {
             await m.addColumn(trackPoints, trackPoints.speedFromSensor);
           }
+          if (from < 5) {
+            await m.addColumn(tracks, tracks.nameClock);
+            await m.addColumn(tracks, tracks.bikeClock);
+            await m.addColumn(tracks, tracks.geometryClock);
+            await m.addColumn(tracks, tracks.deletedClock);
+            await m.addColumn(tracks, tracks.deletedAt);
+            await m.addColumn(tracks, tracks.pointsPurged);
+            await m.createTable(syncRemoteFiles);
+            await m.createTable(syncMeta);
+          }
         },
         beforeOpen: (_) async {
           // Required for the trackPoints → tracks ON DELETE CASCADE to fire.
@@ -74,21 +131,66 @@ class AppDatabase extends _$AppDatabase {
 
   static QueryExecutor _open() => LazyDatabase(() async {
         final dir = await getApplicationSupportDirectory();
-        return NativeDatabase.createInBackground(File('${dir.path}/cycle.sqlite'));
+        final file = File('${dir.path}/cycle.sqlite');
+        // Never migrate the only copy of someone's rides: snapshot it first.
+        await backupBeforeMigration(
+          file,
+          kSchemaVersion,
+          backupsDir: () async => Directory(
+              '${(await BackupService.defaultRoot()).path}/backups'),
+        );
+        return NativeDatabase.createInBackground(file);
       });
 
+  // --- Sync clocks -----------------------------------------------------------
+
+  String? _deviceId;
+
+  /// This installation's sync device id — generated once and stored in the DB
+  /// itself, so it's available synchronously to every edit below.
+  Future<String> deviceId() async {
+    final cached = _deviceId;
+    if (cached != null) return cached;
+    final row = await (select(syncMeta)..where((m) => m.key.equals('device_id')))
+        .getSingleOrNull();
+    if (row != null) return _deviceId = row.value;
+    final id = newDeviceId();
+    await into(syncMeta).insertOnConflictUpdate(
+        SyncMetaCompanion.insert(key: 'device_id', value: id));
+    return _deviceId = id;
+  }
+
+  /// Overridable "now" for tests.
+  DateTime Function() now = DateTime.now;
+
+  /// A fresh edit clock for this device.
+  Future<String> stamp() async => SyncClock.format(now(), await deviceId());
+
+  Future<String?> meta(String key) async =>
+      (await (select(syncMeta)..where((m) => m.key.equals(key)))
+              .getSingleOrNull())
+          ?.value;
+
+  Future<void> setMeta(String key, String value) => into(syncMeta)
+      .insertOnConflictUpdate(SyncMetaCompanion.insert(key: key, value: value));
+
   Future<int> createTrack(DateTime startedAt,
-          {String name = 'Ride',
-          int? batteryStartPercent,
-          String? bikeProfileId}) =>
-      into(tracks).insert(
-        TracksCompanion.insert(
-          startedAt: startedAt,
-          name: Value(name),
-          batteryStartPercent: Value(batteryStartPercent),
-          bikeProfileId: Value(bikeProfileId),
-        ),
-      );
+      {String name = 'Ride',
+      int? batteryStartPercent,
+      String? bikeProfileId}) async {
+    final clock = await stamp();
+    return into(tracks).insert(
+      TracksCompanion.insert(
+        startedAt: startedAt,
+        name: Value(name),
+        batteryStartPercent: Value(batteryStartPercent),
+        bikeProfileId: Value(bikeProfileId),
+        nameClock: Value(clock),
+        bikeClock: Value(clock),
+        geometryClock: Value(clock),
+      ),
+    );
+  }
 
   Future<void> addPoint(TrackPointsCompanion point) =>
       into(trackPoints).insert(point);
@@ -116,43 +218,66 @@ class AppDatabase extends _$AppDatabase {
     required double avgSpeedMps,
     required double maxSpeedMps,
     int? batteryEndPercent,
-  }) =>
-      (update(tracks)..where((t) => t.id.equals(trackId))).write(
-        TracksCompanion(
-          endedAt: Value(endedAt),
-          distanceMeters: Value(distanceMeters),
-          durationSeconds: Value(durationSeconds),
-          avgSpeedMps: Value(avgSpeedMps),
-          maxSpeedMps: Value(maxSpeedMps),
-          batteryEndPercent: Value(batteryEndPercent),
-        ),
-      );
+  }) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(trackId))).write(
+      TracksCompanion(
+        endedAt: Value(endedAt),
+        distanceMeters: Value(distanceMeters),
+        durationSeconds: Value(durationSeconds),
+        avgSpeedMps: Value(avgSpeedMps),
+        maxSpeedMps: Value(maxSpeedMps),
+        batteryEndPercent: Value(batteryEndPercent),
+        geometryClock: Value(clock),
+      ),
+    );
+  }
 
-  Future<void> renameTrack(int trackId, String name) =>
-      (update(tracks)..where((t) => t.id.equals(trackId)))
-          .write(TracksCompanion(name: Value(name)));
+  /// Marks a ride's points/stats as edited (for sync) after a direct point
+  /// edit that doesn't go through [finalizeTrack]/[updateTrackStats], e.g. the
+  /// OruxMaps sensor backfill.
+  Future<void> touchGeometry(int trackId) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(trackId)))
+        .write(TracksCompanion(geometryClock: Value(clock)));
+  }
+
+  Future<void> renameTrack(int trackId, String name) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(trackId))).write(
+        TracksCompanion(name: Value(name), nameClock: Value(clock)));
+  }
 
   /// Sets (or clears, with null) which bike a ride is attributed to — used
   /// both when starting a ride and to live-correct an in-progress one, and
   /// from the ride-detail screen to correct an already-finalised ride.
-  Future<void> setTrackBikeProfile(int trackId, String? bikeProfileId) =>
-      (update(tracks)..where((t) => t.id.equals(trackId))).write(
-        TracksCompanion(bikeProfileId: Value(bikeProfileId)),
-      );
+  Future<void> setTrackBikeProfile(int trackId, String? bikeProfileId) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(trackId))).write(
+      TracksCompanion(
+          bikeProfileId: Value(bikeProfileId), bikeClock: Value(clock)),
+    );
+  }
 
   /// Bulk-assigns every ride (no `where` — including ones already on another
   /// bike) to [bikeProfileId], e.g. "put all my past rides on Cube". Returns
   /// the number of rides updated.
-  Future<int> assignAllTracksToBikeProfile(String? bikeProfileId) =>
-      update(tracks).write(TracksCompanion(bikeProfileId: Value(bikeProfileId)));
+  Future<int> assignAllTracksToBikeProfile(String? bikeProfileId) async {
+    final clock = await stamp();
+    return (update(tracks)..where((t) => t.deletedAt.isNull())).write(
+        TracksCompanion(
+            bikeProfileId: Value(bikeProfileId), bikeClock: Value(clock)));
+  }
 
   /// Bulk-assigns exactly [trackIds] (e.g. a filtered subset from the ride
   /// classifier) to [bikeProfileId]. Returns the number of rides updated.
   Future<int> assignTracksToBikeProfile(
-      List<int> trackIds, String? bikeProfileId) {
-    if (trackIds.isEmpty) return Future.value(0);
-    return (update(tracks)..where((t) => t.id.isIn(trackIds)))
-        .write(TracksCompanion(bikeProfileId: Value(bikeProfileId)));
+      List<int> trackIds, String? bikeProfileId) async {
+    if (trackIds.isEmpty) return 0;
+    final clock = await stamp();
+    return (update(tracks)..where((t) => t.id.isIn(trackIds))).write(
+        TracksCompanion(
+            bikeProfileId: Value(bikeProfileId), bikeClock: Value(clock)));
   }
 
   /// Track-level candidates for the ride classifier — the criteria that live
@@ -171,6 +296,7 @@ class AppDatabase extends _$AppDatabase {
     DateTime? startedBefore,
   }) {
     final q = select(tracks)
+      ..where((t) => t.deletedAt.isNull())
       ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]);
     if (onlyUnassigned) q.where((t) => t.bikeProfileId.isNull());
     if (minDistanceMeters != null) {
@@ -200,14 +326,43 @@ class AppDatabase extends _$AppDatabase {
     return q.get();
   }
 
-  /// Most-recent rides first.
+  /// Most-recent rides first. Rides in the trash are excluded.
   Stream<List<Track>> watchTracks() => (select(tracks)
+        ..where((t) => t.deletedAt.isNull())
         ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
       .watch();
 
+  /// Every ride not in the trash, most recent first.
   Future<List<Track>> allTracks() => (select(tracks)
+        ..where((t) => t.deletedAt.isNull())
         ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
       .get();
+
+  /// Every row including trashed rides and purged deletion markers — for
+  /// import dedup (a ride the user deleted must not come back from an old
+  /// backup) and for sync.
+  Future<List<Track>> allTracksIncludingDeleted() => (select(tracks)
+        ..orderBy([(t) => OrderingTerm.desc(t.startedAt)]))
+      .get();
+
+  /// Rides in the trash that can still be restored (points not purged yet),
+  /// most recently deleted first.
+  Stream<List<Track>> watchDeletedTracks() => (select(tracks)
+        ..where((t) => t.deletedAt.isNotNull() & t.pointsPurged.equals(false))
+        ..orderBy([(t) => OrderingTerm.desc(t.deletedAt)]))
+      .watch();
+
+  /// Number of points per track, without loading them.
+  Future<Map<int, int>> pointCounts() async {
+    final count = trackPoints.id.count();
+    final rows = await (selectOnly(trackPoints)
+          ..addColumns([trackPoints.trackId, count])
+          ..groupBy([trackPoints.trackId]))
+        .get();
+    return {
+      for (final r in rows) r.read(trackPoints.trackId)!: r.read(count)!,
+    };
+  }
 
   Future<Track?> track(int id) =>
       (select(tracks)..where((t) => t.id.equals(id))).getSingleOrNull();
@@ -217,8 +372,72 @@ class AppDatabase extends _$AppDatabase {
         ..orderBy([(p) => OrderingTerm.asc(p.time)]))
       .get();
 
-  Future<void> deleteTrack(int id) =>
-      (delete(tracks)..where((t) => t.id.equals(id))).go();
+  /// Moves a ride to the trash (see [Tracks.deletedAt]). Nothing is erased:
+  /// it can be restored with [restoreTrack] until the retention period ends
+  /// and [purgeExpiredTrash] drops its points.
+  Future<void> deleteTrack(int id) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(id))).write(
+      TracksCompanion(deletedAt: Value(now()), deletedClock: Value(clock)),
+    );
+  }
+
+  /// Brings a ride back from the trash. The geometry is re-stamped too, so on
+  /// every other phone the restored points win over a copy that was already
+  /// purged there.
+  Future<void> restoreTrack(int id) async {
+    final clock = await stamp();
+    await (update(tracks)
+          ..where((t) => t.id.equals(id) & t.pointsPurged.equals(false)))
+        .write(TracksCompanion(
+      deletedAt: const Value(null),
+      deletedClock: Value(clock),
+      geometryClock: Value(clock),
+    ));
+  }
+
+  /// Permanently removes a ride's data. If no other live row shares its start
+  /// time, the row is kept as a points-less deletion marker for sync;
+  /// otherwise (a removed duplicate, an empty crash artefact) it's erased.
+  Future<void> purgeTrack(int id) async {
+    final t = await track(id);
+    if (t == null) return;
+    await transaction(() async {
+      final others = await (select(tracks)
+            ..where((o) =>
+                o.id.equals(id).not() &
+                o.startedAt.equals(t.startedAt) &
+                o.deletedAt.isNull()))
+          .get();
+      if (others.isNotEmpty || t.endedAt == null) {
+        await (delete(tracks)..where((o) => o.id.equals(id))).go();
+        return;
+      }
+      await (delete(trackPoints)..where((p) => p.trackId.equals(id))).go();
+      await (update(tracks)..where((o) => o.id.equals(id))).write(
+        TracksCompanion(
+          pointsPurged: const Value(true),
+          deletedAt: Value(t.deletedAt ?? now()),
+          deletedClock: Value(t.deletedClock ?? await stamp()),
+        ),
+      );
+    });
+  }
+
+  /// Purges every trashed ride deleted more than [retention] ago. Returns the
+  /// number purged.
+  Future<int> purgeExpiredTrash(Duration retention) async {
+    final cutoff = now().subtract(retention);
+    final expired = await (select(tracks)
+          ..where((t) =>
+              t.deletedAt.isSmallerThanValue(cutoff) &
+              t.pointsPurged.equals(false)))
+        .get();
+    for (final t in expired) {
+      await purgeTrack(t.id);
+    }
+    return expired.length;
+  }
 
   /// Deletes specific track points (used to clean GPS spike outliers).
   Future<void> deletePoints(List<int> ids) async {
@@ -234,13 +453,30 @@ class AppDatabase extends _$AppDatabase {
     required int durationSeconds,
     required double avgSpeedMps,
     required double maxSpeedMps,
-  }) =>
-      (update(tracks)..where((t) => t.id.equals(trackId))).write(
-        TracksCompanion(
-          distanceMeters: Value(distanceMeters),
-          durationSeconds: Value(durationSeconds),
-          avgSpeedMps: Value(avgSpeedMps),
-          maxSpeedMps: Value(maxSpeedMps),
-        ),
-      );
+  }) async {
+    final clock = await stamp();
+    await (update(tracks)..where((t) => t.id.equals(trackId))).write(
+      TracksCompanion(
+        distanceMeters: Value(distanceMeters),
+        durationSeconds: Value(durationSeconds),
+        avgSpeedMps: Value(avgSpeedMps),
+        maxSpeedMps: Value(maxSpeedMps),
+        geometryClock: Value(clock),
+      ),
+    );
+  }
+
+  // --- Sync ------------------------------------------------------------------
+
+  Future<List<SyncRemoteFile>> listSyncRemoteFiles() => select(syncRemoteFiles).get();
+
+  Future<void> putSyncRemoteFile(String path, String? etag, String meta) =>
+      into(syncRemoteFiles).insertOnConflictUpdate(SyncRemoteFilesCompanion.insert(
+          path: path, etag: Value(etag), meta: meta));
+
+  Future<void> removeSyncRemoteFiles(Iterable<String> paths) async {
+    final list = paths.toList();
+    if (list.isEmpty) return;
+    await (delete(syncRemoteFiles)..where((f) => f.path.isIn(list))).go();
+  }
 }

@@ -109,4 +109,89 @@ void main() {
     final files = await service.listBackups();
     expect(files.map((f) => f.path), [second.path, first.path]);
   });
+
+  group('automatic safety backups', () {
+    test('autoBackupOncePerDay takes at most one snapshot per day', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await _seedRide(db, DateTime.utc(2026, 6, 1, 8));
+      final service = BackupService(db, directory: () async => tmp);
+
+      expect(await service.autoBackupOncePerDay(), isNotNull);
+      expect(await service.autoBackupOncePerDay(), isNull);
+      final names = (await service.listBackups()).map((b) => b.name);
+      expect(names.where((n) => n.startsWith('cycle_backup_auto_')), hasLength(1));
+    });
+
+    test('pruneAutoBackups removes only old automatic snapshots', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final service = BackupService(db, directory: () async => tmp);
+      final dir = Directory(await service.backupsFolderPath());
+      final old = DateTime.now().subtract(const Duration(days: 40));
+      for (final name in [
+        'cycle_backup_auto_20260101_000000.sqlite',
+        'cycle_backup_20260101_000000.sqlite',
+        'cycle_backup_pre_first_sync_20260101_000000.sqlite',
+        'cycle_backup_pre_v5_20260101_000000.sqlite',
+      ]) {
+        final f = File('${dir.path}/$name')..writeAsStringSync('x');
+        f.setLastModifiedSync(old);
+      }
+      File('${dir.path}/cycle_backup_auto_20991231_000000.sqlite')
+          .writeAsStringSync('fresh');
+
+      expect(await service.pruneAutoBackups(const Duration(days: 30)), 1);
+      final left = (await service.listBackups()).map((b) => b.name).toSet();
+      expect(left, {
+        'cycle_backup_20260101_000000.sqlite',
+        'cycle_backup_pre_first_sync_20260101_000000.sqlite',
+        'cycle_backup_pre_v5_20260101_000000.sqlite',
+        'cycle_backup_auto_20991231_000000.sqlite',
+      });
+    });
+  });
+
+  test('import keeps the bike and sensor-source columns', () async {
+    final source = AppDatabase(NativeDatabase(File('${tmp.path}/src.sqlite')));
+    final start = DateTime.utc(2026, 6, 2, 8);
+    final id = await source.createTrack(start, bikeProfileId: 'gravel');
+    await source.addPoint(TrackPointsCompanion.insert(
+      trackId: id,
+      time: start,
+      latitude: 1,
+      longitude: 2,
+      speedFromSensor: const Value(true),
+    ));
+    await source.finalizeTrack(id,
+        endedAt: start.add(const Duration(minutes: 1)),
+        distanceMeters: 1,
+        durationSeconds: 60,
+        avgSpeedMps: 1,
+        maxSpeedMps: 1);
+    await source.close();
+
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final service = BackupService(db, directory: () async => tmp);
+    expect(await service.importBackup('${tmp.path}/src.sqlite'), 1);
+    final t = (await db.allTracks()).single;
+    expect(t.bikeProfileId, 'gravel');
+    expect((await db.pointsFor(t.id)).single.speedFromSensor, isTrue);
+  });
+
+  test('import does not bring back a ride that is in the trash', () async {
+    final start = DateTime.utc(2026, 6, 3, 8);
+    final source = AppDatabase(NativeDatabase(File('${tmp.path}/src2.sqlite')));
+    await _seedRide(source, start);
+    await source.close();
+
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final id = await _seedRide(db, start);
+    await db.deleteTrack(id);
+    final service = BackupService(db, directory: () async => tmp);
+    expect(await service.importBackup('${tmp.path}/src2.sqlite'), 0);
+    expect(await db.allTracks(), isEmpty);
+  });
 }

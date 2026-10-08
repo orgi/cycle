@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/db/database.dart';
 import '../../../core/models/bike_profile.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/ride_summary.dart';
@@ -87,8 +88,7 @@ class TracksScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(right: 24),
                   child: const Icon(Icons.delete, color: Colors.white),
                 ),
-                onDismissed: (_) =>
-                    ref.read(appDatabaseProvider).deleteTrack(t.id),
+                onDismissed: (_) => deleteTrackWithUndo(context, ref, t),
                 child: ListTile(
                   key: Key('trackTile_${t.id}'),
                   leading: (showFilter && profileColor != null)
@@ -243,4 +243,20 @@ class _SummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Moves [t] to the trash and offers Undo; it also stays restorable from
+/// Settings → Data → Recently deleted.
+Future<void> deleteTrackWithUndo(
+    BuildContext context, WidgetRef ref, Track t) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final db = ref.read(appDatabaseProvider);
+  await db.deleteTrack(t.id);
+  messenger.showSnackBar(SnackBar(
+    content: Text('"${t.name}" moved to Recently deleted'),
+    action: SnackBarAction(
+      label: 'Undo',
+      onPressed: () => db.restoreTrack(t.id),
+    ),
+  ));
 }
