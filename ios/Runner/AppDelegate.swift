@@ -8,6 +8,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var hardwareButtons: HardwareButtons?
   private var hapticsChannel: FlutterMethodChannel?
+  private var batteryChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
@@ -38,6 +39,18 @@ import UIKit
       result(nil)
     }
     hapticsChannel = haptics
+
+    // Battery level for the per-ride "battery used" stat (`NativeBatteryService`
+    // in Dart, sampled at ride start/stop). Whole percent like Android; nil
+    // when iOS can't tell (simulator, unknown state).
+    let battery = FlutterMethodChannel(name: "cycle/battery", binaryMessenger: messenger)
+    battery.setMethodCallHandler { call, result in
+      guard call.method == "getLevel" else { return result(FlutterMethodNotImplemented) }
+      UIDevice.current.isBatteryMonitoringEnabled = true
+      let level = UIDevice.current.batteryLevel
+      result(level < 0 ? nil : Int((level * 100).rounded()))
+    }
+    batteryChannel = battery
   }
 }
 

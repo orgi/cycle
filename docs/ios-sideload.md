@@ -117,9 +117,10 @@ once the plain USB route works.
   the blue location pill) and is released when the app is backgrounded with no
   ride, the same lifecycle gate as Android.
 * **Not wired up on iOS yet:** opening/sharing a `.gpx` or backup *into* Cycle,
-  sharing a backup out, the Strava OAuth redirect, the battery-used stat, and
-  OruxMaps import. Their Android-native channels have no iOS counterpart, and
+  sharing a backup out, the Strava OAuth redirect, and OruxMaps import. Their Android-native channels have no iOS counterpart, and
   the Dart side no-ops there.
+* **Battery used per ride** is recorded, but iOS only tells apps the battery
+  level in 5 % steps (since iOS 17), so it is only meaningful for longer rides.
 * **Files**: the app's folder (the `routes/` folder for GPX routes to follow,
   backups, GPX exports) shows in the **Files** app under *On My iPhone →
   Cycle*. It's the counterpart of Android's external files dir, so put `.gpx`
