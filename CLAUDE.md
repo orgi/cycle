@@ -247,7 +247,14 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   of passive autoConnect itself, not of scanning. The gate condition is background AND not
   recording (a backgrounded recording ride keeps everything), with a 3s grace period (short on purpose: Android's cached-app freezer can freeze a
   backgrounded process within seconds, and a timer that loses that race never fires) so a
-  quick app-switch doesn't churn registrations. `BleSensorService` keeps the desired target set
+  quick app-switch doesn't churn registrations. **iOS gets no grace at all**
+  (`SensorPowerGate.platformGrace()`): iOS suspends a backgrounded app within ~2 s, so the 3 s
+  timer never fired there — verified on the iPhone 12 mini via `idevicesyslog`: locked
+  22:58:41, suspended 22:58:43, and the `CBMsgIdCancelPeripheralConnection` only went out
+  when iOS next woke the app (~3 min later; pending connects meanwhile stayed in
+  `bluetoothd`). The same log showed `locationd` `stopLocation` 1 s after the lock, i.e. the
+  Dart GPS gate (`AppleLocationService`) works. Re-check both with `idevicesyslog | grep
+  cycleapp` (look for `stopLocation` and `CancelPeripheralConnection` right at the lock). `BleSensorService` keeps the desired target set
   separately from the live one, so a bike-profile switch while suspended updates the plan
   without waking the radio; resuming goes through the ordinary direct-connect path plus the
   bounded retry window, adding no scan. Verify with
@@ -535,7 +542,8 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     detail still scrolls normally). Stats include distance/time/avg/max + ascent + avg HR/cadence/power
     + **battery used** (`tracks.batteryStart/EndPercent`, schema v2; read via the native
     `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
-    only). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
+    only; iOS (`AppDelegate.swift`, `UIDevice.batteryLevel`) is rounded to **5 %** by iOS since
+    iOS 17 — not fixable by the app — so short iOS rides read 0 %). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
     as the initial/first-fix zoom). The recorded track + followed route render as a **dashed
     line with chevron arrowheads** (`Icons.keyboard_arrow_up` `IconMarker`s). Map **rotation is
     disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).

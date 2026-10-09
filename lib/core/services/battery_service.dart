@@ -6,7 +6,9 @@ abstract class BatteryService {
   Future<int?> level();
 }
 
-/// Android implementation via the native `cycle/battery` channel.
+/// Native `cycle/battery` channel: `MainActivity.kt` (Android, whole %) and
+/// `AppDelegate.swift` (iOS — which rounds to 5 % steps since iOS 17, so short
+/// rides may read 0 %).
 class NativeBatteryService implements BatteryService {
   static const _channel = MethodChannel('cycle/battery');
 
@@ -15,7 +17,7 @@ class NativeBatteryService implements BatteryService {
     try {
       return await _channel.invokeMethod<int>('getLevel');
     } catch (_) {
-      return null; // channel unavailable (e.g. iOS) → no battery stat
+      return null; // channel unavailable (tests) → no battery stat
     }
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -24,8 +25,8 @@ import 'sensor_providers.dart';
 /// the ordinary direct-connect path plus the bounded retry window, so this adds
 /// no scanning.
 class SensorPowerGate {
-  SensorPowerGate(this._service, {Duration grace = _defaultGrace})
-      : _grace = grace {  // ignore: prefer_initializing_formals
+  SensorPowerGate(this._service, {Duration? grace})
+      : _grace = grace ?? platformGrace() {
     _foreground = _isForeground(
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed);
     _listener = AppLifecycleListener(onStateChange: setLifecycleState);
@@ -40,7 +41,17 @@ class SensorPowerGate {
   /// the registrations this gate exists to release. A few seconds absorbs the
   /// inactive→paused→resumed flicker of an app switch while still firing long
   /// before any freezer.
-  static const _defaultGrace = Duration(seconds: 3);
+  ///
+  /// **iOS gets no grace at all.** iOS suspends a backgrounded app outright
+  /// within ~2 s (seen on the iPhone 12 mini: locked 22:58:41, suspended
+  /// 22:58:43), so a 3 s timer never fires there. The pending connection
+  /// requests then stayed registered in `bluetoothd` until iOS happened to wake
+  /// the app minutes later, when the overdue cancel finally went out. Releasing
+  /// synchronously on `paused` goes out inside that window, the same moment
+  /// `AppleLocationService` stops the GPS (which the device log confirmed works).
+  static Duration platformGrace() => defaultTargetPlatform == TargetPlatform.iOS
+      ? Duration.zero
+      : const Duration(seconds: 3);
 
   final SensorService _service;
   final Duration _grace;
@@ -83,6 +94,12 @@ class SensorPowerGate {
       return;
     }
     if (_suspended || _graceTimer != null) return;
+    if (_grace == Duration.zero) {
+      // No timer: a suspended app's event loop never gets to run one.
+      _suspended = true;
+      unawaited(_service.suspendConnections());
+      return;
+    }
     _graceTimer = Timer(_grace, () {
       _graceTimer = null;
       _suspended = true;

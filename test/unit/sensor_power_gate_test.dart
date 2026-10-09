@@ -1,4 +1,5 @@
 import 'package:cycle/features/sensors/application/sensor_power_gate.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -76,5 +77,29 @@ void main() {
 
     expect(sensors.suspendCount, 0);
     expect(sensors.resumeCount, 0); // nothing was suspended, nothing to resume
+  });
+
+  group('iOS (no grace)', () {
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('the platform grace is zero on iOS, 3 s on Android', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      expect(SensorPowerGate.platformGrace(), Duration.zero);
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      expect(SensorPowerGate.platformGrace(), const Duration(seconds: 3));
+    });
+
+    test('releases synchronously on paused — before any timer could run',
+        () {
+      // iOS suspends the app ~2 s after backgrounding, so nothing that waits
+      // for a later event-loop turn is guaranteed to happen.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final ios = SensorPowerGate(sensors);
+      addTearDown(ios.dispose);
+      ios.setLifecycleState(AppLifecycleState.paused);
+      expect(sensors.suspendCount, 1); // no settle(): already sent
+      expect(ios.isSuspended, isTrue);
+      debugDefaultTargetPlatformOverride = null;
+    });
   });
 }

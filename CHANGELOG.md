@@ -9,6 +9,8 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **"Battery used" per ride on iPhone**, like on Android. iOS only reports the battery level in
+  5 % steps (since iOS 17), so on short rides it may read 0 %. It's meaningful on longer rides.
 - **Start/stop with gloves on.** Three new ways to start or stop a ride without touching the screen:
   - **Volume buttons on iPhone** (up = start, down = stop), like on Android. iOS has no official
     way to read them, so Cycle watches the volume level and resets it after each press. While
@@ -38,6 +40,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   - The app's folder (`routes/`, backups, GPX exports) appears in the iOS Files app.
 
 ### Fixed
+- **iPhone: Bluetooth sensors weren't released when the app went to the background.** iOS
+  suspends a backgrounded app within about 2 seconds, so the 3-second delay before letting go
+  of the sensors never ran. Pending sensor connections then stayed registered until iOS
+  happened to wake Cycle again, sometimes minutes or hours later. On iPhone they're now
+  released immediately. (The GPS was already released correctly, confirmed in the device log.)
 - **CI never got past `flutter analyze`.** The analyzer also linted the vendored
   `third_party/mapsforge_flutter` copy and failed on upstream's own warnings, so the Android
   and iOS CI builds were always skipped. Vendored code is now excluded from analysis.
