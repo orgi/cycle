@@ -17,6 +17,7 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   per hour. Tests are kept separately and never appear among your rides. A real ride can't be
   started while a test runs. Charging to 100 % in one go afterwards also recalibrates the
   battery display.
+  During the test the map's TIME box shows how long the test has been running (labelled TEST).
 - **"Battery used" per ride on iPhone**, like on Android. iOS only reports the battery level in
   5 % steps (since iOS 17), so on short rides it may read 0 %. It's meaningful on longer rides.
 - **Start/stop with gloves on.** Three new ways to start or stop a ride without touching the screen:

@@ -40,6 +40,7 @@ import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_catalog.dart';
 import 'route_arrows_marker.dart';
+import 'time_stat.dart';
 
 /// User's choice when a timestamped GPX arrives — it could be either.
 enum _GpxChoice { cancel, follow, importRide }
@@ -800,14 +801,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: _MapStat(
-                          // Auto-paused (below the threshold): flag it in amber;
-                          // the time is frozen while paused.
-                          label: m.paused ? 'PAUSED' : 'TIME',
-                          value: formatDuration(m.elapsed),
-                          unit: '',
-                          valueColor: m.paused ? const Color(0xFFFFA726) : null,
-                        ),
+                        child: Builder(builder: (context) {
+                          // Auto-paused (below the threshold): flag it in
+                          // amber; the time is frozen while paused. During a
+                          // battery test: the test's running time. Rebuilt on
+                          // every (simulated, 1 Hz) fix, so it ticks.
+                          final t = timeStat(
+                            rideElapsed: m.elapsed,
+                            paused: m.paused,
+                            batteryTestStartedAt: batteryTest?.startedAt,
+                            now: DateTime.now(),
+                          );
+                          return _MapStat(
+                            label: t.label,
+                            value: t.value,
+                            unit: '',
+                            valueColor:
+                                t.amber ? const Color(0xFFFFA726) : null,
+                          );
+                        }),
                       ),
                     ],
                   ),
