@@ -17,6 +17,7 @@ import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
+import '../../../core/widgets/every_second.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../battery_test/application/battery_test_providers.dart';
 import '../../battery_test/presentation/battery_test_screen.dart';
@@ -801,11 +802,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ),
                       const SizedBox(width: 6),
                       Expanded(
-                        child: Builder(builder: (context) {
+                        child: EverySecond(builder: (context) {
                           // Auto-paused (below the threshold): flag it in
                           // amber; the time is frozen while paused. During a
-                          // battery test: the test's running time. Rebuilt on
-                          // every (simulated, 1 Hz) fix, so it ticks.
+                          // battery test: the test's running time — which
+                          // needs its own 1 s tick: the simulated ride's
+                          // constant speed never changes the metrics, so the
+                          // screen doesn't rebuild by itself.
                           final t = timeStat(
                             rideElapsed: m.elapsed,
                             paused: m.paused,

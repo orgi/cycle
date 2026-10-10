@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/battery_test/battery_test_log.dart';
+import '../../../core/utils/format.dart';
 import '../application/battery_test_providers.dart';
 
 String formatRuntime(Duration d) {
@@ -128,7 +129,7 @@ class _RunningCardState extends ConsumerState<_RunningCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Running for ${formatRuntime(elapsed)}',
+            Text('Running for ${formatDuration(elapsed)}',
                 key: const Key('batteryTestElapsed'),
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
