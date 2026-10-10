@@ -11,6 +11,7 @@ import '../../../core/models/ride_metrics.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
+import '../../../core/battery_test/simulated_loop.dart';
 import '../../../core/services/apple_location_service.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_power_control.dart';
@@ -20,26 +21,53 @@ import '../../../core/services/fg_task_recording_service.dart';
 import '../../../core/services/haptics_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
+import '../../../core/services/simulated_ride_location_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../../tracks/application/track_repair.dart';
 
-/// Platform GPS source. Overridden with a fake in tests.
+/// The device's real GPS.
 ///
 /// Android uses the native continuous `LocationManager` stream
 /// ([NativeLocationService]) — geolocator's polling cold-restarts the GPS and
 /// its stream doesn't engage the receiver on the target hardware (see that
 /// class + CLAUDE.md). iOS uses one continuous Core Location stream
 /// ([AppleLocationService]). Other platforms fall back to geolocator polling.
-final locationServiceProvider = Provider<LocationService>(
+final deviceLocationServiceProvider = Provider<LocationService>(
   (ref) => switch (defaultTargetPlatform) {
     TargetPlatform.android => NativeLocationService(),
     TargetPlatform.iOS => AppleLocationService(),
     _ => GeolocatorLocationService(),
   },
 );
+
+/// The simulated ride of a running battery runtime test, or null. Set and
+/// cleared by `BatteryTestController`; while set, the app's positions come from
+/// it (see [locationServiceProvider]) and no real ride can be recorded.
+final simulatedRideProvider =
+    NotifierProvider<SimulatedRideController, SimulatedLoop?>(
+        SimulatedRideController.new);
+
+class SimulatedRideController extends Notifier<SimulatedLoop?> {
+  @override
+  SimulatedLoop? build() => null;
+
+  void set(SimulatedLoop? loop) => state = loop;
+}
+
+/// The position source the whole app reads (map, ride metrics, auto-start):
+/// the real GPS, or — during a battery runtime test — a simulated ride with the
+/// real GPS still running underneath. Overridden with a fake in tests.
+final locationServiceProvider = Provider<LocationService>((ref) {
+  final device = ref.watch(deviceLocationServiceProvider);
+  final loop = ref.watch(simulatedRideProvider);
+  if (loop == null) return device;
+  final simulated = SimulatedRideLocationService(device, loop);
+  ref.onDispose(simulated.dispose);
+  return simulated;
+});
 
 /// Tells the native layer whether a ride is recording, so the continuous GPS
 /// request is held while a backgrounded ride records and dropped when the app
@@ -49,7 +77,11 @@ final locationPowerControlProvider = Provider<LocationPowerControl>((ref) {
   if (defaultTargetPlatform == TargetPlatform.android) {
     return const NativeLocationPowerControl();
   }
-  final service = ref.watch(locationServiceProvider);
+  // The real GPS — unwrapped from a battery test's simulated ride.
+  final effective = ref.watch(locationServiceProvider);
+  final service = effective is SimulatedRideLocationService
+      ? effective.device
+      : effective;
   return service is LocationPowerControl
       ? service as LocationPowerControl
       : const NoopLocationPowerControl();
@@ -111,6 +143,9 @@ class RecordingController extends Notifier<bool> {
 
   Future<void> start() async {
     if (state) return;
+    // A battery runtime test feeds simulated positions: never record those as
+    // a ride (volume keys, auto-start and the button all come through here).
+    if (ref.read(simulatedRideProvider) != null) return;
     _confirm(RideFeedback.started);
     // Flag the ride to the native GPS gate FIRST, before anything that can push
     // the activity through onPause (the foreground service can raise a

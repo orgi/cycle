@@ -18,6 +18,8 @@ import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../backup/application/backup_providers.dart';
+import '../../battery_test/application/battery_test_providers.dart';
+import '../../battery_test/presentation/battery_test_screen.dart';
 import '../../dashboard/application/auto_start_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../tracks/application/oruxmaps_import_service.dart';
@@ -603,6 +605,25 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
     ref.watch(autoStartControllerProvider);
+    final batteryTest = ref.watch(batteryTestProvider);
+    // A battery test that ended with the phone switching off: announce the
+    // result once, the first time the home screen is up again.
+    ref.listen(unseenShutdownResultProvider, (_, next) {
+      final r = next.value;
+      if (r == null) return;
+      unawaited(ref.read(batteryTestProvider.notifier).markSeen(r.id));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        key: const Key('batteryTestResultSnack'),
+        duration: const Duration(seconds: 12),
+        content: Text('Battery test: the phone lasted '
+            '${formatRuntime(r.runtime)}'
+            '${r.startLevel == null ? '' : ' (from ${r.startLevel} %)'}.'),
+        action: SnackBarAction(
+          label: 'Details',
+          onPressed: () => context.push('/battery-test'),
+        ),
+      ));
+    });
     ref.watch(sensorSettingsSyncProvider);
     // Reconnect previously-paired BLE sensors on launch.
     final pairedSensors = ref.watch(sensorConnectionProvider);
@@ -791,6 +812,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
                 ),
+                if (batteryTest != null)
+                  Positioned(
+                    top: route != null ? 120 : 72,
+                    left: 8,
+                    right: 8,
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: () => context.push('/battery-test'),
+                        child: Container(
+                          key: const Key('batteryTestBanner'),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.62),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'BATTERY TEST · simulated ride · '
+                            '${batteryTest.currentLevel == null ? '' : '${batteryTest.currentLevel} %'}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(color: Colors.orangeAccent),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 // Follow-route navigation banner (only while following a route).
                 if (route != null)
                   Positioned(

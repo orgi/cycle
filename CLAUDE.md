@@ -757,6 +757,26 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     through `RecordingController.recordPoint`, so **new** rides going forward can
     be classified by it; old points stay `null` (unknown, not "false").
 
+* **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
+  answers "how long does the phone last on a ride" without riding. While running, the app's
+  `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedLoop`
+  (`lib/core/battery_test/simulated_loop.dart`, 800 m radius, 25 km/h, 1 fix/s) centred on the
+  last real fix (else the shown map's centre), so the map pans over the rider's own installed
+  map like on a real ride (a still map would overstate the runtime). The **real GPS stays
+  subscribed underneath** (`deviceLocationServiceProvider`; fixes are only counted) and the
+  screen is held on (`ScreenWakeService.ownerBatteryTest`). The platform GPS is now
+  `deviceLocationServiceProvider`; `locationServiceProvider` is the effective one everything
+  reads, and tests keep overriding that. `locationPowerControlProvider` unwraps the simulation
+  to reach the real service's gate. **`RecordingController.start()` refuses while a test runs**
+  (`simulatedRideProvider != null`), so simulated positions can never become a ride (volume
+  keys, auto-start and the button all go through it). Results are **not in the ride DB**
+  (deliberately, which also avoids a schema bump): one JSON-lines file per test in
+  `<appSupport>/battery_tests/` (`BatteryTestLog`), appended with a flush every minute, so it
+  survives the phone dying. No `stop` line means the phone switched off, and the last sample is
+  the time of death (±1 sample). The map screen announces an unseen shutdown result once
+  (`unseenShutdownResultProvider`, then a `seen` line). On iOS the levels are 5 % steps, so the
+  **runtime** is the reliable number and %/h is only shown from 10 min on.
+
 ## Known gotchas
 
 * **`MapModel.dispose()` disposes its registered marker datastores.** Swapping the active map
