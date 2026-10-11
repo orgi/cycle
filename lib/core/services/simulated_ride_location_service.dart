@@ -1,24 +1,24 @@
 import 'dart:async';
 
-import '../battery_test/simulated_loop.dart';
+import '../battery_test/simulated_zigzag.dart';
 import '../models/geo_sample.dart';
 import 'location_service.dart';
 
 /// The location source during a battery runtime test: the app sees a simulated
-/// ride along a [SimulatedLoop] (1 fix/s, so the map pans like on a real ride),
+/// ride along a [SimulatedZigzag] (1 fix/s, so the map pans like on a real ride),
 /// while the **real** GPS stays subscribed underneath exactly as during a ride —
 /// its fixes are only counted, never shown — so the receiver's power cost is in
 /// the measurement too.
 class SimulatedRideLocationService implements LocationService {
   SimulatedRideLocationService(
     this._device,
-    this._loop, {
+    this._route, {
     this._interval = const Duration(seconds: 1),
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
   final LocationService _device;
-  final SimulatedLoop _loop;
+  final SimulatedZigzag _route;
   final Duration _interval;
   final DateTime Function() _clock;
 
@@ -61,7 +61,7 @@ class SimulatedRideLocationService implements LocationService {
 
   void _emit() {
     final now = _clock();
-    _out.add(_loop.sampleAt(now.difference(_startedAt), now));
+    _out.add(_route.sampleAt(now.difference(_startedAt), now));
   }
 
   void dispose() {

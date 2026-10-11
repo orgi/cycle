@@ -104,11 +104,18 @@ void main() {
     expect(service, isA<SimulatedRideLocationService>());
 
     await wait(150);
-    // The map is fed the loop around the last real fix (800 m away from it).
+    // The map is fed the simulated ride, starting at the last real fix.
     expect(positions, isNotEmpty);
     final p = positions.last;
-    expect(haversineMeters(47.8, 11.9, p.latitude, p.longitude),
-        closeTo(800, 2));
+    expect(haversineMeters(47.8, 11.9, p.latitude, p.longitude), lessThan(10));
+    // Every simulated fix is written to the scratch database like a ride's,
+    // never to the real ride database.
+    final scratch = File('${tmp.path}/battery_tests/scratch_ride.sqlite');
+    expect(scratch.existsSync(), isTrue);
+    await wait(1100); // the simulated ride emits once a second
+    expect(await c.read(batteryTestProvider.notifier).scratchPointCount(),
+        greaterThan(0));
+    expect(await db.allTracks(), isEmpty);
     // The real GPS is still subscribed underneath; its fixes are counted.
     device.emit(home());
     device.emit(home());
@@ -117,6 +124,7 @@ void main() {
     await c.read(batteryTestProvider.notifier).stop();
     expect(wake.isHeld, isFalse);
     expect(c.read(locationServiceProvider), same(device)); // real GPS again
+    expect(scratch.existsSync(), isFalse); // scratch points discarded
 
     final results = await c.read(batteryTestResultsProvider.future);
     final r = results.single;

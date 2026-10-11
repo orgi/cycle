@@ -296,8 +296,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final here = LatLong(sample.latitude, sample.longitude);
 
     // Only grow the recorded track while a ride is being recorded — otherwise
-    // the map would draw a line just from idling/moving with the app open.
-    if (ref.read(recordingProvider)) {
+    // the map would draw a line just from idling/moving with the app open. A
+    // battery test draws its simulated ride's track too: drawing it is part of
+    // what a ride costs.
+    if (ref.read(recordingProvider) || ref.read(batteryTestProvider) != null) {
       final last = _path.isNotEmpty ? _path.last : null;
       if (last == null ||
           haversineMeters(
@@ -672,6 +674,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
       } else {
         _clearTrack();
       }
+    });
+
+    // A battery test's simulated track starts empty and goes with the test.
+    ref.listen(batteryTestProvider.select((t) => t?.id), (prev, next) {
+      if (prev != next) _clearTrack();
     });
 
     // Offer to resume a ride that a crash/kill interrupted (recovered above).

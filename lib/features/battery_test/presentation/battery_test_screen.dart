@@ -35,9 +35,9 @@ class BatteryTestScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Simulates a ride until the battery runs out: the map moves along '
-            'a loop around your area, the real GPS stays on and the screen '
-            'stays on, like on a ride. Every minute the time and battery level '
+            'Simulates a ride until the battery runs out: the map moves on a '
+            'zigzag through your area, drawing and saving the track, the real '
+            'GPS stays on and the screen stays on, like on a ride. Every minute the time and battery level '
             'are saved, so the result survives the phone switching itself off.\n\n'
             'Unplug the charger, keep Cycle open and the phone unlocked, set '
             'the brightness you ride with, and connect your sensors if you '

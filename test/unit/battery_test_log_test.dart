@@ -1,5 +1,6 @@
 import 'package:cycle/core/battery_test/battery_test_log.dart';
-import 'package:cycle/core/battery_test/simulated_loop.dart';
+import 'package:cycle/core/battery_test/simulated_zigzag.dart';
+import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/utils/geo.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -88,32 +89,77 @@ void main() {
     });
   });
 
-  group('SimulatedLoop', () {
-    const loop = SimulatedLoop(centerLat: 47.8, centerLon: 11.9);
+  group('SimulatedZigzag', () {
+    final route = SimulatedZigzag(startLat: 47.8, startLon: 11.9);
+    GeoSample at(Duration d) => route.sampleAt(d, t0);
+    Duration hours(double h) => Duration(seconds: (h * 3600).round());
 
-    test('stays on the circle around the centre', () {
-      for (final s in [0, 17, 60, 333, 1200]) {
-        final p = loop.sampleAt(Duration(seconds: s), t0);
-        final d = haversineMeters(47.8, 11.9, p.latitude, p.longitude);
-        expect(d, closeTo(800, 2), reason: 'at ${s}s');
+    test('starts at the rider\'s position and moves at 25 km/h', () {
+      final a = at(Duration.zero);
+      expect(haversineMeters(47.8, 11.9, a.latitude, a.longitude), lessThan(0.01));
+      final b = at(const Duration(seconds: 1));
+      expect(haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude),
+          closeTo(25 / 3.6, 0.05));
+      expect(a.speedMps, closeTo(25 / 3.6, 1e-9));
+      expect(a.accuracyMeters, 5); // passes the accuracy filter
+    });
+
+    test('advances one row spacing per row: ~9 km north per 100 km ridden',
+        () {
+      final p = at(hours(4)); // 100 km ridden: 3.3 km per 300 m northwards
+      final north = haversineMeters(47.8, 11.9, p.latitude, 11.9);
+      expect(p.latitude, greaterThan(47.8));
+      expect(north, closeTo(100000 / 3300 * 300, 400));
+      // Never more than half a row east/west of the start.
+      expect(haversineMeters(p.latitude, 11.9, p.latitude, p.longitude),
+          lessThanOrEqualTo(1500.5));
+    });
+
+    test('without map bounds it stays within 20 km of the start', () {
+      for (var h = 0.0; h <= 15; h += 0.25) {
+        final p = at(hours(h));
+        expect(haversineMeters(47.8, 11.9, p.latitude, 11.9),
+            lessThanOrEqualTo(19800.5), reason: '${h}h');
       }
     });
 
-    test('moves at 25 km/h and laps the loop', () {
-      final a = loop.sampleAt(Duration.zero, t0);
-      final b = loop.sampleAt(const Duration(seconds: 1), t0);
-      final step = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
-      expect(step, closeTo(25 / 3.6, 0.05));
-      expect(a.speedMps, closeTo(25 / 3.6, 1e-9));
-      final lapSeconds = loop.circumferenceMeters / (25 / 3.6);
-      final lap = loop.sampleAt(
-          Duration(milliseconds: (lapSeconds * 1000).round()), t0);
-      expect(haversineMeters(a.latitude, a.longitude, lap.latitude, lap.longitude),
-          lessThan(0.5));
+    test('does not ride back over the line it came along (no loop)', () {
+      // One hour in, the rider is ~25 km along but far from every earlier
+      // point except the ones just ridden.
+      final now = at(hours(1));
+      for (var m = 0; m < 50; m++) {
+        final earlier = at(Duration(minutes: m));
+        expect(
+            haversineMeters(now.latitude, now.longitude, earlier.latitude,
+                earlier.longitude),
+            greaterThan(150),
+            reason: 'minute $m');
+      }
     });
 
-    test('passes the accuracy filter like a good fix', () {
-      expect(loop.sampleAt(Duration.zero, t0).accuracyMeters, 5);
+    test('stays inside the given area, turning back onto fresh rows', () {
+      // A 6 km × 4 km map, rider starting near its middle.
+      const area = (minLat: 47.78, minLon: 11.86, maxLat: 47.816, maxLon: 11.94);
+      final small = SimulatedZigzag(startLat: 47.8, startLon: 11.9, area: area);
+      final rows = <double>{};
+      for (var s = 0; s <= 15 * 3600; s += 20) {
+        final p = small.sampleAt(Duration(seconds: s), t0);
+        expect(p.latitude, inInclusiveRange(area.minLat, area.maxLat));
+        expect(p.longitude, inInclusiveRange(area.minLon, area.maxLon));
+        rows.add((p.latitude * 1e5).roundToDouble());
+      }
+      // Many distinct rows: the sweeps interleave rather than retrace.
+      expect(rows.length, greaterThan(40));
+    });
+
+    test('a tiny map (the demo) still gets a usable pattern', () {
+      const area = (minLat: 43.73, minLon: 7.41, maxLat: 43.731, maxLon: 7.411);
+      final tiny =
+          SimulatedZigzag(startLat: 43.7305, startLon: 7.4105, area: area);
+      final a = tiny.sampleAt(Duration.zero, t0);
+      final b = tiny.sampleAt(const Duration(minutes: 10), t0);
+      expect(haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude),
+          lessThan(1000));
     });
   });
 }

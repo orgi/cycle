@@ -3,10 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/battery_test/battery_test_log.dart';
-import '../../../core/battery_test/simulated_loop.dart';
+import '../../../core/battery_test/simulated_zigzag.dart';
+import '../../../core/db/database.dart';
+import '../../../core/models/geo_sample.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -51,6 +55,27 @@ class BatteryTestStore {
     final f = await file(id);
     if (f.existsSync()) f.deleteSync();
   }
+
+  /// A throwaway ride database (same schema and insert path as the real one)
+  /// that a running test writes its simulated points into, so the per-point
+  /// database cost of a ride is in the measurement — without the simulated
+  /// ride ever reaching the real ride list. Any leftover from a test the
+  /// phone didn't survive is discarded first.
+  Future<AppDatabase> openScratchDb() async {
+    await deleteScratchDb();
+    return AppDatabase(NativeDatabase.createInBackground(await _scratchFile()));
+  }
+
+  Future<void> deleteScratchDb() async {
+    final f = await _scratchFile();
+    for (final suffix in const ['', '-wal', '-shm', '-journal']) {
+      final part = File('${f.path}$suffix');
+      if (part.existsSync()) part.deleteSync();
+    }
+  }
+
+  Future<File> _scratchFile() async =>
+      File('${(await _dir()).path}/scratch_ride.sqlite');
 }
 
 final batteryTestStoreProvider =
@@ -99,8 +124,9 @@ class BatteryTestRun {
 
 enum BatteryTestStartResult { started, alreadyRunning, rideRecording, noArea }
 
-/// Battery runtime test: simulates a ride (moving map along a [SimulatedLoop],
-/// real GPS on, screen kept on) and logs time + battery level every minute to a
+/// Battery runtime test: simulates a ride (moving map along a [SimulatedZigzag],
+/// track drawn and every point written to a scratch database like a ride, real
+/// GPS on, screen kept on) and logs time + battery level every minute to a
 /// file, until stopped by hand or until the phone switches itself off. The next
 /// app start then shows how long it lasted.
 final batteryTestProvider =
@@ -109,10 +135,17 @@ final batteryTestProvider =
 
 class BatteryTestController extends Notifier<BatteryTestRun?> {
   Timer? _timer;
+  AppDatabase? _scratch;
+  BatteryTestStore? _scratchStore;
+  int? _scratchTrackId;
+  StreamSubscription<GeoSample>? _points;
 
   @override
   BatteryTestRun? build() {
-    ref.onDispose(() => _timer?.cancel());
+    ref.onDispose(() {
+      _timer?.cancel();
+      unawaited(_closeScratch());
+    });
     return null;
   }
 
@@ -120,19 +153,20 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
     if (state != null) return BatteryTestStartResult.alreadyRunning;
     if (ref.read(recordingProvider)) return BatteryTestStartResult.rideRecording;
 
-    // Ride over the rider's own area: the last real fix, else the map shown.
+    // Ride over the rider's own area (the last real fix, else the map shown),
+    // kept inside the shown map so there is always map to draw.
     final pos = ref.read(currentPositionProvider).value;
     final center =
         pos == null ? ref.read(activeMapModelProvider).value?.center : null;
-    final SimulatedLoop loop;
-    if (pos != null) {
-      loop = SimulatedLoop(centerLat: pos.latitude, centerLon: pos.longitude);
-    } else if (center != null) {
-      loop = SimulatedLoop(
-          centerLat: center.latitude, centerLon: center.longitude);
-    } else {
+    final startLat = pos?.latitude ?? center?.latitude;
+    final startLon = pos?.longitude ?? center?.longitude;
+    if (startLat == null || startLon == null) {
       return BatteryTestStartResult.noArea;
     }
+    final route = SimulatedZigzag(
+        startLat: startLat,
+        startLon: startLon,
+        area: _shownMapArea(startLat, startLon));
 
     final now = DateTime.now();
     final id = now.toUtc().toIso8601String().replaceAll(':', '-');
@@ -142,7 +176,8 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
     await ref
         .read(screenWakeServiceProvider)
         .enable(ScreenWakeService.ownerBatteryTest);
-    ref.read(simulatedRideProvider.notifier).set(loop);
+    ref.read(simulatedRideProvider.notifier).set(route);
+    await _openScratch(now);
 
     state = BatteryTestRun(
         id: id, startedAt: now, startLevel: level, currentLevel: level);
@@ -150,6 +185,71 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
         ref.read(batteryTestSampleIntervalProvider), (_) => _sample());
     ref.invalidate(batteryTestResultsProvider);
     return BatteryTestStartResult.started;
+  }
+
+  /// The shown map's bounds; for the bundled demo map (no bounds read) a small
+  /// box around the start, since the demo map is small. Null (unknown bounds):
+  /// the route's default area around the start.
+  GeoArea? _shownMapArea(double lat, double lon) {
+    final path = ref.read(chosenMapPathProvider);
+    if (path == null) {
+      const d = 0.01; // ≈ 1 km
+      return (
+        minLat: lat - d,
+        minLon: lon - d,
+        maxLat: lat + d,
+        maxLon: lon + d,
+      );
+    }
+    final b = ref.read(installedMapBoundsProvider).value?[path];
+    if (b == null) return null;
+    return (
+      minLat: b.minLatitude,
+      minLon: b.minLongitude,
+      maxLat: b.maxLatitude,
+      maxLon: b.maxLongitude,
+    );
+  }
+
+  /// Writes every simulated fix into the scratch database, one insert per fix
+  /// exactly as `RecordingController.recordPoint` does on a ride.
+  Future<void> _openScratch(DateTime now) async {
+    final store = ref.read(batteryTestStoreProvider);
+    final db = await store.openScratchDb();
+    _scratch = db;
+    _scratchStore = store;
+    final trackId = await db.createTrack(now, name: 'Battery test');
+    _scratchTrackId = trackId;
+    _points = ref.read(locationServiceProvider).positions().listen((s) {
+      unawaited(db.addPoint(TrackPointsCompanion.insert(
+        trackId: trackId,
+        time: s.time,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        altitude: Value(s.altitudeMeters),
+        speedMps: Value(s.speedMps),
+        speedFromSensor: const Value(false),
+      )));
+    }, onError: (_) {});
+  }
+
+  Future<void> _closeScratch() async {
+    await _points?.cancel();
+    _points = null;
+    final db = _scratch;
+    _scratch = null;
+    _scratchTrackId = null;
+    if (db != null) {
+      await db.close();
+      await _scratchStore?.deleteScratchDb();
+    }
+  }
+
+  /// Points the running test has written to its scratch database.
+  Future<int> scratchPointCount() async {
+    final db = _scratch, id = _scratchTrackId;
+    if (db == null || id == null) return 0;
+    return (await db.pointsFor(id)).length;
   }
 
   Future<void> _sample() async {
@@ -174,6 +274,7 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
     await ref
         .read(batteryTestStoreProvider)
         .append(run.id, BatteryTestLog.stopLine(DateTime.now(), level));
+    await _closeScratch();
     ref.read(simulatedRideProvider.notifier).set(null);
     await ref
         .read(screenWakeServiceProvider)

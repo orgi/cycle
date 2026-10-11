@@ -759,10 +759,23 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 * **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
   answers "how long does the phone last on a ride" without riding. While running, the app's
-  `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedLoop`
-  (`lib/core/battery_test/simulated_loop.dart`, 800 m radius, 25 km/h, 1 fix/s) centred on the
-  last real fix (else the shown map's centre), so the map pans over the rider's own installed
-  map like on a real ride (a still map would overstate the runtime). The **real GPS stays
+  `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
+  (`lib/core/battery_test/simulated_zigzag.dart`, 25 km/h, 1 fix/s), a lawn-mower pattern of
+  3 km east/west rows 300 m apart advancing north, starting at the last real fix (else the shown
+  map's centre) and kept inside the shown map's bounds (`installedMapBoundsProvider`, minus
+  200 m; ±20 km when unknown, ~1 km for the demo map), turning back onto rows *between* the
+  earlier ones (van der Corput offsets). **Why not a loop** (the first version was an 800 m
+  circle): a loop re-draws the same cached tiles lap after lap, while a ride keeps rendering
+  fresh map, so the loop overstated the runtime; 375 km (15 h) of zigzag still spans only
+  ~40 km, so it stays on a regional map. Like a ride, the test also **draws the track**
+  (`map_screen` grows `_path` while `batteryTestProvider != null`, cleared when a test starts or
+  ends) and **writes every fix to a database** — a throwaway `AppDatabase` on
+  `battery_tests/scratch_ride.sqlite` (`BatteryTestStore.openScratchDb`), same schema and
+  insert path as `recordPoint`, deleted on stop and before the next test. Both are real per-fix
+  costs of a ride; leaving them out (as the first version did) also overstated the runtime. A
+  track is one `PolylineMarker` whose whole path is re-projected on every fix (the library only
+  culls by the *whole* track's bbox), so its cost grows with point count, not visible length.
+  The **real GPS stays
   subscribed underneath** (`deviceLocationServiceProvider`; fixes are only counted) and the
   screen is held on (`ScreenWakeService.ownerBatteryTest`). The platform GPS is now
   `deviceLocationServiceProvider`; `locationServiceProvider` is the effective one everything

@@ -11,7 +11,7 @@ import '../../../core/models/ride_metrics.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
-import '../../../core/battery_test/simulated_loop.dart';
+import '../../../core/battery_test/simulated_zigzag.dart';
 import '../../../core/services/apple_location_service.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_power_control.dart';
@@ -47,14 +47,14 @@ final deviceLocationServiceProvider = Provider<LocationService>(
 /// cleared by `BatteryTestController`; while set, the app's positions come from
 /// it (see [locationServiceProvider]) and no real ride can be recorded.
 final simulatedRideProvider =
-    NotifierProvider<SimulatedRideController, SimulatedLoop?>(
+    NotifierProvider<SimulatedRideController, SimulatedZigzag?>(
         SimulatedRideController.new);
 
-class SimulatedRideController extends Notifier<SimulatedLoop?> {
+class SimulatedRideController extends Notifier<SimulatedZigzag?> {
   @override
-  SimulatedLoop? build() => null;
+  SimulatedZigzag? build() => null;
 
-  void set(SimulatedLoop? loop) => state = loop;
+  void set(SimulatedZigzag? route) => state = route;
 }
 
 /// The position source the whole app reads (map, ride metrics, auto-start):
@@ -62,9 +62,9 @@ class SimulatedRideController extends Notifier<SimulatedLoop?> {
 /// real GPS still running underneath. Overridden with a fake in tests.
 final locationServiceProvider = Provider<LocationService>((ref) {
   final device = ref.watch(deviceLocationServiceProvider);
-  final loop = ref.watch(simulatedRideProvider);
-  if (loop == null) return device;
-  final simulated = SimulatedRideLocationService(device, loop);
+  final route = ref.watch(simulatedRideProvider);
+  if (route == null) return device;
+  final simulated = SimulatedRideLocationService(device, route);
   ref.onDispose(simulated.dispose);
   return simulated;
 });
