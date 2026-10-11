@@ -311,10 +311,11 @@ class RideController extends Notifier<RideMetrics> {
   }
 
   void _onSample(GeoSample sample) {
-    // Only a recording ride accumulates time/distance/avg/max. When idle we
-    // still show the live current speed, but the ride totals stay at zero so
-    // e.g. the timer does not run before the rider taps Start.
-    if (!ref.read(recordingProvider)) {
+    // Only a recording ride (or a battery test's simulated one) accumulates
+    // time/distance/avg/max. When idle we still show the live current speed,
+    // but the ride totals stay at zero so e.g. the timer does not run before
+    // the rider taps Start.
+    if (!_accumulating) {
       final gps = (sample.speedMps != null && sample.speedMps! >= 0)
           ? sample.speedMps!
           : 0.0;
@@ -334,10 +335,18 @@ class RideController extends Notifier<RideMetrics> {
         currentSpeedMps: fused,
         maxSpeedMps: _maxSpeedMps,
         speedFromSensor: fromSensor);
+    // A battery test's simulated ride is never saved as a ride (it writes its
+    // points to its own scratch database).
+    if (!ref.read(recordingProvider)) return;
     unawaited(ref
         .read(recordingProvider.notifier)
         .recordPoint(sample, _latestSnapshot, fused, fromSensor));
   }
+
+  /// Ride totals run while a ride records, and during a battery test so its
+  /// DIST/AVG/MAX work (and cost) like a ride's.
+  bool get _accumulating =>
+      ref.read(recordingProvider) || ref.read(simulatedRideProvider) != null;
 
   void _onSnapshot(SensorSnapshot snapshot) {
     _latestSnapshot = snapshot;
@@ -346,7 +355,7 @@ class RideController extends Notifier<RideMetrics> {
     final now = DateTime.now();
     _fusion.updateBle(wheelSpeed, now);
     // When idle, show live speed only; while recording, also track the max.
-    if (!ref.read(recordingProvider)) {
+    if (!_accumulating) {
       state = RideMetrics.zero().copyWith(
           currentSpeedMps: _fusion.fused(now),
           speedFromSensor: _fusion.isUsingBle(now));

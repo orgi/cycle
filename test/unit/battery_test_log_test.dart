@@ -94,19 +94,36 @@ void main() {
     GeoSample at(Duration d) => route.sampleAt(d, t0);
     Duration hours(double h) => Duration(seconds: (h * 3600).round());
 
-    test('starts at the rider\'s position and moves at 25 km/h', () {
+    test('starts at the rider\'s position', () {
       final a = at(Duration.zero);
       expect(haversineMeters(47.8, 11.9, a.latitude, a.longitude), lessThan(0.01));
-      final b = at(const Duration(seconds: 1));
-      expect(haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude),
-          closeTo(25 / 3.6, 0.05));
-      expect(a.speedMps, closeTo(25 / 3.6, 1e-9));
       expect(a.accuracyMeters, 5); // passes the accuracy filter
     });
 
-    test('advances one row spacing per row: ~9 km north per 100 km ridden',
+    test('speed varies between 25 and 35 km/h, and the rider moves that fast',
         () {
-      final p = at(hours(4)); // 100 km ridden: 3.3 km per 300 m northwards
+      final speeds = <double>[];
+      for (var s = 0; s < 1800; s++) {
+        final a = at(Duration(seconds: s));
+        final b = at(Duration(seconds: s + 1));
+        final kmh = a.speedMps! * 3.6;
+        expect(kmh, inInclusiveRange(25, 35), reason: 'at ${s}s');
+        speeds.add(kmh);
+        // The distance covered matches the reported speed (±1 km/h over 1 s,
+        // except where the 1 s step crosses a row's corner).
+        final moved =
+            haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
+        expect(moved, lessThanOrEqualTo(35 / 3.6 + 0.3), reason: 'at ${s}s');
+      }
+      // It really varies, rather than sitting at one value.
+      final lo = speeds.reduce((a, b) => a < b ? a : b);
+      final hi = speeds.reduce((a, b) => a > b ? a : b);
+      expect(lo, lessThan(27));
+      expect(hi, greaterThan(33));
+    });
+
+    test('averages 30 km/h: ~9 km north per 100 km ridden', () {
+      final p = at(hours(10 / 3)); // 100 km at 30 km/h: 3.3 km per 300 m north
       final north = haversineMeters(47.8, 11.9, p.latitude, 11.9);
       expect(p.latitude, greaterThan(47.8));
       expect(north, closeTo(100000 / 3300 * 300, 400));

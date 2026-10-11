@@ -116,6 +116,10 @@ void main() {
     expect(await c.read(batteryTestProvider.notifier).scratchPointCount(),
         greaterThan(0));
     expect(await db.allTracks(), isEmpty);
+    // The ride stats run like on a ride (distance, average, max).
+    final m = c.read(rideMetricsProvider);
+    expect(m.distanceMeters, greaterThan(0));
+    expect(m.maxSpeedMps * 3.6, inInclusiveRange(25, 35));
     // The real GPS is still subscribed underneath; its fixes are counted.
     device.emit(home());
     device.emit(home());
@@ -125,6 +129,7 @@ void main() {
     expect(wake.isHeld, isFalse);
     expect(c.read(locationServiceProvider), same(device)); // real GPS again
     expect(scratch.existsSync(), isFalse); // scratch points discarded
+    expect(c.read(rideMetricsProvider).distanceMeters, 0); // stats cleared
 
     final results = await c.read(batteryTestResultsProvider.future);
     final r = results.single;

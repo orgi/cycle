@@ -177,6 +177,7 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
         .read(screenWakeServiceProvider)
         .enable(ScreenWakeService.ownerBatteryTest);
     ref.read(simulatedRideProvider.notifier).set(route);
+    ref.read(rideControllerProvider.notifier).reset(); // DIST/AVG/MAX from 0
     await _openScratch(now);
 
     state = BatteryTestRun(
@@ -276,6 +277,7 @@ class BatteryTestController extends Notifier<BatteryTestRun?> {
         .append(run.id, BatteryTestLog.stopLine(DateTime.now(), level));
     await _closeScratch();
     ref.read(simulatedRideProvider.notifier).set(null);
+    ref.read(rideControllerProvider.notifier).reset();
     await ref
         .read(screenWakeServiceProvider)
         .disable(ScreenWakeService.ownerBatteryTest);

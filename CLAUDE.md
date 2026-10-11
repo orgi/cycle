@@ -760,14 +760,17 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 * **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
   answers "how long does the phone last on a ride" without riding. While running, the app's
   `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
-  (`lib/core/battery_test/simulated_zigzag.dart`, 25 km/h, 1 fix/s), a lawn-mower pattern of
+  (`lib/core/battery_test/simulated_zigzag.dart`, 1 fix/s, speed varying 25-35 km/h as two
+  overlapping sine waves with an exact integral for the distance), a lawn-mower pattern of
   3 km east/west rows 300 m apart advancing north, starting at the last real fix (else the shown
   map's centre) and kept inside the shown map's bounds (`installedMapBoundsProvider`, minus
   200 m; ±20 km when unknown, ~1 km for the demo map), turning back onto rows *between* the
   earlier ones (van der Corput offsets). **Why not a loop** (the first version was an 800 m
   circle): a loop re-draws the same cached tiles lap after lap, while a ride keeps rendering
-  fresh map, so the loop overstated the runtime; 375 km (15 h) of zigzag still spans only
-  ~40 km, so it stays on a regional map. Like a ride, the test also **draws the track**
+  fresh map, so the loop overstated the runtime; 450 km (15 h at 30 km/h) of zigzag still spans only
+  ~40 km, so it stays on a regional map. **DIST/AVG/MAX run during a test**
+  (`RideController._accumulating` = recording OR `simulatedRideProvider != null`; reset by the
+  test's start/stop), but `recordPoint` still only runs for a real recording. Like a ride, the test also **draws the track**
   (`map_screen` grows `_path` while `batteryTestProvider != null`, cleared when a test starts or
   ends) and **writes every fix to a database** — a throwaway `AppDatabase` on
   `battery_tests/scratch_ride.sqlite` (`BatteryTestStore.openScratchDb`), same schema and

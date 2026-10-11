@@ -7,14 +7,16 @@ import '../models/geo_sample.dart';
 typedef GeoArea = ({double minLat, double minLon, double maxLat, double maxLon});
 
 /// The "ride" the battery runtime test feeds to the map: a back-and-forth
-/// (lawn-mower) pattern ridden at constant speed — rows of [rowLengthMeters]
+/// (lawn-mower) pattern ridden at a speed varying between [minSpeedKmh] and
+/// [maxSpeedKmh] (two overlapping waves, 5 min and 77 s, so the speed, AVG and
+/// MAX tiles keep changing like on a ride) — rows of [rowLengthMeters]
 /// running east/west, [rowSpacingMeters] apart, advancing north.
 ///
 /// Why not a small loop: a loop re-draws the same few map tiles from the cache
 /// lap after lap and stacks its track on itself, whereas a real ride keeps
 /// moving into fresh map area. The zigzag keeps moving into new area like a
 /// ride does, yet advances only ~[rowSpacingMeters] per row, so a whole day
-/// (25 km/h × 15 h ≈ 375 km) covers only ~40 km × 3 km — it stays on a regional
+/// (30 km/h × 15 h ≈ 450 km) covers only ~40 km × 3 km — it stays on a regional
 /// map. Where [area] (the installed map, minus [marginMeters]) runs out it turns
 /// back, its rows shifted between the earlier ones so it doesn't retrace them.
 ///
@@ -27,7 +29,8 @@ class SimulatedZigzag {
     GeoArea? area,
     this.rowLengthMeters = 3000,
     this.rowSpacingMeters = 300,
-    this.speedKmh = 25,
+    this.minSpeedKmh = 25,
+    this.maxSpeedKmh = 35,
     this.marginMeters = 200,
   }) {
     final a = area ?? _around(startLat, startLon, _defaultHalfSizeMeters);
@@ -60,7 +63,8 @@ class SimulatedZigzag {
   final double startLon;
   final double rowLengthMeters;
   final double rowSpacingMeters;
-  final double speedKmh;
+  final double minSpeedKmh;
+  final double maxSpeedKmh;
   final double marginMeters;
 
   static const _earthRadius = 6371000.0;
@@ -88,10 +92,35 @@ class SimulatedZigzag {
     );
   }
 
+  // The speed wave: mid + amp × (0.6 sin(2πt/300) + 0.4 sin(2πt/77)), which
+  // stays within mid ± amp. Distance is its exact integral.
+  static const _periods = [300.0, 77.0];
+  static const _weights = [0.6, 0.4];
+  double get _midMps => (minSpeedKmh + maxSpeedKmh) / 2 / 3.6;
+  double get _ampMps => (maxSpeedKmh - minSpeedKmh) / 2 / 3.6;
+
+  double _speedAt(double t) {
+    var wave = 0.0;
+    for (var i = 0; i < _periods.length; i++) {
+      wave += _weights[i] * math.sin(2 * math.pi * t / _periods[i]);
+    }
+    return _midMps + _ampMps * wave;
+  }
+
+  double _distanceAt(double t) {
+    var wave = 0.0;
+    for (var i = 0; i < _periods.length; i++) {
+      final w = 2 * math.pi / _periods[i];
+      wave += _weights[i] * (1 - math.cos(w * t)) / w;
+    }
+    return _midMps * t + _ampMps * wave;
+  }
+
   /// Where the simulated rider is after [elapsed], stamped with [time].
   GeoSample sampleAt(Duration elapsed, DateTime time) {
-    final speedMps = speedKmh / 3.6;
-    final (x, y) = _at(speedMps * elapsed.inMilliseconds / 1000);
+    final t = elapsed.inMilliseconds / 1000;
+    final speedMps = _speedAt(t);
+    final (x, y) = _at(_distanceAt(t));
     return GeoSample(
       latitude: _lat(y),
       longitude: _lon(x),
