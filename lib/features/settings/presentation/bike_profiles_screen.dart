@@ -272,7 +272,7 @@ class BikeProfilesScreen extends ConsumerWidget {
     // Selecting every paired sensor is the same as "all" (null) — keeps a
     // freshly-paired future sensor included by default instead of silently
     // excluded from a bike that was meant to use "everything".
-    await ref.read(bikeProfilesProvider.notifier).setSensorIds(
+    await ref.read(sensorConnectionProvider.notifier).setBikeSensors(
         p.id, result.length == allPairedIds.length ? null : result);
   }
 

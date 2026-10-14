@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../db/database.dart';
+import '../sensors/sensor_catalog.dart';
 import '../services/backup_service.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
 import '../services/sync/sync_store.dart';
@@ -66,10 +67,14 @@ class SyncService {
     required this.backups,
     required this.loadProfiles,
     required this.saveProfiles,
+    Future<SensorCatalog> Function()? loadSensors,
+    Future<void> Function(SensorCatalog)? saveSensors,
     WebDavClientFactory? clientFactory,
     this.probeTimeout = const Duration(seconds: 3),
   })  : _db = db,
         _store = LocalRideStore(db),
+        loadSensors = loadSensors ?? (() async => SensorCatalog.empty),
+        saveSensors = saveSensors ?? ((_) async {}),
         _clientFactory = clientFactory ?? _defaultClient;
 
   static const root = 'Cycle';
@@ -83,6 +88,10 @@ class SyncService {
   final BackupService backups;
   final Future<BikeProfilesState> Function() loadProfiles;
   final Future<void> Function(BikeProfilesState) saveProfiles;
+
+  /// The sensor catalog travels in the same profiles file.
+  final Future<SensorCatalog> Function() loadSensors;
+  final Future<void> Function(SensorCatalog) saveSensors;
   final WebDavClientFactory _clientFactory;
   final Duration probeTimeout;
 
@@ -306,7 +315,8 @@ class SyncService {
       }
     }
     final localState = await loadProfiles();
-    var mine = ProfilesDoc.of(localState);
+    final localSensors = await loadSensors();
+    var mine = ProfilesDoc.of(localState, localSensors);
     final others = remote.entries.where((e) => e.key != ownName).map((e) => e.value);
 
     // A fresh install's untouched "Bike 1" would otherwise sit next to the
@@ -318,7 +328,7 @@ class SyncService {
         localState.deleted.isEmpty &&
         others.any((d) => d.profiles.isNotEmpty) &&
         !rides.values.any((r) => r.doc.bikeProfileId == localState.profiles.single.id)) {
-      mine = const ProfilesDoc(profiles: {}, deleted: {});
+      mine = ProfilesDoc(profiles: const {}, deleted: const {}, sensors: localSensors);
     }
 
     var merged = mine;
@@ -327,6 +337,7 @@ class SyncService {
     }
     final next = merged.applyTo(localState);
     if (next != localState && next.profiles.isNotEmpty) await saveProfiles(next);
+    if (merged.sensors != localSensors) await saveSensors(merged.sensors);
     if (remote[ownName]?.signature != merged.signature) {
       await client.put('$_profilesDir/$ownName', merged.encode(),
           contentType: 'application/json');

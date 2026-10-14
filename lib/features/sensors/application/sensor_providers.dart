@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/sensors/ble_sensor_service.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/paired_sensors_store.dart';
+import '../../../core/sensors/sensor_catalog.dart';
 import '../../../core/sensors/sensor_service.dart';
+import '../../../core/sync/sync_clock.dart';
 import '../../settings/application/bike_profile_providers.dart';
 
 /// Bluetooth sensor backend. Overridden with a fake in tests / on the emulator.
@@ -16,6 +19,63 @@ final sensorServiceProvider =
 /// tests.
 final pairedSensorsStoreProvider =
     Provider<PairedSensorsStore>((ref) => SharedPrefsPairedSensorsStore());
+
+/// Whether this phone's sensor ids are the sensors' real Bluetooth addresses,
+/// valid on any phone of the same kind (Android) — vs. per-phone random ids
+/// (iOS). Only portable ids are shared, so other Android phones can link a
+/// sensor without scanning for it. Overridable in tests.
+final sensorIdsPortableProvider =
+    Provider<bool>((ref) => defaultTargetPlatform == TargetPlatform.android);
+
+/// Persists the cross-phone sensor catalog. Overridable in tests.
+final sensorCatalogStoreProvider =
+    Provider<SensorCatalogStore>((ref) => SharedPrefsSensorCatalogStore());
+
+/// The rider's sensors as known across all their phones (synced with the bike
+/// profiles; see [KnownSensor] for why sensors are matched by name).
+final sensorCatalogProvider =
+    NotifierProvider<SensorCatalogController, SensorCatalog>(
+        SensorCatalogController.new);
+
+class SensorCatalogController extends Notifier<SensorCatalog> {
+  late final Future<SensorCatalog> _loaded;
+
+  @override
+  SensorCatalog build() {
+    _loaded = ref.read(sensorCatalogStoreProvider).load().then((c) {
+      // Keep anything set in the meantime (merged over the stored state).
+      state = SensorCatalog.merge(c, state);
+      return state;
+    });
+    return SensorCatalog.empty;
+  }
+
+  /// The catalog once loaded from storage (sync must not read the empty
+  /// placeholder and overwrite the stored one).
+  Future<SensorCatalog> ensureLoaded() async {
+    await _loaded;
+    return state;
+  }
+
+  Future<void> put(KnownSensor s) async {
+    await _loaded;
+    state = state.put(s);
+    await ref.read(sensorCatalogStoreProvider).save(state);
+  }
+
+  /// Drops [key] without a removal marker (a renamed placeholder entry).
+  Future<void> drop(String key) async {
+    await _loaded;
+    state = SensorCatalog({...state.entries}..remove(key));
+    await ref.read(sensorCatalogStoreProvider).save(state);
+  }
+
+  Future<void> replaceFromSync(SensorCatalog next) async {
+    await _loaded;
+    state = next;
+    await ref.read(sensorCatalogStoreProvider).save(state);
+  }
+}
 
 /// Tracks which sensors the user has paired, persists them, and drives which
 /// of them the backend actively pursues right now — the active bike profile's
@@ -31,6 +91,8 @@ final sensorConnectionProvider =
         SensorConnectionController.new);
 
 class SensorConnectionController extends Notifier<Set<PairedSensor>> {
+  bool _pairedLoaded = false;
+
   @override
   Set<PairedSensor> build() {
     final service = ref.read(sensorServiceProvider);
@@ -51,12 +113,20 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
     // the build path so startup never blocks (a failed reconnect — sensor out
     // of range — is ignored).
     ref.read(pairedSensorsStoreProvider).load().then((sensors) async {
-      if (sensors.isEmpty) return;
-      state = sensors.toSet();
+      state = {...sensors, ...state};
+      _pairedLoaded = true;
+      // Sensors and bike choices from before sensors synced join the catalog.
+      await _adoptLegacy();
+      await _onCatalog(await ref.read(sensorCatalogProvider.notifier).ensureLoaded());
+      if (state.isEmpty) return;
       try {
         await service.ensureReady();
       } catch (_) {}
       await _applyActiveTargets();
+    });
+    // Sync brought news from another phone: sensors added/removed there.
+    ref.listen(sensorCatalogProvider, (prev, next) {
+      if (prev != next) unawaited(_onCatalog(next));
     });
     // A bike-profile switch (manual pick, hardware-button cycle) or an edit
     // to its sensor selection changes which sensors should be pursued.
@@ -65,12 +135,16 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
           prev?.active?.sensorIds != next.active?.sensorIds) {
         _applyActiveTargets();
       }
+      // Bikes load asynchronously too: adopt their pre-sync choices once both
+      // are in (idempotent), then derive this phone's ids.
+      unawaited(_adoptLegacy().then((_) => _reconcileBikes()));
     });
     // A scan (manual, from the Sensors screen) reveals a paired sensor's kinds
     // from its advertisement without ever connecting — the other half of the
     // backfill below.
     ref.listen(scanResultsProvider, (_, found) {
       _absorbKinds(found.map((d) => (id: d.id, name: d.name, kinds: d.kinds)));
+      unawaited(_linkKnown(found));
     });
     return const {};
   }
@@ -118,25 +192,189 @@ class SensorConnectionController extends Notifier<Set<PairedSensor>> {
   }
 
   Future<void> connect(DiscoveredSensor sensor) async {
+    final key = KnownSensor.keyOf(sensor.name);
+    final known = ref.read(sensorCatalogProvider)[key];
+    final alreadyKnown = known != null && !known.removed;
+    await _pair(sensor);
+    await ref.read(sensorCatalogProvider.notifier).put(KnownSensor(
+          name: sensor.name,
+          kinds: {...sensor.kinds, ...?known?.kinds},
+          address: ref.read(sensorIdsPortableProvider) ? sensor.id : known?.address,
+          clock: _stamp(),
+        ));
+    if (!alreadyKnown) {
+      // A sensor new to all phones: make sure a restrictive active bike
+      // doesn't immediately drop what the user just paired. (A sensor known
+      // from another phone already carries its bikes — see _reconcileBikes.)
+      final active = ref.read(bikeProfilesProvider).active;
+      if (active != null && active.sensorIds != null) {
+        await setBikeSensors(active.id, {...active.sensorIds!, sensor.id});
+      }
+    }
+    await _reconcileBikes();
+    await _applyActiveTargets();
+  }
+
+  /// Adds [sensor] to this phone's paired set and starts pursuing it.
+  Future<void> _pair(DiscoveredSensor sensor) async {
     final paired =
         PairedSensor(id: sensor.id, name: sensor.name, kinds: sensor.kinds);
     state = {...state.where((p) => p.id != sensor.id), paired};
     await _persist();
-    // Make sure a restrictive active profile doesn't immediately drop a
-    // sensor the user just paired from the scan screen.
-    final bikeCtrl = ref.read(bikeProfilesProvider.notifier);
-    final active = ref.read(bikeProfilesProvider).active;
-    if (active != null && active.sensorIds != null) {
-      await bikeCtrl.setSensorIds(active.id, {...active.sensorIds!, sensor.id});
-    }
     await ref.read(sensorServiceProvider).connect(sensor.id, autoConnect: true);
-    await _applyActiveTargets();
   }
 
+  /// Forgets a sensor — on every phone (synced as a removal).
   Future<void> disconnect(String deviceId) async {
+    final p = state.where((s) => s.id == deviceId).firstOrNull;
+    await _forgetLocally(deviceId);
+    if (p != null) {
+      final key = KnownSensor.keyOf(p.name);
+      final known = ref.read(sensorCatalogProvider)[key];
+      await ref.read(sensorCatalogProvider.notifier).put(KnownSensor(
+            name: p.name,
+            kinds: p.kinds,
+            address: known?.address,
+            clock: _stamp(),
+            removed: true,
+          ));
+    }
+  }
+
+  Future<void> _forgetLocally(String deviceId) async {
     await ref.read(sensorServiceProvider).disconnect(deviceId);
     state = state.where((p) => p.id != deviceId).toSet();
     await _persist();
+  }
+
+  String _stamp() => SyncClock.format(DateTime.now(), 'sensor');
+
+  /// Applies the (synced) catalog to this phone: sensors removed elsewhere are
+  /// forgotten here; on Android, sensors another Android phone paired are
+  /// linked straight away by their address — no scan. (An iPhone links them
+  /// when a scan finds them, see [_linkKnown].)
+  Future<void> _onCatalog(SensorCatalog catalog) async {
+    var changed = false;
+    for (final p in state.toList()) {
+      if (catalog[KnownSensor.keyOf(p.name)]?.removed == true) {
+        await _forgetLocally(p.id);
+        changed = true;
+      }
+    }
+    if (ref.read(sensorIdsPortableProvider)) {
+      final pairedKeys = state.map((p) => KnownSensor.keyOf(p.name)).toSet();
+      final pairedIds = state.map((p) => p.id).toSet();
+      for (final s in catalog.active) {
+        final address = s.address;
+        if (address == null ||
+            pairedKeys.contains(s.key) ||
+            pairedIds.contains(address)) {
+          continue;
+        }
+        state = {...state, PairedSensor(id: address, name: s.name, kinds: s.kinds)};
+        changed = true;
+      }
+      if (changed) await _persist();
+    }
+    await _reconcileBikes();
+    if (changed) await _applyActiveTargets();
+  }
+
+  /// A manual scan found sensors this phone hasn't paired but another phone
+  /// has: link them right away (the scan itself is the user's intent; no
+  /// background scanning ever happens — that would hurt the GPS).
+  Future<void> _linkKnown(List<DiscoveredSensor> found) async {
+    final catalog = ref.read(sensorCatalogProvider);
+    final pairedKeys = state.map((p) => KnownSensor.keyOf(p.name)).toSet();
+    for (final d in found) {
+      final key = KnownSensor.keyOf(d.name);
+      final known = catalog[key];
+      if (known == null || known.removed || pairedKeys.contains(key)) continue;
+      pairedKeys.add(key);
+      await _pair(d);
+      if (ref.read(sensorIdsPortableProvider) && known.address == null) {
+        // Share the real address now that an Android phone has seen it.
+        await ref.read(sensorCatalogProvider.notifier).put(known.copyWith(address: d.id));
+      }
+    }
+    await _reconcileBikes();
+    await _applyActiveTargets();
+  }
+
+  /// Sets which of this phone's paired sensors [bikeId] uses (null = all), as
+  /// the user picked them — synced to other phones by sensor name. Names of
+  /// sensors this phone hasn't linked yet are kept, so choosing here never
+  /// drops a sensor that only another phone knows.
+  Future<void> setBikeSensors(String bikeId, Set<String>? ids) async {
+    Set<String>? keys;
+    if (ids != null) {
+      final bike = ref
+          .read(bikeProfilesProvider)
+          .profiles
+          .where((p) => p.id == bikeId)
+          .firstOrNull;
+      final pairedKeys = state.map((p) => KnownSensor.keyOf(p.name)).toSet();
+      keys = {
+        for (final p in state)
+          if (ids.contains(p.id)) KnownSensor.keyOf(p.name),
+        ...?bike?.sensorKeys?.where((k) => !pairedKeys.contains(k)),
+      };
+    }
+    await ref
+        .read(bikeProfilesProvider.notifier)
+        .setSensorSelection(bikeId, ids: ids, keys: keys);
+  }
+
+  /// Derives each bike's sensor ids on this phone from its synced choice of
+  /// sensor names. Local only — no clock, nothing to sync back.
+  Future<void> _reconcileBikes() async {
+    final bikes = ref.read(bikeProfilesProvider).profiles;
+    final ctrl = ref.read(bikeProfilesProvider.notifier);
+    for (final b in bikes) {
+      if (b.sensorsClock == null) continue;
+      final keys = b.sensorKeys;
+      final ids = keys == null
+          ? null
+          : {
+              for (final p in state)
+                if (keys.contains(KnownSensor.keyOf(p.name))) p.id,
+            };
+      final same = ids == null
+          ? b.sensorIds == null
+          : b.sensorIds != null &&
+              b.sensorIds!.length == ids.length &&
+              b.sensorIds!.containsAll(ids);
+      if (!same) await ctrl.setSensorIds(b.id, ids);
+    }
+  }
+
+  /// Paired sensors and bike choices from before sensors synced: put them in
+  /// the catalog / give the bikes a synced choice, with the oldest clock so a
+  /// real choice made on any phone wins.
+  Future<void> _adoptLegacy() async {
+    if (!_pairedLoaded) return;
+    final catalogCtrl = ref.read(sensorCatalogProvider.notifier);
+    final catalog = await catalogCtrl.ensureLoaded();
+    final legacy = SyncClock.format(DateTime.fromMillisecondsSinceEpoch(0), 'legacy');
+    for (final p in state) {
+      final key = KnownSensor.keyOf(p.name);
+      if (catalog[key] != null || p.name == p.id) continue;
+      await catalogCtrl.put(KnownSensor(
+        name: p.name,
+        kinds: p.kinds,
+        address: ref.read(sensorIdsPortableProvider) ? p.id : null,
+        clock: legacy,
+      ));
+    }
+    final keysById = <String, Set<String>?>{
+      for (final b in ref.read(bikeProfilesProvider).profiles)
+        if (b.sensorsClock == null && b.sensorIds != null)
+          b.id: {
+            for (final p in state)
+              if (b.sensorIds!.contains(p.id)) KnownSensor.keyOf(p.name),
+          },
+    };
+    await ref.read(bikeProfilesProvider.notifier).adoptLegacySensorKeys(keysById);
   }
 
   /// Paired sensors in scope for the active bike (its selection, or all paired).

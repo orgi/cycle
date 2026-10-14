@@ -1,17 +1,20 @@
 import 'dart:convert';
 
 import '../models/bike_profile.dart';
+import '../sensors/sensor_catalog.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
 import 'sync_clock.dart';
 
-/// The synced part of the bike profiles: names/colours with their clocks,
-/// deletions, and merge aliases. The active profile and per-bike sensor
-/// selection stay local.
+/// The synced part of the bike profiles: names/colours and each bike's sensor
+/// choice (by sensor name), each with its own clock; deletions; merge aliases;
+/// and the [sensors] catalog. The active profile and this phone's sensor *ids*
+/// stay local.
 class ProfilesDoc {
   const ProfilesDoc({
     required this.profiles,
     required this.deleted,
     this.aliases = const {},
+    this.sensors = SensorCatalog.empty,
   });
 
   final Map<String, BikeProfile> profiles;
@@ -20,10 +23,15 @@ class ProfilesDoc {
   /// Merged-away id → surviving id (see [merge]).
   final Map<String, String> aliases;
 
-  factory ProfilesDoc.of(BikeProfilesState s) => ProfilesDoc(
+  final SensorCatalog sensors;
+
+  factory ProfilesDoc.of(BikeProfilesState s,
+          [SensorCatalog sensors = SensorCatalog.empty]) =>
+      ProfilesDoc(
         profiles: {for (final p in s.profiles) p.id: p},
         deleted: s.deleted,
         aliases: s.aliases,
+        sensors: sensors,
       );
 
   /// Newest edit wins per profile; a deletion wins over edits older than it.
@@ -47,9 +55,7 @@ class ProfilesDoc {
     final profiles = <String, BikeProfile>{...a.profiles};
     b.profiles.forEach((id, p) {
       final current = profiles[id];
-      if (current == null || _key(p).compareTo(_key(current)) > 0) {
-        profiles[id] = p;
-      }
+      profiles[id] = current == null ? p : _mergeOne(current, p);
     });
     profiles.removeWhere(
         (id, p) => SyncClock.compare(deleted[id], p.clock) > 0);
@@ -65,9 +71,47 @@ class ProfilesDoc {
       for (final id in ids.skip(1)) {
         aliases[id] = ids.first;
       }
+      // The survivor keeps the newest sensor choice of the group.
+      var survivor = profiles[ids.first]!;
+      for (final id in ids.skip(1)) {
+        final other = profiles[id]!;
+        if (_sensorKey(other).compareTo(_sensorKey(survivor)) > 0) {
+          survivor = _withSensors(survivor, other);
+        }
+      }
+      profiles[ids.first] = survivor;
     }
     profiles.removeWhere((id, _) => aliases.containsKey(id));
-    return ProfilesDoc(profiles: profiles, deleted: deleted, aliases: aliases);
+    return ProfilesDoc(
+      profiles: profiles,
+      deleted: deleted,
+      aliases: aliases,
+      sensors: SensorCatalog.merge(a.sensors, b.sensors),
+    );
+  }
+
+  /// Name/colour and the sensor choice are separate parts: each takes the
+  /// newer of the two, so editing one on a phone never undoes the other.
+  static BikeProfile _mergeOne(BikeProfile x, BikeProfile y) {
+    final base = _key(y).compareTo(_key(x)) > 0 ? y : x;
+    final sensors = _sensorKey(y).compareTo(_sensorKey(x)) > 0 ? y : x;
+    return _withSensors(base, sensors);
+  }
+
+  static BikeProfile _withSensors(BikeProfile base, BikeProfile from) =>
+      BikeProfile(
+        id: base.id,
+        name: base.name,
+        colorArgb: base.colorArgb,
+        clock: base.clock,
+        sensorIds: base.sensorIds,
+        sensorKeys: from.sensorKeys,
+        sensorsClock: from.sensorsClock,
+      );
+
+  static String _sensorKey(BikeProfile p) {
+    final keys = p.sensorKeys == null ? '*' : (p.sensorKeys!.toList()..sort()).join(',');
+    return '${p.sensorsClock ?? ''}\u0001$keys';
   }
 
   static String normalizeName(String name) => name.trim().toLowerCase();
@@ -116,13 +160,20 @@ class ProfilesDoc {
         colorArgb: m.colorArgb,
         clock: m.clock,
         sensorIds: sensorsOf(id),
+        sensorKeys: m.sensorKeys,
+        sensorsClock: m.sensorsClock,
       ));
     }
     final added = profiles.values.where((p) => !placed.contains(p.id)).toList()
       ..sort((x, y) => x.id.compareTo(y.id));
     for (final p in added) {
       result.add(BikeProfile(
-          id: p.id, name: p.name, colorArgb: p.colorArgb, clock: p.clock));
+          id: p.id,
+          name: p.name,
+          colorArgb: p.colorArgb,
+          clock: p.clock,
+          sensorKeys: p.sensorKeys,
+          sensorsClock: p.sensorsClock));
     }
     final active = resolve(aliases, local.activeId);
     final activeId =
@@ -137,9 +188,11 @@ class ProfilesDoc {
     final del = deleted.keys.toList()..sort();
     return jsonEncode([
       for (final id in ids) _key(profiles[id]!),
+      for (final id in ids) _sensorKey(profiles[id]!),
       ...ids,
       for (final id in del) '$id=${deleted[id]}',
       for (final id in (aliases.keys.toList()..sort())) '$id>${aliases[id]}',
+      sensors.signature,
     ]);
   }
 
@@ -147,8 +200,16 @@ class ProfilesDoc {
         'v': 1,
         'profiles': [
           for (final p in profiles.values)
-            {'id': p.id, 'name': p.name, 'color': p.colorArgb, 'clock': p.clock},
+            {
+              'id': p.id,
+              'name': p.name,
+              'color': p.colorArgb,
+              'clock': p.clock,
+              if (p.sensorKeys != null) 'sensor_keys': p.sensorKeys!.toList(),
+              if (p.sensorsClock != null) 'sensors_clock': p.sensorsClock,
+            },
         ],
+        'sensors': sensors.toJson(),
         'deleted': deleted,
         'aliases': aliases,
       }));
@@ -163,8 +224,13 @@ class ProfilesDoc {
             name: raw['name'] as String,
             colorArgb: raw['color'] as int,
             clock: raw['clock'] as String?,
+            sensorKeys: (raw['sensor_keys'] as List?)
+                ?.map((e) => e as String)
+                .toSet(),
+            sensorsClock: raw['sensors_clock'] as String?,
           ),
       },
+      sensors: SensorCatalog.fromJson(j['sensors'] as List?),
       deleted: {
         for (final e in ((j['deleted'] as Map?) ?? const {}).entries)
           e.key as String: e.value as String,

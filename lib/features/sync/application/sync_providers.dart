@@ -13,6 +13,7 @@ import '../../../core/sync/sync_service.dart';
 import '../../../core/sync/webdav_client.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../../tracks/application/track_providers.dart';
@@ -43,6 +44,10 @@ final syncServiceProvider = Provider<SyncService>((ref) {
         : ref.read(bikeProfilesProvider),
     saveProfiles: (s) =>
         ref.read(bikeProfilesProvider.notifier).replaceFromSync(s),
+    loadSensors: () =>
+        ref.read(sensorCatalogProvider.notifier).ensureLoaded(),
+    saveSensors: (c) =>
+        ref.read(sensorCatalogProvider.notifier).replaceFromSync(c),
     clientFactory: ref.watch(webDavClientFactoryProvider),
   );
 });

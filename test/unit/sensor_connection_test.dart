@@ -1,6 +1,7 @@
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/sensors/gatt.dart';
 import 'package:cycle/core/sensors/paired_sensors_store.dart';
+import 'package:cycle/core/sensors/sensor_catalog.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
@@ -32,6 +33,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
     ]);
     addTearDown(container.dispose);
@@ -61,6 +63,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
     ]);
     addTearDown(container.dispose);
@@ -86,6 +89,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
     ]);
     addTearDown(container.dispose);
@@ -123,6 +127,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikeState)),
     ]);
     addTearDown(container.dispose);
@@ -167,6 +172,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikeState)),
     ]);
     addTearDown(container.dispose);
@@ -198,6 +204,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
     ]);
     addTearDown(container.dispose);
@@ -226,6 +233,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       sensorServiceProvider.overrideWithValue(fake),
       pairedSensorsStoreProvider.overrideWithValue(store),
+      sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
       bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikeState)),
     ]);
     addTearDown(container.dispose);
@@ -240,5 +248,156 @@ void main() {
     await pumpEventQueue();
 
     expect(connectedIds, {'cad2'});
+  });
+
+  group('sensors across phones', () {
+    const hrm = DiscoveredSensor(
+        id: 'AA:BB:CC:00:00:01', name: 'HRM-Pro:123456', kinds: {SensorKind.heartRate});
+    const iosHrm = DiscoveredSensor(
+        id: '4F1C-UUID-ON-THIS-IPHONE', name: 'HRM-Pro:123456', kinds: {SensorKind.heartRate});
+
+    ProviderContainer phone({
+      required bool android,
+      FakeSensorService? service,
+      _MemStore? paired,
+      MemorySensorCatalogStore? catalog,
+      BikeProfilesState bikes = const BikeProfilesState(
+        profiles: [BikeProfile(id: 'road', name: 'Road', colorArgb: 1)],
+        activeId: 'road',
+      ),
+    }) {
+      final c = ProviderContainer(overrides: [
+        sensorServiceProvider.overrideWithValue(service ?? FakeSensorService()),
+        pairedSensorsStoreProvider.overrideWithValue(paired ?? _MemStore()),
+        sensorCatalogStoreProvider
+            .overrideWithValue(catalog ?? MemorySensorCatalogStore()),
+        bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(bikes)),
+        sensorIdsPortableProvider.overrideWithValue(android),
+      ]);
+      addTearDown(c.dispose);
+      c.listen(bikeProfilesProvider, (_, _) {});
+      c.read(sensorConnectionProvider);
+      return c;
+    }
+
+    test('pairing records the sensor for the other phones; Android shares '
+        'its address, iOS does not', () async {
+      final a = phone(android: true);
+      await pumpEventQueue();
+      await a.read(sensorConnectionProvider.notifier).connect(hrm);
+      expect(a.read(sensorCatalogProvider)['hrm-pro:123456']!.address, hrm.id);
+
+      final i = phone(android: false);
+      await pumpEventQueue();
+      await i.read(sensorConnectionProvider.notifier).connect(iosHrm);
+      expect(i.read(sensorCatalogProvider)['hrm-pro:123456']!.address, isNull);
+    });
+
+    test('an Android phone links a sensor another Android phone paired, '
+        'without scanning, and puts it on the synced bike', () async {
+      final fake = FakeSensorService();
+      final c = phone(android: true, service: fake, bikes: const BikeProfilesState(
+        profiles: [
+          BikeProfile(id: 'road', name: 'Road', colorArgb: 1,
+              sensorKeys: {'hrm-pro:123456'}, sensorsClock: '000000000000009@x'),
+        ],
+        activeId: 'road',
+      ));
+      await pumpEventQueue();
+      final connected = <String>{};
+      final sub = fake.connectedSensors().listen((l) => connected
+        ..clear()
+        ..addAll(l.map((e) => e.id)));
+      addTearDown(sub.cancel);
+
+      // Sync delivers the catalog from the other phone.
+      await c.read(sensorCatalogProvider.notifier).replaceFromSync(
+          const SensorCatalog().put(KnownSensor(
+              name: hrm.name, kinds: hrm.kinds, address: hrm.id, clock: '000000000000010@x')));
+      await pumpEventQueue();
+
+      expect(c.read(sensorConnectionProvider).map((p) => p.id), [hrm.id]);
+      expect(c.read(bikeProfilesProvider).active!.sensorIds, {hrm.id});
+      expect(connected, contains(hrm.id));
+    });
+
+    test('an iPhone links a known sensor when a scan finds it by name, and '
+        'it joins the bikes chosen on the other phone', () async {
+      final fake = FakeSensorService(discoverable: const [iosHrm]);
+      final catalog = MemorySensorCatalogStore(const SensorCatalog().put(KnownSensor(
+          name: hrm.name, kinds: hrm.kinds, address: hrm.id, clock: '000000000000010@x')));
+      final c = phone(android: false, service: fake, catalog: catalog,
+          bikes: const BikeProfilesState(
+        profiles: [
+          BikeProfile(id: 'road', name: 'Road', colorArgb: 1,
+              sensorKeys: {'hrm-pro:123456'}, sensorsClock: '000000000000009@x'),
+          BikeProfile(id: 'mtb', name: 'MTB', colorArgb: 2,
+              sensorKeys: {}, sensorsClock: '000000000000009@x'),
+        ],
+        activeId: 'road',
+      ));
+      await pumpEventQueue();
+      // Not linked yet: iOS can't use the Android address.
+      expect(c.read(sensorConnectionProvider), isEmpty);
+
+      await c.read(scanResultsProvider.notifier).startScan();
+      await pumpEventQueue();
+
+      expect(c.read(sensorConnectionProvider).map((p) => p.id), [iosHrm.id]);
+      final bikes = {for (final b in c.read(bikeProfilesProvider).profiles) b.id: b};
+      expect(bikes['road']!.sensorIds, {iosHrm.id});
+      expect(bikes['mtb']!.sensorIds, isEmpty);
+    });
+
+    test('removing a sensor on one phone removes it on the others', () async {
+      final fake = FakeSensorService();
+      final c = phone(android: true, service: fake,
+          paired: _MemStore([PairedSensor(id: hrm.id, name: hrm.name, kinds: hrm.kinds)]));
+      await pumpEventQueue();
+      expect(c.read(sensorConnectionProvider), hasLength(1));
+
+      await c.read(sensorCatalogProvider.notifier).replaceFromSync(
+          const SensorCatalog().put(KnownSensor(
+              name: hrm.name, kinds: hrm.kinds, clock: '000000000000099@x', removed: true)));
+      await pumpEventQueue();
+      expect(c.read(sensorConnectionProvider), isEmpty);
+    });
+
+    test('choosing a bike\'s sensors stores names, keeping ones only another '
+        'phone has linked', () async {
+      final c = phone(android: false,
+          paired: _MemStore([PairedSensor(id: iosHrm.id, name: iosHrm.name, kinds: iosHrm.kinds)]),
+          bikes: const BikeProfilesState(
+            profiles: [
+              BikeProfile(id: 'road', name: 'Road', colorArgb: 1,
+                  sensorKeys: {'spd-77'}, sensorsClock: '000000000000001@x'),
+            ],
+            activeId: 'road',
+          ));
+      await pumpEventQueue();
+      await c.read(sensorConnectionProvider.notifier).setBikeSensors('road', {iosHrm.id});
+      final road = c.read(bikeProfilesProvider).active!;
+      expect(road.sensorKeys, {'hrm-pro:123456', 'spd-77'});
+      expect(road.sensorIds, {iosHrm.id});
+      expect(road.sensorsClock!.compareTo('000000000000001@x'), greaterThan(0));
+    });
+
+    test('sensors and bike choices from before sync are adopted with the '
+        'oldest clock', () async {
+      final c = phone(android: true,
+          paired: _MemStore([PairedSensor(id: hrm.id, name: hrm.name, kinds: hrm.kinds)]),
+          bikes: BikeProfilesState(
+            profiles: [
+              BikeProfile(id: 'road', name: 'Road', colorArgb: 1, sensorIds: {hrm.id}),
+            ],
+            activeId: 'road',
+          ));
+      await pumpEventQueue();
+      await pumpEventQueue();
+      expect(c.read(sensorCatalogProvider)['hrm-pro:123456']!.address, hrm.id);
+      final road = c.read(bikeProfilesProvider).active!;
+      expect(road.sensorKeys, {'hrm-pro:123456'});
+      expect(road.sensorsClock, startsWith('000000000000000@'));
+    });
   });
 }

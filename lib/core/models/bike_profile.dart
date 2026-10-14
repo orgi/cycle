@@ -7,6 +7,8 @@ class BikeProfile {
     required this.colorArgb,
     this.sensorIds,
     this.clock,
+    this.sensorKeys,
+    this.sensorsClock,
   });
 
   /// Stable id (not the display name, so renaming doesn't orphan past rides).
@@ -26,6 +28,13 @@ class BikeProfile {
   /// per-device), so it stays local.
   final String? clock;
 
+  /// The synced version of the sensor choice: sensor *names* (`KnownSensor.key`)
+  /// instead of this phone's ids, with its own edit clock. `null` keys = all
+  /// sensors. [sensorsClock] null = no synced choice yet. Each phone derives
+  /// its own [sensorIds] from these (`SensorConnectionController`).
+  final Set<String>? sensorKeys;
+  final String? sensorsClock;
+
   /// [clearSensorIds] explicitly resets [sensorIds] to `null` ("all paired
   /// sensors") — needed because `copyWith(sensorIds: null)` alone can't be
   /// told apart from "leave unchanged".
@@ -35,6 +44,9 @@ class BikeProfile {
     Set<String>? sensorIds,
     bool clearSensorIds = false,
     String? clock,
+    Set<String>? sensorKeys,
+    bool clearSensorKeys = false,
+    String? sensorsClock,
   }) =>
       BikeProfile(
         id: id,
@@ -42,6 +54,8 @@ class BikeProfile {
         colorArgb: colorArgb ?? this.colorArgb,
         sensorIds: clearSensorIds ? null : (sensorIds ?? this.sensorIds),
         clock: clock ?? this.clock,
+        sensorKeys: clearSensorKeys ? null : (sensorKeys ?? this.sensorKeys),
+        sensorsClock: sensorsClock ?? this.sensorsClock,
       );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +64,8 @@ class BikeProfile {
         'color': colorArgb,
         if (sensorIds != null) 'sensor_ids': sensorIds!.toList(),
         if (clock != null) 'clock': clock,
+        if (sensorKeys != null) 'sensor_keys': sensorKeys!.toList(),
+        if (sensorsClock != null) 'sensors_clock': sensorsClock,
       };
 
   factory BikeProfile.fromJson(Map<String, dynamic> json) => BikeProfile(
@@ -60,6 +76,9 @@ class BikeProfile {
             ?.map((e) => e as String)
             .toSet(),
         clock: json['clock'] as String?,
+        sensorKeys:
+            (json['sensor_keys'] as List?)?.map((e) => e as String).toSet(),
+        sensorsClock: json['sensors_clock'] as String?,
       );
 
   @override
@@ -69,7 +88,9 @@ class BikeProfile {
       other.name == name &&
       other.colorArgb == colorArgb &&
       other.clock == clock &&
-      _sensorIdsEqual(other.sensorIds, sensorIds);
+      _sensorIdsEqual(other.sensorIds, sensorIds) &&
+      _sensorIdsEqual(other.sensorKeys, sensorKeys) &&
+      other.sensorsClock == sensorsClock;
 
   @override
   int get hashCode => Object.hash(
@@ -78,6 +99,8 @@ class BikeProfile {
         colorArgb,
         clock,
         sensorIds == null ? null : Object.hashAllUnordered(sensorIds!),
+        sensorKeys == null ? null : Object.hashAllUnordered(sensorKeys!),
+        sensorsClock,
       );
 }
 

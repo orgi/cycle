@@ -45,6 +45,16 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
     (with the "Allow unencrypted http://" switch right there for an `http://` address), and
     the next attempt starts with the address you typed last time. Error messages also appear
     at once instead of waiting behind the "Approve Cycle in the browser" hint.
+- **Sensors sync across your phones, with their bikes.** The list of your sensors and which bike
+  uses which sensor now travel with sync. A sensor is recognised on every phone by its name
+  (e.g. "HRM-Pro:123456"), because iPhones give each sensor a different Bluetooth id on every
+  phone.
+  - **Android phones** link a sensor another Android phone paired by themselves, without a scan.
+  - **iPhones** list sensors from your other phones under Sensors → "On your other phones". Tap
+    scan with the sensor awake nearby (wear the strap, spin the crank) and it links by itself,
+    already on the right bikes.
+  - Removing a sensor now removes it from all your phones (you're asked first). The button on
+    the Sensors screen is now called **Remove**.
 - **Recently deleted (Settings → Data).** Deleting a ride now moves it to a trash for 30 days
   (adjustable) where it can be restored, also on the other phones, instead of erasing it at
   once. Deleting from the ride list offers **Undo**.

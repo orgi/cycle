@@ -52,6 +52,51 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
   Future<String> _stamp() async =>
       SyncClock.format(DateTime.now(), 'profile');
 
+  /// Sets a bike's sensor choice as the user made it: this phone's [ids] plus
+  /// the synced, phone-independent version ([keys] = sensor names; null for
+  /// both = all sensors), stamped so it wins over older choices elsewhere.
+  Future<void> setSensorSelection(String id,
+      {required Set<String>? ids, required Set<String>? keys}) async {
+    final clock = await _stamp();
+    state = state.copyWith(profiles: [
+      for (final p in state.profiles)
+        p.id == id
+            ? p.copyWith(
+                sensorIds: ids,
+                clearSensorIds: ids == null,
+                sensorKeys: keys,
+                clearSensorKeys: keys == null,
+                sensorsClock: clock,
+              )
+            : p,
+    ]);
+    await _persist();
+  }
+
+  /// One-time upgrade of choices made before sensors synced: gives each bike
+  /// without a synced choice the one derived from its local ids ([keysById]),
+  /// with the oldest possible clock so any real choice elsewhere wins.
+  Future<void> adoptLegacySensorKeys(Map<String, Set<String>?> keysById) async {
+    keysById = {
+      for (final e in keysById.entries)
+        if (state.profiles.any((p) => p.id == e.key && p.sensorsClock == null))
+          e.key: e.value,
+    };
+    if (keysById.isEmpty) return;
+    final legacy = SyncClock.format(DateTime.fromMillisecondsSinceEpoch(0), 'legacy');
+    state = state.copyWith(profiles: [
+      for (final p in state.profiles)
+        keysById.containsKey(p.id) && p.sensorsClock == null
+            ? p.copyWith(
+                sensorKeys: keysById[p.id],
+                clearSensorKeys: keysById[p.id] == null,
+                sensorsClock: legacy,
+              )
+            : p,
+    ]);
+    await _persist();
+  }
+
   /// Replaces the whole state with one merged in from sync.
   Future<void> replaceFromSync(BikeProfilesState next) async {
     state = next;
