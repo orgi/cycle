@@ -40,6 +40,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
     deleted state are versioned separately, so renaming a ride on one phone and changing its
     bike on another keeps both. Only the same detail changed on two phones before they synced
     keeps the newer change. An edit made after a deletion keeps the ride.
+  - **The Nextcloud login dialog remembers what you typed.** A mistyped address or a missing
+    "Allow http" no longer means typing it all again: problems are shown inside the dialog
+    (with the "Allow unencrypted http://" switch right there for an `http://` address), and
+    the next attempt starts with the address you typed last time. Error messages also appear
+    at once instead of waiting behind the "Approve Cycle in the browser" hint.
 - **Recently deleted (Settings → Data).** Deleting a ride now moves it to a trash for 30 days
   (adjustable) where it can be restored, also on the other phones, instead of erasing it at
   once. Deleting from the ride list offers **Undo**.
@@ -76,6 +81,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   - The app's folder (`routes/`, backups, GPX exports) appears in the iOS Files app.
 
 ### Fixed
+- **Cycle could not open its ride database after switching between builds** ("SQL logic error
+  … ALTER TABLE "tracks" ADD COLUMN "name_clock""). Installing an older build over a sync build
+  and then a sync build again made the database upgrade try to add columns that were already
+  there, so the app stopped at startup. The upgrade now only adds what's missing, so any
+  order of installs works. No rides were affected (the failed step changed nothing, and a
+  backup is taken before every upgrade).
 - **iPhone: Bluetooth sensors weren't released when the app went to the background.** iOS
   suspends a backgrounded app within about 2 seconds, so the 3-second delay before letting go
   of the sensors never ran. Pending sensor connections then stayed registered until iOS

@@ -84,8 +84,11 @@ class _SyncSettingsScreenState extends ConsumerState<SyncSettingsScreen> {
     return null;
   }
 
-  void _toast(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  /// Replaces whatever message is showing, so an error (e.g. a mistyped
+  /// server) appears at once instead of queuing behind "Approve Cycle…".
+  void _toast(String text) => ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text)));
 
   Future<void> _save() async {
     final err = _validate();
@@ -150,23 +153,65 @@ class _SyncSettingsScreenState extends ConsumerState<SyncSettingsScreen> {
     return true;
   }
 
+  /// What the server dialog starts with: the address typed last time (even if
+  /// that login failed), else the server part of the configured WebDAV
+  /// address, else just the scheme.
+  Future<String> _initialServer() async {
+    final last = await ref.read(syncStoreProvider).lastLoginServer();
+    if (last != null && last.isNotEmpty) return last;
+    final url = _url.text.trim();
+    final i = url.indexOf('/remote.php/');
+    if (i > 0) return url.substring(0, i);
+    return 'https://';
+  }
+
   Future<void> _nextcloudLogin() async {
+    final store = ref.read(syncStoreProvider);
+    final c = TextEditingController(text: await _initialServer());
+    if (!mounted) return;
+    // Validated inside the dialog: a wrong address or a missing "allow http"
+    // is fixed right there instead of closing the dialog and losing the input.
     final server = await showDialog<String>(
       context: context,
-      builder: (ctx) {
-        final c = TextEditingController(text: 'https://');
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialogState) {
+        final text = c.text.trim();
+        final error = text.isEmpty || text == 'https://' || text == 'http://'
+            ? null
+            : SyncService.validateUrl(text, allowHttp: _allowHttp);
+        final needsHttp = text.startsWith('http://');
         return AlertDialog(
           title: const Text('Nextcloud server'),
-          content: TextField(
-            key: const Key('nextcloudServerField'),
-            controller: c,
-            keyboardType: TextInputType.url,
-            autofocus: true,
-            decoration: const InputDecoration(
-              helperText: 'e.g. https://cloud.example.com or '
-                  'https://192.168.1.10',
-              helperMaxLines: 2,
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                key: const Key('nextcloudServerField'),
+                controller: c,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                autofocus: true,
+                onChanged: (_) => setDialogState(() {}),
+                decoration: InputDecoration(
+                  helperText: 'e.g. https://cloud.example.com or '
+                      'http://192.168.1.10',
+                  helperMaxLines: 2,
+                  errorText: error,
+                  errorMaxLines: 3,
+                ),
+              ),
+              if (needsHttp)
+                SwitchListTile(
+                  key: const Key('nextcloudAllowHttpSwitch'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Allow unencrypted http://'),
+                  subtitle: const Text('Only for a server on your home network'),
+                  value: _allowHttp,
+                  onChanged: (v) {
+                    setState(() => _allowHttp = v);
+                    setDialogState(() {});
+                  },
+                ),
+            ],
           ),
           actions: [
             TextButton(
@@ -174,16 +219,23 @@ class _SyncSettingsScreenState extends ConsumerState<SyncSettingsScreen> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              key: const Key('nextcloudLoginConfirm'),
+              onPressed: error != null || text.isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, text),
               child: const Text('Log in'),
             ),
           ],
         );
-      },
+      }),
     );
+    // Remember what was typed even if cancelled — the next attempt starts here.
+    final typed = c.text.trim();
+    c.dispose();
+    if (typed.isNotEmpty && typed != 'https://') {
+      await store.setLastLoginServer(typed);
+    }
     if (server == null || server.isEmpty) return;
-    final err = SyncService.validateUrl(server, allowHttp: _allowHttp);
-    if (err != null) return _toast(err);
     setState(() => _busy = true);
     try {
       _toast('Approve Cycle in the browser, then come back');

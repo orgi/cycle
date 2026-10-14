@@ -83,11 +83,17 @@ abstract class SyncStore {
   Future<void> setConfig(SyncConfig? config);
   Future<DateTime?> lastSyncAt();
   Future<void> setLastSyncAt(DateTime at);
+
+  /// The server address last typed into the Nextcloud login dialog — kept
+  /// even when that login failed, so a typo doesn't mean retyping it all.
+  Future<String?> lastLoginServer();
+  Future<void> setLastLoginServer(String server);
 }
 
 class SharedPrefsSyncStore implements SyncStore {
   static const _configKey = 'sync.config';
   static const _lastKey = 'sync.last_at';
+  static const _loginServerKey = 'sync.last_login_server';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -121,6 +127,14 @@ class SharedPrefsSyncStore implements SyncStore {
   @override
   Future<void> setLastSyncAt(DateTime at) async =>
       (await _prefs).setInt(_lastKey, at.millisecondsSinceEpoch);
+
+  @override
+  Future<String?> lastLoginServer() async =>
+      (await _prefs).getString(_loginServerKey);
+
+  @override
+  Future<void> setLastLoginServer(String server) async =>
+      (await _prefs).setString(_loginServerKey, server);
 }
 
 /// In-memory store for tests.
@@ -128,6 +142,7 @@ class MemorySyncStore implements SyncStore {
   MemorySyncStore([this._config]);
   SyncConfig? _config;
   DateTime? _last;
+  String? _loginServer;
 
   @override
   Future<SyncConfig?> config() async => _config;
@@ -137,4 +152,8 @@ class MemorySyncStore implements SyncStore {
   Future<DateTime?> lastSyncAt() async => _last;
   @override
   Future<void> setLastSyncAt(DateTime at) async => _last = at;
+  @override
+  Future<String?> lastLoginServer() async => _loginServer;
+  @override
+  Future<void> setLastLoginServer(String server) async => _loginServer = server;
 }

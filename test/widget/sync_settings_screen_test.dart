@@ -155,4 +155,52 @@ void main() {
     await tester.pump(const Duration(seconds: 10));
     await tester.runAsync(() => tmp.delete(recursive: true));
   });
+
+  testWidgets('the Nextcloud dialog flags a missing http opt-in inline and '
+      'remembers the typed address after a failed login', (tester) async {
+    await tester.runAsync(() async {
+      HttpOverrides.global = null; // real sockets: port 1 refuses at once
+      tmp = await Directory.systemTemp.createTemp('cycle_nc_dialog');
+    });
+    final store = MemorySyncStore();
+    await tester.pumpWidget(app(const SyncSettingsScreen(), store));
+    await waitFor(tester,
+        () => find.byKey(const Key('nextcloudLoginButton')).evaluate().isNotEmpty);
+
+    await tester.tap(find.byKey(const Key('nextcloudLoginButton')));
+    await waitFor(tester,
+        () => find.byKey(const Key('nextcloudServerField')).evaluate().isNotEmpty);
+    await tester.enterText(
+        find.byKey(const Key('nextcloudServerField')), 'http://127.0.0.1:1');
+    await tester.pump();
+
+    // Not closed, not lost: the error and the switch are right in the dialog.
+    expect(find.textContaining('needs "Allow http"'), findsOneWidget);
+    final login = find.byKey(const Key('nextcloudLoginConfirm'));
+    expect(tester.widget<FilledButton>(login).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('nextcloudAllowHttpSwitch')));
+    await tester.pump();
+    expect(find.textContaining('needs "Allow http"'), findsNothing);
+    expect(tester.widget<FilledButton>(login).onPressed, isNotNull);
+
+    // The login fails (nothing listens on port 1)…
+    await tester.tap(login);
+    await waitFor(tester,
+        () => find.textContaining('Server not reachable').evaluate().isNotEmpty);
+    expect(find.textContaining('Server not reachable'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5)); // let the snackbar go
+
+    // …and the next attempt starts with what was typed, http still allowed.
+    await tester.tap(find.byKey(const Key('nextcloudLoginButton')));
+    await waitFor(tester,
+        () => find.byKey(const Key('nextcloudServerField')).evaluate().isNotEmpty);
+    expect(find.text('http://127.0.0.1:1'), findsOneWidget);
+    expect(find.textContaining('needs "Allow http"'), findsNothing);
+    expect(await tester.runAsync(store.lastLoginServer), 'http://127.0.0.1:1');
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 10));
+    await tester.runAsync(() => tmp.delete(recursive: true));
+  });
 }

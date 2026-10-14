@@ -74,4 +74,31 @@ void main() {
             backupsDir: () async => tmp),
         isNull);
   });
+
+  test('a v5 database stamped back to v4 by an older build still opens '
+      '(no duplicate-column error) and keeps its data', () async {
+    final dbFile = File('${tmp.path}/cycle.sqlite');
+    _writeV4(dbFile.path);
+    // A sync build upgrades it and stamps a ride's clocks …
+    var db = AppDatabase(NativeDatabase(dbFile));
+    final id = (await db.allTracks()).single.id;
+    await db.renameTrack(id, 'Renamed under v5');
+    await db.close();
+    // … then an older (v4) build opens it: drift resets user_version to 4
+    // while the v5 columns and tables stay.
+    final raw = sqlite3.open(dbFile.path);
+    raw.execute('PRAGMA user_version = 4');
+    raw.close();
+
+    db = AppDatabase(NativeDatabase(dbFile));
+    final t = (await db.allTracks()).single;
+    expect(t.name, 'Renamed under v5');
+    expect(t.nameClock, isNotNull);
+    expect(await db.pointsFor(t.id), hasLength(1));
+    expect(await db.deviceId(), isNotEmpty); // SyncMeta table usable
+    await db.close();
+    final check = sqlite3.open(dbFile.path);
+    expect(check.select('PRAGMA user_version').first.values.first, 5);
+    check.close();
+  });
 }

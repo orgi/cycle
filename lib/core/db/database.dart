@@ -101,26 +101,33 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        // Every step is idempotent (adds only what's missing): drift runs
+        // onUpgrade on *any* version mismatch and then stamps its own version,
+        // so an older build opening a newer DB (e.g. a main build without sync
+        // installed over a sync build) silently resets user_version while the
+        // newer columns stay. Re-running a plain ADD COLUMN then fails with
+        // "duplicate column" and the app can't open its DB at all — which is
+        // exactly what happened on a real iPhone (2038 → main → 2045).
         onUpgrade: (m, from, to) async {
           if (from < 2) {
-            await m.addColumn(tracks, tracks.batteryStartPercent);
-            await m.addColumn(tracks, tracks.batteryEndPercent);
+            await _addColumnIfMissing(m, tracks, tracks.batteryStartPercent);
+            await _addColumnIfMissing(m, tracks, tracks.batteryEndPercent);
           }
           if (from < 3) {
-            await m.addColumn(tracks, tracks.bikeProfileId);
+            await _addColumnIfMissing(m, tracks, tracks.bikeProfileId);
           }
           if (from < 4) {
-            await m.addColumn(trackPoints, trackPoints.speedFromSensor);
+            await _addColumnIfMissing(m, trackPoints, trackPoints.speedFromSensor);
           }
           if (from < 5) {
-            await m.addColumn(tracks, tracks.nameClock);
-            await m.addColumn(tracks, tracks.bikeClock);
-            await m.addColumn(tracks, tracks.geometryClock);
-            await m.addColumn(tracks, tracks.deletedClock);
-            await m.addColumn(tracks, tracks.deletedAt);
-            await m.addColumn(tracks, tracks.pointsPurged);
-            await m.createTable(syncRemoteFiles);
-            await m.createTable(syncMeta);
+            await _addColumnIfMissing(m, tracks, tracks.nameClock);
+            await _addColumnIfMissing(m, tracks, tracks.bikeClock);
+            await _addColumnIfMissing(m, tracks, tracks.geometryClock);
+            await _addColumnIfMissing(m, tracks, tracks.deletedClock);
+            await _addColumnIfMissing(m, tracks, tracks.deletedAt);
+            await _addColumnIfMissing(m, tracks, tracks.pointsPurged);
+            await _createTableIfMissing(m, syncRemoteFiles);
+            await _createTableIfMissing(m, syncMeta);
           }
         },
         beforeOpen: (_) async {
@@ -128,6 +135,23 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('PRAGMA foreign_keys = ON');
         },
       );
+
+  Future<void> _addColumnIfMissing(
+      Migrator m, TableInfo table, GeneratedColumn column) async {
+    final existing = await customSelect(
+            'PRAGMA table_info("${table.actualTableName}")')
+        .get();
+    if (existing.any((r) => r.read<String>('name') == column.name)) return;
+    await m.addColumn(table, column);
+  }
+
+  Future<void> _createTableIfMissing(Migrator m, TableInfo table) async {
+    final found = await customSelect(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      variables: [Variable.withString(table.actualTableName)],
+    ).get();
+    if (found.isEmpty) await m.createTable(table);
+  }
 
   static QueryExecutor _open() => LazyDatabase(() async {
         final dir = await getApplicationSupportDirectory();
