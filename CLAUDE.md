@@ -299,6 +299,13 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   (`lib/core/db/migration_backup.dart`), which `VACUUM INTO`s `backups/cycle_backup_pre_v<N>_…`
   through a raw sqlite3 connection before drift opens/migrates an older-schema DB — bump
   `AppDatabase.kSchemaVersion` and this happens automatically for every future migration.
+  **Migrations must be idempotent** (`_addColumnIfMissing` / `_createTableIfMissing`, never a
+  bare `m.addColumn`): drift runs `onUpgrade` on *any* version mismatch — including an older
+  build opening a newer DB — and then stamps its own `schemaVersion`. So installing a `main`
+  build (v4) over a sync build (v5) reset `user_version` to 4 while the v5 columns stayed, and
+  the next v5 build's plain `ADD COLUMN` died with "duplicate column name: name_clock" — the
+  app couldn't open its DB at all (real iPhone, 2038 → main → 2045). Builds from different
+  branches get installed on the same phones, so assume any up/down order.
 * **Ride sync (WebDAV / Nextcloud):** `lib/core/sync/` (pure Dart, no plugin) + `features/sync/`.
   Settings → Data → Sync. Syncs through a `Cycle/` folder on the user's own WebDAV server
   (Nextcloud first-class: Login Flow v2 in `nextcloud_login_flow.dart` gets an app password via
