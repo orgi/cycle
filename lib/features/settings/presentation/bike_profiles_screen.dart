@@ -90,16 +90,27 @@ class BikeProfilesScreen extends ConsumerWidget {
     final name =
         await _promptName(context, title: 'Add bike', initial: '');
     if (name != null && name.trim().isNotEmpty) {
-      await notifier.add(name.trim());
+      if (!await notifier.add(name.trim()) && context.mounted) {
+        _nameTaken(context, name.trim());
+      }
     }
   }
+
+  /// Same-named bikes would be merged into one by sync, so a second bike
+  /// with an existing name is refused.
+  void _nameTaken(BuildContext context, String name) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('There is already a bike called "$name"'),
+      ));
 
   Future<void> _rename(BuildContext context, BikeProfilesController notifier,
       BikeProfile p) async {
     final name =
         await _promptName(context, title: 'Rename bike', initial: p.name);
     if (name != null && name.trim().isNotEmpty) {
-      await notifier.rename(p.id, name.trim());
+      if (!await notifier.rename(p.id, name.trim()) && context.mounted) {
+        _nameTaken(context, name.trim());
+      }
     }
   }
 
@@ -261,7 +272,7 @@ class BikeProfilesScreen extends ConsumerWidget {
     // Selecting every paired sensor is the same as "all" (null) — keeps a
     // freshly-paired future sensor included by default instead of silently
     // excluded from a bike that was meant to use "everything".
-    await ref.read(bikeProfilesProvider.notifier).setSensorIds(
+    await ref.read(sensorConnectionProvider.notifier).setBikeSensors(
         p.id, result.length == allPairedIds.length ? null : result);
   }
 

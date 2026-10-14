@@ -347,8 +347,30 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   * **Safety backups:** `backups/cycle_backup_pre_first_sync_…` before a device's first sync;
     `cycle_backup_auto_…` (at most daily) before a round that would delete/replace data on the
     phone; only the `auto` ones are pruned after `retentionDays`.
+  * **Same name = same bike.** Bikes created separately on two phones have different ids
+    (timestamp ids), so the first real sync showed every bike twice on every phone.
+    `ProfilesDoc.merge` now merges live profiles with the same normalized name (trim +
+    lowercase) into the smallest id and records the others as `aliases` (synced, only ever
+    added to; chains resolved by `ProfilesDoc.resolve`). Profiles sync **before** rides each
+    round; rides are read through the aliases (`SyncService._aliased`) and the DB is remapped
+    with `remapBikeProfiles`, **without** stamping the bike clock (same bike, new id — stamping
+    would make every phone re-upload every ride). Add/rename to an existing name is refused in
+    `BikeProfilesController` for the same reason.
+  * **Sensors sync by name** (`lib/core/sensors/sensor_catalog.dart`). A BLE id isn't portable:
+    Android's is the sensor's address (same on every Android phone), iOS gives each iPhone its
+    own random UUID. So the synced `SensorCatalog` (inside the profiles file) is keyed by
+    `KnownSensor.keyOf(name)` (trim + lowercase; sensor names carry serials) with name, kinds,
+    `address` (only when an Android phone paired it — `sensorIdsPortableProvider`), clock and a
+    `removed` marker. A bike's choice syncs as `BikeProfile.sensorKeys` + `sensorsClock` (its own
+    part, merged independently of name/colour); each phone derives its local `sensorIds` from
+    it (`SensorConnectionController._reconcileBikes`, no clock). Android links catalog sensors
+    with an address immediately (no scan); iOS links them when a **manual** scan finds the name
+    (`_linkKnown`) — never a background scan (GPS radio, see BLE section). Remove = synced
+    removal. Pre-sync sensors/choices are adopted with an epoch-0 clock (`_adoptLegacy`), so
+    any real choice wins. The UI path for a bike's sensors is `setBikeSensors` (stamps a clock,
+    keeps names of sensors only another phone has linked); `setSensorIds` is local-only.
   * **Bike profiles** sync name/colour/deletion (`ProfilesDoc`, per-profile clock) but not
-    `sensorIds` (sensor ids differ per phone — iOS ids are per-device) or the active profile. A
+    `sensorIds` (sensor ids differ per phone — see sensor sync above) or the active profile. A
     fresh install's untouched "Bike 1" is dropped on its first sync if the server already has
     profiles and no local ride uses it.
   * Tests: `test/support/fake_webdav_server.dart` (real sockets, ETag/If-Match) drives

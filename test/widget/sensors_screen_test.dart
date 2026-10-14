@@ -57,7 +57,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('connected_hr-1')), findsOneWidget);
     expect(find.byKey(const Key('discovered_hr-1')), findsNothing);
-    expect(find.text('Disconnect'), findsOneWidget);
+    expect(find.text('Remove'), findsOneWidget);
   });
 
   testWidgets('a paired-but-disconnected sensor shows a Reconnect button that kicks it',

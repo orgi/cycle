@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../db/database.dart';
+import '../sensors/sensor_catalog.dart';
 import '../services/backup_service.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
 import '../services/sync/sync_store.dart';
@@ -66,10 +67,14 @@ class SyncService {
     required this.backups,
     required this.loadProfiles,
     required this.saveProfiles,
+    Future<SensorCatalog> Function()? loadSensors,
+    Future<void> Function(SensorCatalog)? saveSensors,
     WebDavClientFactory? clientFactory,
     this.probeTimeout = const Duration(seconds: 3),
   })  : _db = db,
         _store = LocalRideStore(db),
+        loadSensors = loadSensors ?? (() async => SensorCatalog.empty),
+        saveSensors = saveSensors ?? ((_) async {}),
         _clientFactory = clientFactory ?? _defaultClient;
 
   static const root = 'Cycle';
@@ -83,6 +88,10 @@ class SyncService {
   final BackupService backups;
   final Future<BikeProfilesState> Function() loadProfiles;
   final Future<void> Function(BikeProfilesState) saveProfiles;
+
+  /// The sensor catalog travels in the same profiles file.
+  final Future<SensorCatalog> Function() loadSensors;
+  final Future<void> Function(SensorCatalog) saveSensors;
   final WebDavClientFactory _clientFactory;
   final Duration probeTimeout;
 
@@ -146,6 +155,13 @@ class SyncService {
     }
     final deviceId = await _db.deviceId();
 
+    // Bikes first: merging them yields the alias table (same-name bikes from
+    // different phones become one) that every ride below is read through.
+    final aliases = await _syncProfiles(client, deviceId, await _store.rides());
+    await _db.remapBikeProfiles(
+        {for (final k in aliases.keys) k: ProfilesDoc.resolve(aliases, k)!});
+    RideDoc norm(RideDoc d) => _aliased(d, aliases);
+
     // ---- Download & merge what changed on the server.
     final listing = [
       for (final e in await _listOrCreate(client, _ridesDir))
@@ -166,7 +182,7 @@ class SyncService {
       final path = '$_ridesDir/${e.name}';
       final RideDoc remote;
       try {
-        remote = RideDoc.decode(await client.get(path));
+        remote = norm(RideDoc.decode(await client.get(path)));
       } on FormatException {
         continue; // newer app version / corrupt: leave it, never prune it
       }
@@ -203,7 +219,7 @@ class SyncService {
     for (final f in await _db.listSyncRemoteFiles()) {
       if (!listed.contains(f.path)) continue;
       final key = _parseRideName(f.path.substring(_ridesDir.length + 1))!.$1;
-      (remoteByKey[key] ??= []).add((f, RideDoc.fromMetaJson(f.meta)));
+      (remoteByKey[key] ??= []).add((f, norm(RideDoc.fromMetaJson(f.meta))));
     }
     var uploaded = 0, pruned = 0, n = 0;
     for (final ride in local.values) {
@@ -232,7 +248,6 @@ class SyncService {
     }
     progress(SyncProgress('Uploading', local.length, local.length));
 
-    await _syncProfiles(client, deviceId, local);
     return SyncResult(
         address: address, downloaded: downloaded, uploaded: uploaded, pruned: pruned);
   }
@@ -260,6 +275,22 @@ class SyncService {
         geometry: g,
       );
 
+  /// [d] with its bike read through the profile [aliases] (clock kept).
+  static RideDoc _aliased(RideDoc d, Map<String, String> aliases) {
+    final bike = ProfilesDoc.resolve(aliases, d.bikeProfileId);
+    if (bike == d.bikeProfileId) return d;
+    return RideDoc(
+      startedAt: d.startedAt,
+      name: d.name,
+      nameClock: d.nameClock,
+      bikeProfileId: bike,
+      bikeClock: d.bikeClock,
+      deletedAt: d.deletedAt,
+      deletedClock: d.deletedClock,
+      geometry: d.geometry,
+    );
+  }
+
   /// `<startSec>~<deviceId>.json.gz` → (startSec, deviceId).
   static (int, String)? _parseRideName(String name) {
     if (!name.endsWith(_ridesSuffix)) return null;
@@ -270,7 +301,8 @@ class SyncService {
     return key == null ? null : (key, stem.substring(i + 1));
   }
 
-  Future<void> _syncProfiles(
+  /// Syncs the bike profiles; returns the merged alias table.
+  Future<Map<String, String>> _syncProfiles(
       WebDavClient client, String deviceId, Map<int, LocalRide> rides) async {
     final ownName = '$deviceId.json';
     final remote = <String, ProfilesDoc>{};
@@ -283,7 +315,8 @@ class SyncService {
       }
     }
     final localState = await loadProfiles();
-    var mine = ProfilesDoc.of(localState);
+    final localSensors = await loadSensors();
+    var mine = ProfilesDoc.of(localState, localSensors);
     final others = remote.entries.where((e) => e.key != ownName).map((e) => e.value);
 
     // A fresh install's untouched "Bike 1" would otherwise sit next to the
@@ -295,7 +328,7 @@ class SyncService {
         localState.deleted.isEmpty &&
         others.any((d) => d.profiles.isNotEmpty) &&
         !rides.values.any((r) => r.doc.bikeProfileId == localState.profiles.single.id)) {
-      mine = const ProfilesDoc(profiles: {}, deleted: {});
+      mine = ProfilesDoc(profiles: const {}, deleted: const {}, sensors: localSensors);
     }
 
     var merged = mine;
@@ -304,9 +337,11 @@ class SyncService {
     }
     final next = merged.applyTo(localState);
     if (next != localState && next.profiles.isNotEmpty) await saveProfiles(next);
+    if (merged.sensors != localSensors) await saveSensors(merged.sensors);
     if (remote[ownName]?.signature != merged.signature) {
       await client.put('$_profilesDir/$ownName', merged.encode(),
           contentType: 'application/json');
     }
+    return merged.aliases;
   }
 }

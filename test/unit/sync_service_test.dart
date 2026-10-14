@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/sensors/gatt.dart';
+import 'package:cycle/core/sensors/sensor_catalog.dart';
 import 'package:cycle/core/services/backup_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/sync/sync_store.dart';
@@ -28,6 +30,8 @@ class Phone {
       backups: backups,
       loadProfiles: () async => profiles,
       saveProfiles: (s) async => profiles = s,
+      loadSensors: () async => sensors,
+      saveSensors: (c) async => sensors = c,
       probeTimeout: const Duration(seconds: 2),
     );
   }
@@ -36,6 +40,7 @@ class Phone {
   final AppDatabase db;
   late final BackupService backups;
   late final SyncService sync;
+  SensorCatalog sensors = SensorCatalog.empty;
   BikeProfilesState profiles = const BikeProfilesState(
     profiles: [BikeProfile(id: 'seed', name: 'Bike 1', colorArgb: 1)],
     activeId: 'seed',
@@ -339,5 +344,69 @@ void main() {
           {'P0', 'P2 renamed on 0'});
     }
     expect(server.filesIn('Cycle/rides/'), hasLength(3));
+  });
+
+  test('the same bikes created on two phones end up once, with every ride '
+      'on the surviving bike, and stay quiet afterwards', () async {
+    final a = newPhone(), b = newPhone();
+    a.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: '1700000000001', name: 'Road', colorArgb: 1, clock: '000000000000005@a'),
+      BikeProfile(id: '1700000000002', name: 'Gravel', colorArgb: 2, clock: '000000000000005@a'),
+    ], activeId: '1700000000001');
+    b.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: '1800000000001', name: 'Road', colorArgb: 3, clock: '000000000000007@b'),
+      BikeProfile(id: '1800000000002', name: 'Gravel', colorArgb: 4, clock: '000000000000007@b'),
+    ], activeId: '1800000000002');
+    final ra = await a.ride(start, name: 'A road ride');
+    await a.db.setTrackBikeProfile(ra, '1700000000001');
+    final rb = await b.ride(start.add(const Duration(days: 1)), name: 'B gravel ride');
+    await b.db.setTrackBikeProfile(rb, '1800000000002');
+
+    for (final p in [a, b, a, b]) {
+      await p.sync.sync(config);
+    }
+
+    for (final p in [a, b]) {
+      expect(p.profiles.profiles.map((x) => x.name).toList()..sort(), ['Gravel', 'Road']);
+      final bikes = {
+        for (final t in await p.db.allTracks()) t.name: t.bikeProfileId,
+      };
+      expect(bikes, {
+        'A road ride': '1700000000001',
+        'B gravel ride': '1700000000002',
+      });
+    }
+    expect(b.profiles.activeId, '1700000000002'); // B's active bike, merged
+
+    final quiet = await b.sync.sync(config);
+    expect((quiet.downloaded, quiet.uploaded), (0, 0));
+    expect(server.filesIn('Cycle/rides/'), hasLength(2));
+  });
+
+  test('the sensor list and each bike\'s sensor choice reach the other phone',
+      () async {
+    final a = newPhone(), b = newPhone();
+    a.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: 'road', name: 'Road', colorArgb: 1, clock: '000000000000005@a',
+          sensorKeys: {'hrm-pro:123456', 'spd-77'}, sensorsClock: '000000000000006@a'),
+    ], activeId: 'road');
+    a.sensors = const SensorCatalog()
+        .put(const KnownSensor(name: 'HRM-Pro:123456', kinds: {SensorKind.heartRate},
+            address: 'AA:BB:CC:00:00:01', clock: '000000000000006@a'))
+        .put(const KnownSensor(name: 'SPD-77', kinds: {SensorKind.speedCadence},
+            clock: '000000000000006@a'));
+    b.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: 'road2', name: 'road', colorArgb: 3, clock: '000000000000004@b'),
+    ], activeId: 'road2');
+
+    for (final p in [a, b, a]) {
+      await p.sync.sync(config);
+    }
+    for (final p in [a, b]) {
+      expect(p.sensors.active.map((s) => s.name).toSet(), {'HRM-Pro:123456', 'SPD-77'});
+      final road = p.profiles.profiles.single;
+      expect(road.sensorKeys, {'hrm-pro:123456', 'spd-77'});
+    }
+    expect(b.sensors['hrm-pro:123456']!.address, 'AA:BB:CC:00:00:01');
   });
 }

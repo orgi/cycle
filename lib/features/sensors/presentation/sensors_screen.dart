@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/sensors/gatt.dart';
+import '../../../core/sensors/sensor_catalog.dart';
+import '../../../core/sensors/sensor_service.dart';
 import '../application/sensor_providers.dart';
 
 /// Scan for and pair BLE cycling sensors (heart rate, speed/cadence, power).
@@ -19,6 +21,14 @@ class SensorsScreen extends ConsumerWidget {
         c.id: c,
     };
     final pairedIds = paired.map((p) => p.id).toSet();
+    final pairedKeys = paired.map((p) => KnownSensor.keyOf(p.name)).toSet();
+    // Sensors another phone has but this one hasn't linked yet.
+    final elsewhere = ref
+        .watch(sensorCatalogProvider)
+        .active
+        .where((s) => !pairedKeys.contains(s.key))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
 
     return Scaffold(
       appBar: AppBar(
@@ -82,13 +92,33 @@ class SensorsScreen extends ConsumerWidget {
                         },
                       ),
                     TextButton(
-                      onPressed: () => ref
-                          .read(sensorConnectionProvider.notifier)
-                          .disconnect(p.id),
-                      child: const Text('Disconnect'),
+                      key: Key('removeSensor_${p.id}'),
+                      onPressed: () => _remove(context, ref, p),
+                      child: const Text('Remove'),
                     ),
                   ],
                 ),
+              ),
+          ],
+          if (elsewhere.isNotEmpty) ...[
+            const _SectionHeader('ON YOUR OTHER PHONES'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Text(
+                'Tap scan with the sensor awake nearby (wear the strap, spin '
+                'the crank) — it links by itself and joins the same bikes.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.white54),
+              ),
+            ),
+            for (final s in elsewhere)
+              ListTile(
+                key: Key('elsewhere_${s.key}'),
+                leading: const Icon(Icons.devices_other, color: Colors.white38),
+                title: Text(s.name),
+                subtitle: Text(_kindsLabel(s.kinds)),
               ),
           ],
           const _SectionHeader('AVAILABLE'),
@@ -119,6 +149,34 @@ class SensorsScreen extends ConsumerWidget {
 
   String _kindsLabel(Set<SensorKind> kinds) =>
       kinds.map((k) => k.label).join(' • ');
+
+  Future<void> _remove(
+      BuildContext context, WidgetRef ref, PairedSensor p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove "${p.name}"?'),
+        content: const Text(
+          'It is removed from all your phones (they sync the sensor list). '
+          'Pair it again any time with a scan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('removeSensorConfirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(sensorConnectionProvider.notifier).disconnect(p.id);
+    }
+  }
 }
 
 class _SectionHeader extends StatelessWidget {

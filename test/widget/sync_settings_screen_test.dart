@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/sensors/sensor_catalog.dart';
 import 'package:cycle/core/services/backup_service.dart';
 import 'package:cycle/core/services/network_monitor.dart';
 import 'package:cycle/core/services/sync/sync_store.dart';
 import 'package:cycle/features/backup/application/backup_providers.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/sync/application/sync_providers.dart';
@@ -51,6 +53,7 @@ void main() {
           syncStoreProvider.overrideWithValue(store),
           networkMonitorProvider.overrideWithValue(network),
           syncStartupDelayProvider.overrideWithValue(null),
+          sensorCatalogStoreProvider.overrideWithValue(MemorySensorCatalogStore()),
           settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
           bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
           backupServiceProvider

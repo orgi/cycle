@@ -492,6 +492,22 @@ class AppDatabase extends _$AppDatabase {
 
   // --- Sync ------------------------------------------------------------------
 
+  /// Re-points rides from merged-away bike profiles to their survivor
+  /// ([aliases]: old id → surviving id, already resolved). The bike's edit
+  /// clock is left alone on purpose: this isn't a new choice of bike, just a
+  /// new name for the same one, and every phone applies the same mapping —
+  /// stamping it would make every phone re-upload every ride. Returns the
+  /// number of rides changed.
+  Future<int> remapBikeProfiles(Map<String, String> aliases) async {
+    var n = 0;
+    for (final e in aliases.entries) {
+      if (e.key == e.value) continue;
+      n += await (update(tracks)..where((t) => t.bikeProfileId.equals(e.key)))
+          .write(TracksCompanion(bikeProfileId: Value(e.value)));
+    }
+    return n;
+  }
+
   Future<List<SyncRemoteFile>> listSyncRemoteFiles() => select(syncRemoteFiles).get();
 
   Future<void> putSyncRemoteFile(String path, String? etag, String meta) =>
