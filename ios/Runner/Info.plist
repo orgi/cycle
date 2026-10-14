@@ -30,6 +30,10 @@
 	<!-- BLE cycling sensors (heart rate, speed/cadence, power). -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Cycle connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>
+	<!-- Ride sync to a server on the home network (self-hosted Nextcloud):
+	     iOS 14+ asks before an app may reach local-network addresses. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cycle syncs your rides with your own server on your home network.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

@@ -15,6 +15,7 @@ void main() {
       durationSeconds: 1800,
       avgSpeedMps: 5,
       maxSpeedMps: 10,
+      pointsPurged: false,
     );
     final points = [
       TrackPoint(

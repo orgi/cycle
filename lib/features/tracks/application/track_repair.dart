@@ -63,7 +63,7 @@ Future<int?> recoverInterruptedTracks(
     if (t.endedAt != null) continue; // already finalised
     final points = await db.pointsFor(t.id);
     if (points.isEmpty) {
-      await db.deleteTrack(t.id); // crash artefact with no data
+      await db.purgeTrack(t.id); // crash artefact with no data: erase
       continue;
     }
     // Only the newest ride, interrupted recently, is offered for resume.
@@ -144,6 +144,9 @@ Future<int> removeDuplicateTracks(AppDatabase db) async {
   for (final t in byId) {
     if (!seenStarts.add(t.startedAt)) toDelete.add(t.id);
   }
+  // To the trash, like any delete — restorable for the retention period. The
+  // surviving original keeps the start time live, so sync never reads this
+  // as "the ride was deleted".
   for (final id in toDelete) {
     await db.deleteTrack(id);
   }

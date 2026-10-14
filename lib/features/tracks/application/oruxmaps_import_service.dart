@@ -173,7 +173,7 @@ class OruxMapsImportService {
     // Only the matching *key* is truncated — points keep their real
     // timestamps for distance/duration math.
     final existingByStart = {
-      for (final t in await _db.allTracks())
+      for (final t in await _db.allTracksIncludingDeleted())
         _truncateToSeconds(t.startedAt): t,
     };
     // Guards duplicate rows within oruxDbPath itself, and against
@@ -282,6 +282,8 @@ class OruxMapsImportService {
           cadenceRpm: cadenceRpm,
         );
       }
+      // The ride's points changed: let sync carry the backfill to other phones.
+      await _db.touchGeometry(trackId);
     });
     return true;
   }

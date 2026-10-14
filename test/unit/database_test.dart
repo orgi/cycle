@@ -57,14 +57,107 @@ void main() {
     expect(tracks.map((t) => t.name), ['newer', 'older']);
   });
 
-  test('deleteTrack cascades to its points', () async {
+  test('deleteTrack moves a ride to the trash, keeping its points', () async {
     final id = await db.createTrack(DateTime.utc(2026, 1, 1));
     await db.addPoint(TrackPointsCompanion.insert(
         trackId: id, time: DateTime.utc(2026, 1, 1), latitude: 1, longitude: 2));
 
     await db.deleteTrack(id);
-    expect(await db.track(id), isNull);
+    expect(await db.allTracks(), isEmpty);
+    expect((await db.track(id))!.deletedAt, isNotNull);
+    expect(await db.pointsFor(id), hasLength(1));
+    expect(await db.watchDeletedTracks().first, hasLength(1));
+  });
+
+  test('restoreTrack brings a trashed ride back', () async {
+    final id = await db.createTrack(DateTime.utc(2026, 1, 1));
+    await db.deleteTrack(id);
+    await db.restoreTrack(id);
+    expect((await db.allTracks()).single.id, id);
+    expect(await db.watchDeletedTracks().first, isEmpty);
+  });
+
+  test('purgeTrack drops the points but keeps a deletion marker', () async {
+    final id = await db.createTrack(DateTime.utc(2026, 1, 1));
+    await db.addPoint(TrackPointsCompanion.insert(
+        trackId: id, time: DateTime.utc(2026, 1, 1), latitude: 1, longitude: 2));
+    await db.finalizeTrack(id,
+        endedAt: DateTime.utc(2026, 1, 1, 1),
+        distanceMeters: 1,
+        durationSeconds: 1,
+        avgSpeedMps: 1,
+        maxSpeedMps: 1);
+    await db.deleteTrack(id);
+
+    await db.purgeTrack(id);
+    final marker = await db.track(id);
+    expect(marker!.pointsPurged, isTrue);
+    expect(marker.deletedAt, isNotNull);
     expect(await db.pointsFor(id), isEmpty);
+    // Not restorable, not listed anywhere.
+    expect(await db.watchDeletedTracks().first, isEmpty);
+    expect(await db.allTracks(), isEmpty);
+  });
+
+  test('purging an unfinished crash artefact erases it entirely', () async {
+    final id = await db.createTrack(DateTime.utc(2026, 1, 1));
+    await db.purgeTrack(id);
+    expect(await db.track(id), isNull);
+  });
+
+  test('purgeExpiredTrash only purges rides deleted before the cutoff',
+      () async {
+    final old = await db.createTrack(DateTime.utc(2026, 1, 1));
+    final recent = await db.createTrack(DateTime.utc(2026, 1, 2));
+    for (final id in [old, recent]) {
+      await db.finalizeTrack(id,
+          endedAt: DateTime.utc(2026, 1, 3),
+          distanceMeters: 1,
+          durationSeconds: 1,
+          avgSpeedMps: 1,
+          maxSpeedMps: 1);
+    }
+    db.now = () => DateTime(2026, 2, 1);
+    await db.deleteTrack(old);
+    db.now = () => DateTime(2026, 3, 1);
+    await db.deleteTrack(recent);
+
+    // "Now" is 2026-03-05: `old` was deleted 32 days ago, `recent` 4.
+    db.now = () => DateTime(2026, 3, 5);
+    expect(await db.purgeExpiredTrash(const Duration(days: 30)), 1);
+    expect((await db.track(old))!.pointsPurged, isTrue);
+    expect((await db.track(recent))!.pointsPurged, isFalse);
+  });
+
+  test('edits stamp the matching part clock', () async {
+    db.now = () => DateTime.fromMillisecondsSinceEpoch(1000);
+    final id = await db.createTrack(DateTime.utc(2026, 1, 1));
+    final created = (await db.track(id))!;
+    expect(created.nameClock, isNotNull);
+
+    db.now = () => DateTime.fromMillisecondsSinceEpoch(2000);
+    await db.renameTrack(id, 'Morning');
+    var t = (await db.track(id))!;
+    expect(t.nameClock!.compareTo(created.nameClock!), greaterThan(0));
+    expect(t.bikeClock, created.bikeClock);
+
+    db.now = () => DateTime.fromMillisecondsSinceEpoch(3000);
+    await db.setTrackBikeProfile(id, 'p1');
+    t = (await db.track(id))!;
+    expect(t.bikeClock!.compareTo(t.nameClock!), greaterThan(0));
+    expect(t.geometryClock, created.geometryClock);
+
+    db.now = () => DateTime.fromMillisecondsSinceEpoch(4000);
+    await db.updateTrackStats(id,
+        distanceMeters: 1, durationSeconds: 1, avgSpeedMps: 1, maxSpeedMps: 1);
+    t = (await db.track(id))!;
+    expect(t.geometryClock!.compareTo(t.bikeClock!), greaterThan(0));
+  });
+
+  test('device id is generated once and kept', () async {
+    final a = await db.deviceId();
+    expect(a, hasLength(10));
+    expect(await db.deviceId(), a);
   });
 
   test('createTrack stamps a bike profile; defaults to null', () async {

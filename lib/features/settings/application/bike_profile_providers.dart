@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/bike_profile.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
 import '../../../core/services/bike_profiles/bike_profiles_store.dart';
+import '../../../core/sync/sync_clock.dart';
 
 /// Persists bike profiles. Overridable in tests.
 final bikeProfilesStoreProvider = Provider<BikeProfilesStore>(
@@ -44,6 +45,18 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
 
   Future<void> _persist() => ref.read(bikeProfilesStoreProvider).save(state);
 
+  /// Sync clock for a name/colour/delete edit. No device id needed here: two
+  /// phones editing the same profile in the same millisecond are broken by
+  /// name/colour (`ProfilesDoc`), still the same way on every phone.
+  Future<String> _stamp() async =>
+      SyncClock.format(DateTime.now(), 'profile');
+
+  /// Replaces the whole state with one merged in from sync.
+  Future<void> replaceFromSync(BikeProfilesState next) async {
+    state = next;
+    await _persist();
+  }
+
   /// Adds a new profile (auto-assigned the next unused preset colour) and
   /// makes it active if it's the first one.
   Future<void> add(String name) async {
@@ -55,7 +68,8 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
       orElse: () =>
           kBikeProfileColors[state.profiles.length % kBikeProfileColors.length],
     );
-    final p = BikeProfile(id: _newId(), name: trimmed, colorArgb: color);
+    final p = BikeProfile(
+        id: _newId(), name: trimmed, colorArgb: color, clock: await _stamp());
     state = state.copyWith(
       profiles: [...state.profiles, p],
       activeId: state.activeId ?? p.id,
@@ -66,9 +80,10 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
   Future<void> rename(String id, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
+    final clock = await _stamp();
     state = state.copyWith(profiles: [
       for (final p in state.profiles)
-        p.id == id ? p.copyWith(name: trimmed) : p,
+        p.id == id ? p.copyWith(name: trimmed, clock: clock) : p,
     ]);
     await _persist();
   }
@@ -86,9 +101,10 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
   }
 
   Future<void> setColor(String id, int colorArgb) async {
+    final clock = await _stamp();
     state = state.copyWith(profiles: [
       for (final p in state.profiles)
-        p.id == id ? p.copyWith(colorArgb: colorArgb) : p,
+        p.id == id ? p.copyWith(colorArgb: colorArgb, clock: clock) : p,
     ]);
     await _persist();
   }
@@ -101,7 +117,11 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
     final activeId = state.activeId == id
         ? (profiles.isNotEmpty ? profiles.first.id : null)
         : state.activeId;
-    state = BikeProfilesState(profiles: profiles, activeId: activeId);
+    state = BikeProfilesState(
+      profiles: profiles,
+      activeId: activeId,
+      deleted: {...state.deleted, id: await _stamp()},
+    );
     await _persist();
   }
 

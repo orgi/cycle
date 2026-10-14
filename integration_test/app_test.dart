@@ -2,7 +2,9 @@ import 'package:cycle/app.dart';
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
+import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +32,9 @@ void main() {
           appDatabaseProvider.overrideWithValue(db),
           recordingForegroundServiceProvider
               .overrideWithValue(const NoopRecordingForegroundService()),
+          // The on-screen Start/Stop button is hidden by default (volume keys).
+          settingsStoreProvider.overrideWithValue(
+              FakeSettingsStore(const AppSettings(showStartStopButton: true))),
         ],
         child: const CycleApp(),
       ),

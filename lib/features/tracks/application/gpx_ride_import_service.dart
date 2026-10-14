@@ -84,7 +84,7 @@ class GpxRideImportService {
     points.sort((a, b) => a.time.compareTo(b.time));
 
     final startedAt = points.first.time;
-    final existing = (await _db.allTracks()).map((t) => t.startedAt).toSet();
+    final existing = (await _db.allTracksIncludingDeleted()).map((t) => t.startedAt).toSet();
     if (existing.contains(startedAt)) return false;
 
     final id = await _db.createTrack(startedAt, name: name ?? fallbackName);
