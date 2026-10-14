@@ -81,6 +81,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
   - The app's folder (`routes/`, backups, GPX exports) appears in the iOS Files app.
 
 ### Fixed
+- **Every bike showed up twice after syncing.** A bike created on each phone separately (e.g.
+  "Road" on the A33 and "Road" on the iPhone) counted as two different bikes. Bikes with the same
+  name (ignoring upper/lower case and spaces) are now merged into one on every phone, with all
+  their rides, their colour and the active-bike choice moved over; each phone keeps its own
+  sensor choice for the bike. Adding or renaming a bike to a name another bike already has is
+  now refused, since sync would merge the two.
 - **Cycle could not open its ride database after switching between builds** ("SQL logic error
   … ALTER TABLE "tracks" ADD COLUMN "name_clock""). Installing an older build over a sync build
   and then a sync build again made the database upgrade try to add columns that were already

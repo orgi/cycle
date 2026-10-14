@@ -347,6 +347,15 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   * **Safety backups:** `backups/cycle_backup_pre_first_sync_…` before a device's first sync;
     `cycle_backup_auto_…` (at most daily) before a round that would delete/replace data on the
     phone; only the `auto` ones are pruned after `retentionDays`.
+  * **Same name = same bike.** Bikes created separately on two phones have different ids
+    (timestamp ids), so the first real sync showed every bike twice on every phone.
+    `ProfilesDoc.merge` now merges live profiles with the same normalized name (trim +
+    lowercase) into the smallest id and records the others as `aliases` (synced, only ever
+    added to; chains resolved by `ProfilesDoc.resolve`). Profiles sync **before** rides each
+    round; rides are read through the aliases (`SyncService._aliased`) and the DB is remapped
+    with `remapBikeProfiles`, **without** stamping the bike clock (same bike, new id — stamping
+    would make every phone re-upload every ride). Add/rename to an existing name is refused in
+    `BikeProfilesController` for the same reason.
   * **Bike profiles** sync name/colour/deletion (`ProfilesDoc`, per-profile clock) but not
     `sensorIds` (sensor ids differ per phone — iOS ids are per-device) or the active profile. A
     fresh install's untouched "Bike 1" is dropped on its first sync if the server already has

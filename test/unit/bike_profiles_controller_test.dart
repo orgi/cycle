@@ -160,4 +160,27 @@ void main() {
     expect(container.read(bikeProfilesProvider).profiles, isEmpty);
     expect(container.read(bikeProfilesProvider).activeId, isNull);
   });
+
+  test('a second bike with an existing name is refused (sync would merge it)',
+      () async {
+    const existing = BikeProfilesState(
+      profiles: [
+        BikeProfile(id: 'p1', name: 'Road', colorArgb: 1),
+        BikeProfile(id: 'p2', name: 'Gravel', colorArgb: 2),
+      ],
+      activeId: 'p1',
+    );
+    final container = ProviderContainer(overrides: [
+      bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(existing)),
+    ]);
+    addTearDown(container.dispose);
+    container.listen(bikeProfilesProvider, (_, _) {});
+    await settle();
+    final notifier = container.read(bikeProfilesProvider.notifier);
+
+    expect(await notifier.add(' road '), isFalse);
+    expect(await notifier.rename('p2', 'ROAD'), isFalse);
+    expect(await notifier.rename('p1', 'road'), isTrue); // own name, new case
+    expect(container.read(bikeProfilesProvider).profiles, hasLength(2));
+  });
 }

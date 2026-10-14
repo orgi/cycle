@@ -340,4 +340,41 @@ void main() {
     }
     expect(server.filesIn('Cycle/rides/'), hasLength(3));
   });
+
+  test('the same bikes created on two phones end up once, with every ride '
+      'on the surviving bike, and stay quiet afterwards', () async {
+    final a = newPhone(), b = newPhone();
+    a.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: '1700000000001', name: 'Road', colorArgb: 1, clock: '000000000000005@a'),
+      BikeProfile(id: '1700000000002', name: 'Gravel', colorArgb: 2, clock: '000000000000005@a'),
+    ], activeId: '1700000000001');
+    b.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: '1800000000001', name: 'Road', colorArgb: 3, clock: '000000000000007@b'),
+      BikeProfile(id: '1800000000002', name: 'Gravel', colorArgb: 4, clock: '000000000000007@b'),
+    ], activeId: '1800000000002');
+    final ra = await a.ride(start, name: 'A road ride');
+    await a.db.setTrackBikeProfile(ra, '1700000000001');
+    final rb = await b.ride(start.add(const Duration(days: 1)), name: 'B gravel ride');
+    await b.db.setTrackBikeProfile(rb, '1800000000002');
+
+    for (final p in [a, b, a, b]) {
+      await p.sync.sync(config);
+    }
+
+    for (final p in [a, b]) {
+      expect(p.profiles.profiles.map((x) => x.name).toList()..sort(), ['Gravel', 'Road']);
+      final bikes = {
+        for (final t in await p.db.allTracks()) t.name: t.bikeProfileId,
+      };
+      expect(bikes, {
+        'A road ride': '1700000000001',
+        'B gravel ride': '1700000000002',
+      });
+    }
+    expect(b.profiles.activeId, '1700000000002'); // B's active bike, merged
+
+    final quiet = await b.sync.sync(config);
+    expect((quiet.downloaded, quiet.uploaded), (0, 0));
+    expect(server.filesIn('Cycle/rides/'), hasLength(2));
+  });
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/bike_profile.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
 import '../../../core/services/bike_profiles/bike_profiles_store.dart';
+import '../../../core/sync/profile_sync.dart';
 import '../../../core/sync/sync_clock.dart';
 
 /// Persists bike profiles. Overridable in tests.
@@ -57,11 +58,20 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
     await _persist();
   }
 
+  /// Whether another profile (not [exceptId]) already has [name] — sync treats
+  /// same-named bikes as one and would merge them (`ProfilesDoc.merge`).
+  bool nameTaken(String name, {String? exceptId}) {
+    final n = ProfilesDoc.normalizeName(name);
+    return state.profiles
+        .any((p) => p.id != exceptId && ProfilesDoc.normalizeName(p.name) == n);
+  }
+
   /// Adds a new profile (auto-assigned the next unused preset colour) and
-  /// makes it active if it's the first one.
-  Future<void> add(String name) async {
+  /// makes it active if it's the first one. Returns false (and changes
+  /// nothing) for an empty or already-used name.
+  Future<bool> add(String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty || nameTaken(trimmed)) return false;
     final usedColors = state.profiles.map((p) => p.colorArgb).toSet();
     final color = kBikeProfileColors.firstWhere(
       (c) => !usedColors.contains(c),
@@ -75,17 +85,21 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
       activeId: state.activeId ?? p.id,
     );
     await _persist();
+    return true;
   }
 
-  Future<void> rename(String id, String name) async {
+  /// Returns false (and changes nothing) for an empty name or one another
+  /// bike already uses.
+  Future<bool> rename(String id, String name) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty || nameTaken(trimmed, exceptId: id)) return false;
     final clock = await _stamp();
     state = state.copyWith(profiles: [
       for (final p in state.profiles)
         p.id == id ? p.copyWith(name: trimmed, clock: clock) : p,
     ]);
     await _persist();
+    return true;
   }
 
   /// Sets which paired sensors this bike should actively pursue. `null`

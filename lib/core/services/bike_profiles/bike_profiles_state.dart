@@ -6,6 +6,7 @@ class BikeProfilesState {
     required this.profiles,
     this.activeId,
     this.deleted = const {},
+    this.aliases = const {},
   });
 
   static const empty = BikeProfilesState(profiles: []);
@@ -17,6 +18,11 @@ class BikeProfilesState {
   /// a deleted profile back from another phone.
   final Map<String, String> deleted;
 
+  /// Merged-away profile id → the id it was merged into (bikes with the same
+  /// name created separately on two phones). Rides still pointing at an old
+  /// id are read as the new one.
+  final Map<String, String> aliases;
+
   BikeProfile? get active =>
       profiles.where((p) => p.id == activeId).firstOrNull;
 
@@ -24,17 +30,20 @@ class BikeProfilesState {
     List<BikeProfile>? profiles,
     String? activeId,
     Map<String, String>? deleted,
+    Map<String, String>? aliases,
   }) =>
       BikeProfilesState(
         profiles: profiles ?? this.profiles,
         activeId: activeId ?? this.activeId,
         deleted: deleted ?? this.deleted,
+        aliases: aliases ?? this.aliases,
       );
 
   Map<String, dynamic> toJson() => {
         'profiles': [for (final p in profiles) p.toJson()],
         if (activeId != null) 'active_id': activeId,
         if (deleted.isNotEmpty) 'deleted': deleted,
+        if (aliases.isNotEmpty) 'aliases': aliases,
       };
 
   factory BikeProfilesState.fromJson(Map<String, dynamic> json) =>
@@ -48,6 +57,10 @@ class BikeProfilesState {
           for (final e in ((json['deleted'] as Map?) ?? const {}).entries)
             e.key as String: e.value as String,
         },
+        aliases: {
+          for (final e in ((json['aliases'] as Map?) ?? const {}).entries)
+            e.key as String: e.value as String,
+        },
       );
 
   @override
@@ -57,7 +70,9 @@ class BikeProfilesState {
       other.profiles.length == profiles.length &&
       _listEquals(other.profiles, profiles) &&
       other.deleted.length == deleted.length &&
-      other.deleted.entries.every((e) => deleted[e.key] == e.value);
+      other.deleted.entries.every((e) => deleted[e.key] == e.value) &&
+      other.aliases.length == aliases.length &&
+      other.aliases.entries.every((e) => aliases[e.key] == e.value);
 
   @override
   int get hashCode => Object.hash(activeId, Object.hashAll(profiles),

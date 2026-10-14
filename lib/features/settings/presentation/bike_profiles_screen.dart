@@ -90,16 +90,27 @@ class BikeProfilesScreen extends ConsumerWidget {
     final name =
         await _promptName(context, title: 'Add bike', initial: '');
     if (name != null && name.trim().isNotEmpty) {
-      await notifier.add(name.trim());
+      if (!await notifier.add(name.trim()) && context.mounted) {
+        _nameTaken(context, name.trim());
+      }
     }
   }
+
+  /// Same-named bikes would be merged into one by sync, so a second bike
+  /// with an existing name is refused.
+  void _nameTaken(BuildContext context, String name) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('There is already a bike called "$name"'),
+      ));
 
   Future<void> _rename(BuildContext context, BikeProfilesController notifier,
       BikeProfile p) async {
     final name =
         await _promptName(context, title: 'Rename bike', initial: p.name);
     if (name != null && name.trim().isNotEmpty) {
-      await notifier.rename(p.id, name.trim());
+      if (!await notifier.rename(p.id, name.trim()) && context.mounted) {
+        _nameTaken(context, name.trim());
+      }
     }
   }
 
