@@ -9,6 +9,18 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 ## [Unreleased]
 
 ### Added
+- **Battery runtime test** (Settings → Data → Battery runtime test): simulates a ride until the
+  battery runs out, so you learn how long the phone really lasts on the bike. The map moves
+  on a zigzag through your area (staying on your installed map, always into fresh map like on a
+  ride), the track is drawn and every point is saved like on a ride (to a scratch file that's
+  deleted afterwards), the real GPS stays on and the screen stays on. Time and
+  battery level are saved every minute, so the result survives the phone switching itself off.
+  The next time you open Cycle it tells you how long the phone lasted, with the average drain
+  per hour. Tests are kept separately and never appear among your rides. A real ride can't be
+  started while a test runs. Charging to 100 % in one go afterwards also recalibrates the
+  battery display.
+  During the test the map's TIME box shows how long the test has been running (labelled TEST).
+  DIST, AVG and MAX count as on a ride, and the simulated speed varies between 25 and 35 km/h.
 - **"Battery used" per ride on iPhone**, like on Android. iOS only reports the battery level in
   5 % steps (since iOS 17), so on short rides it may read 0 %. It's meaningful on longer rides.
 - **Start/stop with gloves on.** Three new ways to start or stop a ride without touching the screen:

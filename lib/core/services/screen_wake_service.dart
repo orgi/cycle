@@ -25,6 +25,9 @@ abstract class ScreenWakeService {
   /// Owner key for an in-flight map region download.
   static const String ownerMapDownload = 'map-download';
 
+  /// Owner key for a running battery runtime test.
+  static const String ownerBatteryTest = 'battery-test';
+
   /// Whether any owner currently holds keep-awake.
   @visibleForTesting
   bool get isHeld => _owners.isNotEmpty;

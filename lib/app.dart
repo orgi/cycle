@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/theme.dart';
 import 'features/backup/presentation/backup_screen.dart';
+import 'features/battery_test/presentation/battery_test_screen.dart';
 import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
@@ -52,6 +53,10 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const RideClassifierScreen(),
     ),
     GoRoute(path: '/backup', builder: (context, state) => const BackupScreen()),
+    GoRoute(
+      path: '/battery-test',
+      builder: (context, state) => const BatteryTestScreen(),
+    ),
     GoRoute(
       path: '/oruxmaps-import',
       builder: (context, state) => const OruxMapsImportScreen(),

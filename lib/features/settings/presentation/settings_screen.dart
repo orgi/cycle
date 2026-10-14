@@ -191,6 +191,14 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/backup'),
           ),
           ListTile(
+            key: const Key('batteryTestTile'),
+            leading: const Icon(Icons.battery_std),
+            title: const Text('Battery runtime test'),
+            subtitle: const Text('How long the phone lasts on a ride'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/battery-test'),
+          ),
+          ListTile(
             key: const Key('oruxmapsImportTile'),
             leading: const Icon(Icons.map_outlined),
             title: const Text('Import from OruxMaps'),

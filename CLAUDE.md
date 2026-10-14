@@ -757,6 +757,42 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
     through `RecordingController.recordPoint`, so **new** rides going forward can
     be classified by it; old points stay `null` (unknown, not "false").
 
+* **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
+  answers "how long does the phone last on a ride" without riding. While running, the app's
+  `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
+  (`lib/core/battery_test/simulated_zigzag.dart`, 1 fix/s, speed varying 25-35 km/h as two
+  overlapping sine waves with an exact integral for the distance), a lawn-mower pattern of
+  3 km east/west rows 300 m apart advancing north, starting at the last real fix (else the shown
+  map's centre) and kept inside the shown map's bounds (`installedMapBoundsProvider`, minus
+  200 m; ±20 km when unknown, ~1 km for the demo map), turning back onto rows *between* the
+  earlier ones (van der Corput offsets). **Why not a loop** (the first version was an 800 m
+  circle): a loop re-draws the same cached tiles lap after lap, while a ride keeps rendering
+  fresh map, so the loop overstated the runtime; 450 km (15 h at 30 km/h) of zigzag still spans only
+  ~40 km, so it stays on a regional map. **DIST/AVG/MAX run during a test**
+  (`RideController._accumulating` = recording OR `simulatedRideProvider != null`; reset by the
+  test's start/stop), but `recordPoint` still only runs for a real recording. Like a ride, the test also **draws the track**
+  (`map_screen` grows `_path` while `batteryTestProvider != null`, cleared when a test starts or
+  ends) and **writes every fix to a database** — a throwaway `AppDatabase` on
+  `battery_tests/scratch_ride.sqlite` (`BatteryTestStore.openScratchDb`), same schema and
+  insert path as `recordPoint`, deleted on stop and before the next test. Both are real per-fix
+  costs of a ride; leaving them out (as the first version did) also overstated the runtime. A
+  track is one `PolylineMarker` whose whole path is re-projected on every fix (the library only
+  culls by the *whole* track's bbox), so its cost grows with point count, not visible length.
+  The **real GPS stays
+  subscribed underneath** (`deviceLocationServiceProvider`; fixes are only counted) and the
+  screen is held on (`ScreenWakeService.ownerBatteryTest`). The platform GPS is now
+  `deviceLocationServiceProvider`; `locationServiceProvider` is the effective one everything
+  reads, and tests keep overriding that. `locationPowerControlProvider` unwraps the simulation
+  to reach the real service's gate. **`RecordingController.start()` refuses while a test runs**
+  (`simulatedRideProvider != null`), so simulated positions can never become a ride (volume
+  keys, auto-start and the button all go through it). Results are **not in the ride DB**
+  (deliberately, which also avoids a schema bump): one JSON-lines file per test in
+  `<appSupport>/battery_tests/` (`BatteryTestLog`), appended with a flush every minute, so it
+  survives the phone dying. No `stop` line means the phone switched off, and the last sample is
+  the time of death (±1 sample). The map screen announces an unseen shutdown result once
+  (`unseenShutdownResultProvider`, then a `seen` line). On iOS the levels are 5 % steps, so the
+  **runtime** is the reliable number and %/h is only shown from 10 min on.
+
 ## Known gotchas
 
 * **`MapModel.dispose()` disposes its registered marker datastores.** Swapping the active map
