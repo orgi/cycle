@@ -218,6 +218,9 @@ class FakeHardwareButtonService implements HardwareButtonService {
       StreamController<HardwareButton>.broadcast();
   bool enabled = false;
 
+  /// How often [setEnabled] was called (iOS must never be asked to intercept).
+  int setEnabledCalls = 0;
+
   void press(HardwareButton button) => _controller.add(button);
 
   Future<void> dispose() async {
@@ -229,7 +232,10 @@ class FakeHardwareButtonService implements HardwareButtonService {
   Stream<HardwareButton> get events => _controller.stream;
 
   @override
-  Future<void> setEnabled(bool value) async => enabled = value;
+  Future<void> setEnabled(bool value) async {
+    setEnabledCalls++;
+    enabled = value;
+  }
 
   final StreamController<bool> _proximity = StreamController<bool>.broadcast();
   bool proximityEnabled = false;

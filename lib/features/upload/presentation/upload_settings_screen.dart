@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/upload/upload_store.dart';
 import '../application/upload_providers.dart';
 
-/// Lets the user connect their Strava (API app credentials) and Komoot
-/// (email/password) accounts for uploading rides.
+/// Lets the user connect their Strava account (API app credentials) for
+/// uploading rides.
 class UploadSettingsScreen extends ConsumerStatefulWidget {
   const UploadSettingsScreen({super.key});
 
@@ -17,8 +17,6 @@ class UploadSettingsScreen extends ConsumerStatefulWidget {
 class _UploadSettingsScreenState extends ConsumerState<UploadSettingsScreen> {
   final _stravaId = TextEditingController();
   final _stravaSecret = TextEditingController();
-  final _komootEmail = TextEditingController();
-  final _komootPassword = TextEditingController();
   bool _loaded = false;
 
   @override
@@ -30,13 +28,10 @@ class _UploadSettingsScreenState extends ConsumerState<UploadSettingsScreen> {
   Future<void> _load() async {
     final store = ref.read(uploadStoreProvider);
     final strava = await store.stravaConfig();
-    final komoot = await store.komootCredentials();
     if (!mounted) return;
     setState(() {
       _stravaId.text = strava?.clientId ?? '';
       _stravaSecret.text = strava?.clientSecret ?? '';
-      _komootEmail.text = komoot?.email ?? '';
-      _komootPassword.text = komoot?.password ?? '';
       _loaded = true;
     });
   }
@@ -45,8 +40,6 @@ class _UploadSettingsScreenState extends ConsumerState<UploadSettingsScreen> {
   void dispose() {
     _stravaId.dispose();
     _stravaSecret.dispose();
-    _komootEmail.dispose();
-    _komootPassword.dispose();
     super.dispose();
   }
 
@@ -63,20 +56,6 @@ class _UploadSettingsScreenState extends ConsumerState<UploadSettingsScreen> {
     }
     ref.invalidate(stravaConfigProvider);
     _toast('Strava settings saved');
-  }
-
-  Future<void> _saveKomoot() async {
-    final email = _komootEmail.text.trim();
-    final pw = _komootPassword.text;
-    final store = ref.read(uploadStoreProvider);
-    if (email.isEmpty || pw.isEmpty) {
-      await store.setKomootCredentials(null);
-    } else {
-      await store
-          .setKomootCredentials(KomootCredentials(email: email, password: pw));
-    }
-    ref.invalidate(komootCredentialsProvider);
-    _toast('Komoot settings saved');
   }
 
   void _toast(String msg) {
@@ -120,34 +99,6 @@ class _UploadSettingsScreenState extends ConsumerState<UploadSettingsScreen> {
                     FilledButton(
                       key: const Key('saveStravaButton'),
                       onPressed: _saveStrava,
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                _Section(
-                  title: 'Komoot',
-                  hint:
-                      'Komoot has no public upload API, so Cycle signs in with '
-                      'your email and password (unofficial; may break if Komoot '
-                      'changes their site). Used only to upload your own rides.',
-                  children: [
-                    TextField(
-                      key: const Key('komootEmail'),
-                      controller: _komootEmail,
-                      decoration: const InputDecoration(labelText: 'Email'),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    TextField(
-                      key: const Key('komootPassword'),
-                      controller: _komootPassword,
-                      decoration: const InputDecoration(labelText: 'Password'),
-                      obscureText: true,
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      key: const Key('saveKomootButton'),
-                      onPressed: _saveKomoot,
                       child: const Text('Save'),
                     ),
                   ],

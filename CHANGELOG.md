@@ -8,6 +8,25 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Changed
+- **Detailed map styles now come from mapsforge.** "Detailed (Elements)" and its dark
+  variant were the OpenAndroMaps Elements theme, whose licence doesn't allow it in an app
+  store release. They are replaced by **Detailed** and **Detailed — Dark**, the map styles
+  that ship with the mapsforge map library (POI symbols, area patterns, more labels). If you
+  had picked an Elements style, you get the matching new one automatically.
+
+### Removed
+- **Komoot upload.** It signed in with your Komoot password through Komoot's unofficial,
+  private API, which breaks Komoot's terms and isn't allowed in the app stores. A Komoot
+  login saved by an older version is deleted from the phone on the next launch. To get a
+  ride into Komoot, export it as GPX from the ride screen and import it there. Strava upload
+  is unchanged.
+- **Volume-button start/stop on iPhone.** iOS has no official way to use the volume
+  buttons, and the workaround (holding the media volume at half and watching it change)
+  breaks App Store rule 2.5.9. On iPhone, start and stop with the on-screen button (now
+  always shown there), the hand-over-screen gesture or auto-start. Android keeps volume-key
+  control.
+
 ## [0.2.0] - 2026-10-15
 
 Everything since 0.1.0. These changes were installed as builds `0.1.0+2` … `0.1.0+2048`:

@@ -191,6 +191,14 @@ void main() {
       expect(container.read(recordingProvider), isFalse);
     });
 
+    test('volume keys are never intercepted on iOS (guideline 2.5.9)',
+        () async {
+      container = build(enabled: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      expect(buttons.setEnabledCalls, 0);
+    });
+
     test('works independently of the volume-key setting', () async {
       container = build(enabled: false, proximityHold: true);
       container.listen(hardwareButtonControllerProvider, (_, _) {});

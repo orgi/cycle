@@ -155,7 +155,6 @@ class TrackDetailScreen extends ConsumerWidget {
           provider,
           gpxBytes: utf8.encode(gpx),
           name: track.name,
-          movingSeconds: track.durationSeconds,
         );
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
     messenger.showSnackBar(SnackBar(

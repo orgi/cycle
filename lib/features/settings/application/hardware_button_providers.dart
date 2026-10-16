@@ -49,7 +49,7 @@ class HardwareButtonController extends Notifier<bool> {
 
     _sub?.cancel();
     _sub = service.events.listen(_onButton);
-    unawaited(service.setEnabled(enabled));
+    if (volumeKeysSupported) unawaited(service.setEnabled(enabled));
 
     _proximitySub?.cancel();
     _proximitySub = null;

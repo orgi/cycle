@@ -4,11 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Whether this platform can capture the volume keys to start/stop a ride:
-/// Android natively (`MainActivity.dispatchKeyEvent`), iOS through the
-/// volume-level workaround in `AppDelegate.swift` (iOS has no public API).
-bool get volumeKeysSupported =>
-    defaultTargetPlatform == TargetPlatform.android ||
-    defaultTargetPlatform == TargetPlatform.iOS;
+/// Android only (`MainActivity.dispatchKeyEvent`). iOS has no public API for
+/// it, and the volume-level workaround it used to have breaks App Store
+/// guideline 2.5.9 (apps must not alter the volume buttons), so it was removed.
+bool get volumeKeysSupported => defaultTargetPlatform == TargetPlatform.android;
 
 /// Whether the "hold a hand over the screen" (proximity sensor) gesture is
 /// wired natively. iOS only for now.
@@ -35,8 +34,8 @@ abstract class HardwareButtonService {
 }
 
 /// Real implementation over the native `cycle/hardware_buttons` MethodChannel
-/// (Android volume keys, see `MainActivity.kt`; iOS volume keys + proximity
-/// sensor, see `AppDelegate.swift`). Done natively — no plugin — to stay
+/// (Android volume keys, see `MainActivity.kt`; iOS proximity sensor, see
+/// `AppDelegate.swift`). Done natively — no plugin — to stay
 /// compatible with this project's AGP 9 + standalone-Kotlin build.
 class MethodChannelHardwareButtonService implements HardwareButtonService {
   MethodChannelHardwareButtonService([MethodChannel? channel])
@@ -71,7 +70,7 @@ class MethodChannelHardwareButtonService implements HardwareButtonService {
     try {
       await _channel.invokeMethod<void>('setEnabled', enabled);
     } on MissingPluginException {
-      // No native handler (e.g. iOS / tests) — nothing to intercept.
+      // No native handler (tests) — nothing to intercept.
     }
   }
 
