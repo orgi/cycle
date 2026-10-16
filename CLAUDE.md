@@ -1040,6 +1040,13 @@ On each release:
    section and add its compare link at the bottom (`[Unreleased]` then compares from it).
 3. Run `tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
    Settings → About; never hand-edit it).
+4. **Commit before installing** — the release commit holds exactly the code that goes onto the
+   phone, with the new version in `pubspec.yaml`. Never install from a dirty working tree:
+   0.3.1 was, its fix got committed together with 0.3.2's, and so no commit (and no tag)
+   matches what was installed.
+5. Tag that commit with an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -m "Cycle X.Y.Z"`) and push
+   the tag with the branch — the `CHANGELOG.md` compare links point at these tags. A release
+   made on a feature branch is tagged there; the tag stays valid after a merge commit.
 
 Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
 added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
