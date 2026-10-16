@@ -113,6 +113,29 @@ void main() {
           isFalse);
     });
 
+    test('iOS: hidden only while the hand-over-screen hold is on', () {
+      expect(
+          defaults.startStopButtonVisible(
+              volumeKeysSupported: false, proximityHoldSupported: true),
+          isTrue);
+      final hold = defaults.copyWith(proximityHoldEnabled: true);
+      expect(
+          hold.startStopButtonVisible(
+              volumeKeysSupported: false, proximityHoldSupported: true),
+          isFalse);
+      expect(
+          hold
+              .copyWith(showStartStopButton: true)
+              .startStopButtonVisible(
+                  volumeKeysSupported: false, proximityHoldSupported: true),
+          isTrue);
+      // Auto-start can't stop a ride, so it never hides the button.
+      expect(
+          defaults.copyWith(autoStartEnabled: true).startStopButtonVisible(
+              volumeKeysSupported: false, proximityHoldSupported: true),
+          isTrue);
+    });
+
     test('always shown where the volume keys cannot start a ride (iOS)', () {
       // Otherwise a fresh iOS install has no way at all to start a ride.
       expect(defaults.startStopButtonVisible(volumeKeysSupported: false),

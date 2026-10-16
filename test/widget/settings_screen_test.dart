@@ -71,7 +71,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('iOS shows the hand-over-screen switch but no volume-key switches',
+  testWidgets('iOS shows the hand-over-screen and Start/Stop switches, no volume keys',
       (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
@@ -83,7 +83,7 @@ void main() {
       200,
     );
     expect(find.byKey(const Key('hardwareButtonsSwitch')), findsNothing);
-    expect(find.byKey(const Key('showStartStopSwitch')), findsNothing);
+    expect(find.byKey(const Key('showStartStopSwitch')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('proximityHoldSwitch')));
     await tester.pumpAndSettle();

@@ -11,6 +11,6 @@ and the release history is in [CHANGELOG.md](CHANGELOG.md).
 ## Licence
 
 Cycle is free software, licensed under the
-[GNU General Public License v3.0 or later](LICENSE), with two additional permissions: one for
-linking with the flutter_blue_plus Bluetooth library and one for distribution through app
-stores. Third-party components keep their own licences. Details are in [NOTICE.md](NOTICE.md).
+[GNU General Public License v3.0 or later](LICENSE), with an additional permission for
+distribution through app stores. Third-party components keep their own licences. Details
+are in [NOTICE.md](NOTICE.md).

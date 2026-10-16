@@ -76,9 +76,9 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           const _Header('Controls'),
-          // Volume-key start/stop where the platform can capture the keys;
-          // elsewhere the Start/Stop button is always shown instead.
-          if (volumeKeysSupported) ...[
+          // Volume-key start/stop where the platform can capture the keys
+          // (Android); the hand-over-screen hold where it's wired (iOS).
+          if (volumeKeysSupported)
             SwitchListTile(
               key: const Key('hardwareButtonsSwitch'),
               title: const Text('Volume keys start/stop'),
@@ -89,17 +89,6 @@ class SettingsScreen extends ConsumerWidget {
               value: settings.hardwareButtonsEnabled,
               onChanged: controller.setHardwareButtons,
             ),
-            SwitchListTile(
-              key: const Key('showStartStopSwitch'),
-              title: const Text('Show Start/Stop button'),
-              subtitle: const Text(
-                'Off by default — use the volume keys. Always shown when the '
-                'volume keys are disabled.',
-              ),
-              value: settings.showStartStopButton,
-              onChanged: controller.setShowStartStopButton,
-            ),
-          ],
           if (proximityHoldSupported)
             SwitchListTile(
               key: const Key('proximityHoldSwitch'),
@@ -111,6 +100,18 @@ class SettingsScreen extends ConsumerWidget {
               ),
               value: settings.proximityHoldEnabled,
               onChanged: controller.setProximityHoldEnabled,
+            ),
+          if (volumeKeysSupported || proximityHoldSupported)
+            SwitchListTile(
+              key: const Key('showStartStopSwitch'),
+              title: const Text('Show Start/Stop button'),
+              subtitle: Text(volumeKeysSupported
+                  ? 'Off by default: use the volume keys. Always shown while '
+                      'the volume keys are off.'
+                  : 'Can be hidden while "Hand over screen start/stop" is on. '
+                      'Always shown otherwise, so you can stop a ride.'),
+              value: settings.showStartStopButton,
+              onChanged: controller.setShowStartStopButton,
             ),
           SwitchListTile(
             key: const Key('autoStartSwitch'),

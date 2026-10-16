@@ -8,10 +8,39 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-17
+
+### Fixed
+- iPhone: after unlocking the phone, a sensor could stay disconnected because releasing the
+  connection at the lock and reconnecting on unlock ran into each other (new in 0.3.0).
+- iPhone: the app no longer cancels and restarts a waiting sensor connection every 12–18
+  seconds; iOS keeps waiting for the sensor on its own.
+- iPhone: the Start/Stop button can be hidden again, while "Hand over screen start/stop" is
+  on. It stays visible otherwise, so a ride can always be stopped. Since 0.3.0 removed the
+  volume keys on iPhone, it couldn't be hidden at all.
+
+## [0.3.2] - 2026-10-16
+
+### Fixed
+- A sensor whose connection dropped in the first second, while the app was still setting
+  it up, was not reconnected automatically until the next retry about 30 seconds later
+  (new in 0.3.0).
+
+## [0.3.1] - 2026-10-16
+
+### Fixed
+- Coming back to the app could connect a sensor twice at once (new in 0.3.0), which kept a
+  second Bluetooth connection open and set up its readings twice.
+
+## [0.3.0] - 2026-10-16
+
 ### Changed
 - **Licence: GPL-3.0-or-later** (was GPL-2.0, which couldn't legally be combined with the
-  LGPL-3.0 map library or the Bluetooth library). Two additional permissions allow linking
-  with flutter_blue_plus and distribution through app stores; see `NOTICE.md`.
+  LGPL-3.0 map library or the Bluetooth library). An additional permission allows
+  distribution through app stores; see `NOTICE.md`.
+- **New Bluetooth library** for heart-rate, speed, cadence and power sensors (universal_ble
+  instead of flutter_blue_plus, whose new licence ruled out open-source distribution).
+  Sensors connect the same way as before: directly by their saved ID, never by scanning.
 - **Detailed map styles now come from mapsforge.** "Detailed (Elements)" and its dark
   variant were the OpenAndroMaps Elements theme, whose licence doesn't allow it in an app
   store release. They are replaced by **Detailed** and **Detailed — Dark**, the map styles
@@ -477,6 +506,10 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/orgi/cycle/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/orgi/cycle/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/orgi/cycle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/orgi/cycle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orgi/cycle/releases/tag/v0.1.0

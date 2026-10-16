@@ -126,8 +126,8 @@ class SensorSnapshot {
   int get hashCode => Object.hash(heartRate, cadenceRpm, wheelSpeedMps, power);
 }
 
-/// App-facing Bluetooth sensor API. The real implementation uses
-/// flutter_blue_plus; tests/emulator inject a fake.
+/// App-facing Bluetooth sensor API. The real implementation
+/// ([BleSensorService]) uses universal_ble; tests/emulator inject a fake.
 abstract class SensorService {
   /// Ensures Bluetooth is ready (adapter on, permissions granted).
   Future<bool> ensureReady();
@@ -139,12 +139,11 @@ abstract class SensorService {
 
   Future<void> stopScan();
 
-  /// Starts actively pursuing [deviceId] — scans for it, connects, and keeps
-  /// retrying with backoff until it's linked or [disconnect]/[setActiveTargets]
-  /// removes it. [autoConnect] is accepted for API compatibility but the real
-  /// implementation always applies its own retry strategy (see
-  /// [BleSensorService] doc comment for why plain OS autoConnect isn't
-  /// reliable enough on its own).
+  /// Starts pursuing [deviceId]: a direct connect by id (never a scan), with
+  /// passive OS autoConnect as the fallback, until it's linked or
+  /// [disconnect]/[setActiveTargets] removes it. [autoConnect] is accepted for
+  /// API compatibility; the real implementation always applies its own
+  /// strategy (see the [BleSensorService] doc comment).
   Future<void> connect(String deviceId, {bool autoConnect = false});
   Future<void> disconnect(String deviceId);
 
