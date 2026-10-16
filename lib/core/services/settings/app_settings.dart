@@ -116,10 +116,16 @@ class AppSettings {
   final int retentionDays;
 
   /// Whether the home screen shows the Start/Stop button: on request, or
-  /// whenever the volume keys can't start a ride — switched off, or on a
-  /// platform that can't intercept them.
-  bool startStopButtonVisible({required bool volumeKeysSupported}) =>
-      showStartStopButton || !hardwareButtonsEnabled || !volumeKeysSupported;
+  /// whenever no hands-free control that can both start AND stop a ride is
+  /// on — the volume keys (Android) or the hand-over-screen hold (iOS).
+  /// Auto-start doesn't count: it can't stop a ride.
+  bool startStopButtonVisible({
+    required bool volumeKeysSupported,
+    bool proximityHoldSupported = false,
+  }) =>
+      showStartStopButton ||
+      !((hardwareButtonsEnabled && volumeKeysSupported) ||
+          (proximityHoldEnabled && proximityHoldSupported));
 
   AppSettings copyWith({
     UnitSystem? units,

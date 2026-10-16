@@ -230,8 +230,16 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   not after a failed attempt) is `_linkUp`, set on the radio-level connection event — not
   `_connected[id].connected`, which only flips after service discovery: on the A33 a link
   left over from a killed app process connected in 80 ms and was torn down mid-discovery,
-  leaving nothing pending. Bluetooth runtime permissions are requested in `ensureReady()` (FBP
-  did that implicitly).
+  leaving nothing pending; (5) `suspendConnections`/`resumeConnections` are serialized
+  (`_transition`): `SensorPowerGate` fires them unawaited, and on iOS (no grace, the app frozen
+  at the lock) both run on unlock — the suspension's teardown then cancelled the connect the
+  resume had just started and dropped the target (seen in `idevicesyslog`: two
+  `CBMsgIdConnectPeripheral` then two `CBMsgIdCancelPeripheralConnection`, then silence);
+  (6) on iOS a CoreBluetooth connect never times out, so retry ticks leave a pending
+  autoConnect alone (`_pendingConnectWaits`) instead of cancelling and re-issuing it every
+  12-18 s. Bluetooth runtime permissions are requested in `ensureReady()` (FBP did that
+  implicitly). On iOS, Bluetooth and GPS start in parallel at launch (both at the same second
+  in the log); a sensor that links late was out of reach, not waiting for the GPS.
   **Reconnection: one-shot DIRECT connect, no app-level BLE scanning.**
   `BleSensorService.connect()`/`setActiveTargets()` do a one-shot
   `UniversalBle.connect(autoConnect: false)` per target (`_attemptDirectConnect`) — a direct
@@ -629,8 +637,9 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   guideline 2.5.9** (apps must not alter the volume buttons). Don't bring it back for store
   builds. `volumeKeysSupported` (Android only) gates the settings switches, the
   `setEnabled` call (`HardwareButtonController` never sends it on iOS) and
-  `AppSettings.startStopButtonVisible` (button shown when volume keys are off or unsupported,
-  i.e. always on iOS). iOS's `HardwareButtons` in `AppDelegate.swift` now only serves the
+  `AppSettings.startStopButtonVisible`: the button may be hidden only while a hands-free control
+  that can both start AND stop is on — volume keys (Android) or the proximity hold (iOS);
+  auto-start doesn't count (it can't stop). iOS's `HardwareButtons` in `AppDelegate.swift` now only serves the
   proximity half of the `cycle/hardware_buttons` channel.
   **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
   `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over

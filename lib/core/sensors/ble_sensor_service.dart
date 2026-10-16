@@ -77,6 +77,13 @@ class BleSensorService implements SensorService {
   final Set<String> _desiredTargets = {};
   bool _suspended = false;
 
+  /// Suspend/resume run one after the other, never interleaved. The power gate
+  /// fires them without awaiting, and on iOS (no grace period, the app frozen
+  /// at the lock) both arrive together on unlock: the suspension's teardown,
+  /// still awaiting, then removed the target and cancelled the connection the
+  /// resume had just started, leaving the sensor unpursued. Seen on the iPhone.
+  Future<void> _transition = Future<void>.value();
+
   // Bounded direct-connect retry window (no scanning). Re-armed on startup and
   // on ride start; ticks periodically to direct-connect any target that isn't
   // linked yet, and stops at the deadline or once all targets are connected.
@@ -84,6 +91,14 @@ class BleSensorService implements SensorService {
   DateTime? _retryDeadline;
   static const _retryWindow = Duration(minutes: 5);
   static const _retryInterval = Duration(seconds: 30);
+
+  /// iOS: a CoreBluetooth connect never times out, so a pending (auto)connect
+  /// already waits for the sensor indefinitely. Cancelling it to issue a
+  /// "direct" one — needed on Android, where a direct connect gives up after
+  /// ~30 s and autoConnect is a separate, slow mode — only restarts that wait;
+  /// the iPhone log showed it every 12-18 s until the strap linked.
+  static bool get _pendingConnectWaits =>
+      defaultTargetPlatform == TargetPlatform.iOS;
 
   /// How long a direct connect may take before we fall back to autoConnect.
   @visibleForTesting
@@ -243,6 +258,9 @@ class BleSensorService implements SensorService {
   Future<void> _attemptDirectConnect(String deviceId) async {
     if (_suspended || !_targets.contains(deviceId)) return;
     if (_connected[deviceId]?.connected == true) return;
+    if (_pendingConnectWaits && _autoConnectRegistered.contains(deviceId)) {
+      return; // already waiting for it (see _pendingConnectWaits)
+    }
     if (!_directInFlight.add(deviceId)) return; // one attempt at a time
     try {
       await _directConnect(deviceId);
@@ -327,8 +345,16 @@ class BleSensorService implements SensorService {
     }
   }
 
+  Future<void> _serialized(Future<void> Function() op) =>
+      _transition = _transition.then((_) => op()).catchError((_) {});
+
   @override
-  Future<void> suspendConnections() async {
+  Future<void> suspendConnections() => _serialized(_suspend);
+
+  @override
+  Future<void> resumeConnections() => _serialized(_resume);
+
+  Future<void> _suspend() async {
     if (_suspended) return;
     _suspended = true;
     _retryTimer?.cancel();
@@ -341,8 +367,7 @@ class BleSensorService implements SensorService {
     }
   }
 
-  @override
-  Future<void> resumeConnections() async {
+  Future<void> _resume() async {
     if (!_suspended) return;
     _suspended = false;
     if (_desiredTargets.isEmpty) return;

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:cycle/core/sensors/ble_sensor_service.dart';
 import 'package:cycle/core/sensors/gatt.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:universal_ble/universal_ble.dart';
 
@@ -270,6 +270,43 @@ void main() {
 
     expect(ble.connects.last, (id: hr, auto: true));
     expect(sensor(hr)!.connected, isTrue); // relinked by autoConnect
+  });
+
+  test('a resume arriving with an unfinished suspension still reconnects',
+      () async {
+    // iPhone: frozen at the lock, the app ran both on unlock. The teardown
+    // cancelled the connection the resume had just started.
+    ble.inRange.add(hr);
+    await service.connect(hr);
+    await settle();
+
+    final suspended = service.suspendConnections(); // not awaited, like the gate
+    final resumed = service.resumeConnections();
+    await Future.wait([suspended, resumed]);
+    await settle();
+
+    expect(sensor(hr)!.connected, isTrue);
+    expect(ble.clientsOf(hr), 1);
+  });
+
+  test('iOS: retry ticks leave a pending connect alone', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await service.connect(hr); // absent: falls back to a pending autoConnect
+    await settle();
+    final before = ble.connects.length;
+
+    for (var i = 0; i < 3; i++) {
+      await service.retryConnections();
+      await settle();
+    }
+    expect(ble.connects.length, before); // no cancel-and-reissue churn
+    expect(ble.pendingAuto, contains(hr));
+
+    ble.comeIntoRange(hr);
+    await settle();
+    expect(sensor(hr)!.connected, isTrue);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('a mid-ride drop clears the value and registers autoConnect', () async {

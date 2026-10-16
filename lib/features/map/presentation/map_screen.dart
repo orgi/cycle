@@ -600,11 +600,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final settings = ref.watch(settingsProvider);
     final units = settings.units;
     final speedUnit = units.speedLabel;
-    // Hidden by default (volume keys start/stop); shown on request, and always
-    // when the volume keys can't start a ride (off, or iOS) so there is a way
-    // to start.
+    // Hidden while a hands-free start/stop is on (volume keys, or the
+    // hand-over-screen hold on iOS) unless requested; otherwise always shown,
+    // so there is a way to start and stop a ride.
     final showStartStop = settings.startStopButtonVisible(
-        volumeKeysSupported: volumeKeysSupported);
+        volumeKeysSupported: volumeKeysSupported,
+        proximityHoldSupported: proximityHoldSupported);
     // Keep the volume-key/proximity control, auto-start + wheel-size sync
     // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
