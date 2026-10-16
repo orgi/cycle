@@ -10,8 +10,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ### Changed
 - **Licence: GPL-3.0-or-later** (was GPL-2.0, which couldn't legally be combined with the
-  LGPL-3.0 map library or the Bluetooth library). Two additional permissions allow linking
-  with flutter_blue_plus and distribution through app stores; see `NOTICE.md`.
+  LGPL-3.0 map library or the Bluetooth library). An additional permission allows
+  distribution through app stores; see `NOTICE.md`.
+- **New Bluetooth library** for heart-rate, speed, cadence and power sensors (universal_ble
+  instead of flutter_blue_plus, whose new licence ruled out open-source distribution).
+  Sensors connect the same way as before: directly by their saved ID, never by scanning.
 - **Detailed map styles now come from mapsforge.** "Detailed (Elements)" and its dark
   variant were the OpenAndroMaps Elements theme, whose licence doesn't allow it in an app
   store release. They are replaced by **Detailed** and **Detailed — Dark**, the map styles

@@ -53,7 +53,7 @@ dependencies:
   mapsforge_flutter_rendertheme: ^4.0.0 # symbols + patterns of the detailed map themes
   geolocator_android: ^5.0.2
   geolocator_apple: ^2.3.13
-  flutter_blue_plus: ^2.3.8
+  universal_ble: ^2.3.0
   shared_preferences: ^2.5.5
   drift: ^2.33.0
   sqlite3_flutter_libs: ^0.6.0+eol

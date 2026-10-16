@@ -202,19 +202,35 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     live recording and `track_repair.dart`'s replay (same accumulator) — existing
     rides recorded under either earlier approach can be corrected via Settings →
     Data → "Recalculate ride distances".
-* **BLE sensors:** `flutter_blue_plus` using the standard Bluetooth SIG GATT profiles
-  (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin dual-band sensors work over BLE
-  with no special code. Parsers + CSC speed/cadence + GPS/BLE speed fusion live in
-  `lib/core/sensors/` (pure Dart, heavily unit-tested); the `flutter_blue_plus` glue is in
-  `ble_sensor_service.dart` behind a `SensorService` interface (fake for tests/emulator).
-  `connect()` uses `License.nonprofit` (a commercial release needs the paid FBP license).
+* **BLE sensors:** `universal_ble` (BSD-3, Navideck; pinned to 2.x) using the standard
+  Bluetooth SIG GATT profiles (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin
+  dual-band sensors work over BLE with no special code. Parsers + CSC speed/cadence + GPS/BLE
+  speed fusion live in `lib/core/sensors/` (pure Dart, heavily unit-tested); the universal_ble
+  glue is in `ble_sensor_service.dart` behind a `SensorService` interface (fake for
+  tests/emulator). Its connection logic is unit-tested against a fake universal_ble platform
+  (`UniversalBle.setInstance`, `test/unit/ble_sensor_service_test.dart`) that models native GATT
+  clients the way universal_ble's Android code does — only the newest client per device is
+  remembered, so a second connect while one is pending leaks the older one.
+  **Replaced flutter_blue_plus** (2026-10): FBP 2.x switched to a custom licence (free only for
+  personal/non-profit use, relicensing forbidden), incompatible with GPL-3.0 and with ever
+  earning money from the app. **Don't go back to FBP 2.x.** The on-device findings below were
+  made with FBP; the strategy carried over unchanged, but re-verify them on the A33/iPhone after
+  touching this code. Two universal_ble specifics: (1) a connect's `timeout` only bounds the
+  *Dart* wait — the native request keeps going — so a timed-out direct attempt is cancelled with
+  `UniversalBle.disconnect` before registering autoConnect, and a pending autoConnect is
+  cancelled before the next direct attempt (otherwise every 30 s retry tick would add a GATT
+  client); (2) names only come with scan results, so they're cached from scans and, for a
+  sensor linked without a scan, looked up via `getSystemDevices` (with our service filter on
+  iOS, where it's required; *without* one on Android, where a filter makes universal_ble connect
+  to every system device). Bluetooth runtime permissions are requested in `ensureReady()` (FBP
+  did that implicitly).
   **Reconnection: one-shot DIRECT connect, no app-level BLE scanning.**
   `BleSensorService.connect()`/`setActiveTargets()` do a one-shot
-  `device.connect(autoConnect: false)` per target (`_attemptDirectConnect`) — a direct
+  `UniversalBle.connect(autoConnect: false)` per target (`_attemptDirectConnect`) — a direct
   connect links fast when the sensor is advertising (a worn HR strap, a spinning cadence
   sensor), whereas passive `autoConnect: true` frequently **never links a present sensor**
   (confirmed on-device: the app registered autoConnect for a worn HR sensor and it stayed
-  disconnected — FBP made the connect call, no link; switching to a direct connect linked it
+  disconnected — the library made the connect call, no link; switching to a direct connect linked it
   in ~2s). Crucially a direct connect does NOT scan, so — unlike the removed active-scan
   loop — it doesn't disturb the GPS radio. If the sensor isn't reachable now, it falls back
   to passive `autoConnect: true` (quiet on the radio) for later; a **mid-ride drop** of an
@@ -276,15 +292,12 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   bounded retry window, adding no scan. Verify with
   `adb shell dumpsys bluetooth_manager | grep -c "app: com.cycleapp.cycle"` — the GATT client
   count should fall to zero shortly after backgrounding without a ride, and come back on resume.
-  **Expect a ~1-minute tail before it reaches zero, and don't read a spot check as a leak.**
-  flutter_blue_plus serialises connect calls in its own queue and a call already handed to it
-  runs to its ~10s timeout whatever the app does, so after a suspension the queued attempts
-  drain one at a time — each registering and unregistering a GATT client — for up to a minute.
-  Verified on a real A33: `SUSPEND` at 00:51:35, last client unregistered 00:52:31, then a
-  sustained 0 with no further churn. A single sample taken during that tail reads 1 and looks
-  exactly like a stuck registration; sample repeatedly over ~90s instead. Cancelling those
-  queued connects on suspend would shorten the tail — `_removeTarget`'s `disconnect()` does not
-  abort one that FBP has already started.
+  With flutter_blue_plus there was a **~1-minute tail** before it reached zero (FBP queued
+  connect calls and couldn't abort one in flight; verified on a real A33: `SUSPEND` at 00:51:35,
+  last client unregistered 00:52:31). universal_ble doesn't queue connects and its `disconnect`
+  aborts an in-flight one, which `_removeTarget` now does, so the count **should drop to zero
+  within seconds** — not yet verified on the A33. Still sample repeatedly over ~90 s rather than
+  trusting one reading.
   **Sensor values live only as long as their sensor's link** (`SensorSnapshotMerger`,
   `lib/core/sensors/sensor_snapshot_merger.dart`, pure + unit-tested; used by both
   `BleSensorService` and the test fake). Each linked device keeps its own partial snapshot; the
@@ -453,23 +466,20 @@ Preparing for Google Play + the App Store. **The app stays free with no in-app p
 ads or subscriptions; donations happen outside the app only** (GitHub/website). Reason: any
 in-app earning (even an IAP tip jar) most likely makes the publisher a "trader" under the EU
 Digital Services Act, and the stores then show their address and phone to EU users. A free
-app with no in-app monetisation can be listed as a non-trader. It also keeps
-flutter_blue_plus within its free personal-use licence. So: **don't add IAP/tips, ads, or a
+app with no in-app monetisation can be listed as a non-trader. So: **don't add IAP/tips, ads, or a
 donation link/button inside the app** (Apple only allows external donation links for
 registered nonprofits; mentioning one in the store listing is risky too). Revisit only
-together with an address service (ladungsfähige Anschrift) and the flutter_blue_plus
-commercial licence.
+together with an address service (ladungsfähige Anschrift).
 Store-readiness work so far: Komoot upload removed (unofficial API), iOS volume keys removed
 (guideline 2.5.9), Elements map themes replaced by mapsforge's LGPL ones (licence). Still open
 (see the store-launch plan): new name + icon, OSM attribution,
 open-source licences screen, OpenAndroMaps permission for in-app downloads, a store build
 without `MANAGE_EXTERNAL_STORAGE`, privacy policy.
 **Licence: GPL-3.0-or-later** (`LICENSE` is the verbatim FSF text, so GitHub detects it; keep
-it that way) **plus two GPL §7 additional permissions in `NOTICE.md`**: linking with
-flutter_blue_plus (its licence forbids relicensing and restricts commercial use, so without
-the exception the combination couldn't be conveyed under the GPL) and app-store
+it that way) **plus one GPL §7 additional permission in `NOTICE.md`**: app-store
 distribution (the App Store's terms add restrictions the GPL forbids; allowed as long as the
-Corresponding Source stays public). Only valid while the user is the sole copyright holder of
+Corresponding Source stays public). A second one, for linking with flutter_blue_plus, was
+dropped when that library was replaced by universal_ble. Only valid while the user is the sole copyright holder of
 the app code: before accepting outside contributions, get them under the same permissions
 (e.g. a short CLA or a contributor note). A new dependency must be GPL-3.0-compatible (MIT,
 BSD, Apache-2.0, LGPL, MPL-2.0 are fine; GPL-2.0-only and "non-commercial" licences are not)
