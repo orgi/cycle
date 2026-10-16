@@ -8,6 +8,19 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-16
+
+### Fixed
+- A sensor whose connection dropped in the first second, while the app was still setting
+  it up, was not reconnected automatically until the next retry about 30 seconds later
+  (new in 0.3.0).
+
+## [0.3.1] - 2026-10-16
+
+### Fixed
+- Coming back to the app could connect a sensor twice at once (new in 0.3.0), which kept a
+  second Bluetooth connection open and set up its readings twice.
+
 ## [0.3.0] - 2026-10-16
 
 ### Changed
@@ -482,7 +495,9 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/orgi/cycle/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/orgi/cycle/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/orgi/cycle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/orgi/cycle/releases/tag/v0.1.0

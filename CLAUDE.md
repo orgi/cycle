@@ -222,7 +222,15 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   client); (2) names only come with scan results, so they're cached from scans and, for a
   sensor linked without a scan, looked up via `getSystemDevices` (with our service filter on
   iOS, where it's required; *without* one on Android, where a filter makes universal_ble connect
-  to every system device). Bluetooth runtime permissions are requested in `ensureReady()` (FBP
+  to every system device); (3) it doesn't merge duplicate connects the way FBP did, so
+  `_directInFlight` allows one direct attempt per sensor at a time — `resumeConnections()`
+  connects and then runs a retry tick at once, which opened two GATT clients to the same HR
+  strap on the A33 (two `clientConnect … isDirect=true` 50 ms apart in `dumpsys
+  bluetooth_manager`); (4) "was this a real link?" (re-register autoConnect after a drop, but
+  not after a failed attempt) is `_linkUp`, set on the radio-level connection event — not
+  `_connected[id].connected`, which only flips after service discovery: on the A33 a link
+  left over from a killed app process connected in 80 ms and was torn down mid-discovery,
+  leaving nothing pending. Bluetooth runtime permissions are requested in `ensureReady()` (FBP
   did that implicitly).
   **Reconnection: one-shot DIRECT connect, no app-level BLE scanning.**
   `BleSensorService.connect()`/`setActiveTargets()` do a one-shot

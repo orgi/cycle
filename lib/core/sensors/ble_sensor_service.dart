@@ -57,6 +57,19 @@ class BleSensorService implements SensorService {
   final Set<String> _targets = {};
   final Set<String> _autoConnectRegistered = {};
 
+  /// Devices with a direct connect in progress. [resumeConnections] starts one
+  /// through [connect] and then runs a retry tick at once, which would start a
+  /// second: two native connects to one sensor, two GATT clients (only the
+  /// newer one tracked by universal_ble), subscriptions wired twice. Seen on
+  /// the A33 on the first resume after backgrounding.
+  final Set<String> _directInFlight = {};
+
+  /// Devices whose link is up at the radio level: set on the connection
+  /// event, before service discovery. A sensor counts as linked in [_connected]
+  /// only once discovery finished, so a link that drops *during* discovery
+  /// would otherwise look like a failed attempt and leave nothing pending.
+  final Set<String> _linkUp = {};
+
   /// What *should* be pursued, independent of whether we're currently
   /// suspended. [suspendConnections] tears down the live links but keeps this,
   /// so [resumeConnections] can restore exactly what was there — and a bike
@@ -230,6 +243,15 @@ class BleSensorService implements SensorService {
   Future<void> _attemptDirectConnect(String deviceId) async {
     if (_suspended || !_targets.contains(deviceId)) return;
     if (_connected[deviceId]?.connected == true) return;
+    if (!_directInFlight.add(deviceId)) return; // one attempt at a time
+    try {
+      await _directConnect(deviceId);
+    } finally {
+      _directInFlight.remove(deviceId);
+    }
+  }
+
+  Future<void> _directConnect(String deviceId) async {
     _ensureConnSub(deviceId);
     // A pending autoConnect is a GATT client of its own; a direct connect next
     // to it would register a second one (and each retry tick another).
@@ -335,17 +357,20 @@ class BleSensorService implements SensorService {
     _connSubs[deviceId] =
         UniversalBle.connectionStream(deviceId).listen((connected) {
       if (connected) {
+        _linkUp.add(deviceId);
         unawaited(_onConnected(deviceId));
       } else {
-        final wasLinked = _connected[deviceId]?.connected == true;
+        final wasLinked = _linkUp.remove(deviceId);
         _onDisconnected(deviceId);
         // Mid-ride drop of an active target: register passive autoConnect so
         // the OS re-links it when it reappears. Passive (no scan) so it stays
         // quiet on the radio and doesn't disturb GPS; a direct-connect retry
         // here could fight a brief out-of-range blip. The user can also tap
-        // the stat to force a direct reconnect. Only after a real link: a
-        // failed or cancelled *attempt* also reports "disconnected", and its
-        // caller decides what comes next.
+        // the stat to force a direct reconnect. Only after a real link (even
+        // one that dropped during service discovery, as when the A33 tore
+        // down a link left over from a killed app process): a failed or
+        // cancelled *attempt* also reports "disconnected", and its caller
+        // decides what comes next.
         if (wasLinked && _targets.contains(deviceId)) {
           _registerAutoConnect(deviceId);
         }
@@ -459,6 +484,7 @@ class BleSensorService implements SensorService {
   Future<void> _removeTarget(String deviceId) async {
     _targets.remove(deviceId);
     _autoConnectRegistered.remove(deviceId);
+    _linkUp.remove(deviceId);
     await _connSubs.remove(deviceId)?.cancel();
     for (final s in _subs.remove(deviceId) ?? const <StreamSubscription>[]) {
       await s.cancel();

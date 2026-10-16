@@ -22,6 +22,7 @@ class FakeBlePlatform extends UniversalBlePlatform {
   final Set<String> pendingAuto = {};
   final List<({String id, bool auto})> connects = [];
   final Set<String> subscribed = {};
+  final Set<String> dropDuringDiscovery = {};
   bool scanning = false;
 
   int clientsOf(String id) => clients[id] ?? 0;
@@ -99,14 +100,20 @@ class FakeBlePlatform extends UniversalBlePlatform {
 
   @override
   Future<List<BleService>> discoverServices(
-          String deviceId, bool withDescriptors) async =>
-      [
+      String deviceId, bool withDescriptors) async {
+    if (dropDuringDiscovery.remove(deviceId)) {
+      drop(deviceId);
+      inRange.add(deviceId); // still around: only the link went
+      throw Exception('link dropped during discovery');
+    }
+    return [
         for (final kind in kindsOf[deviceId] ?? const <SensorKind>{})
           BleService(GattIds.full(kind.serviceId), [
             BleCharacteristic(GattIds.full(kind.measurementId),
                 [CharacteristicProperty.notify], []),
           ]),
-      ];
+    ];
+  }
 
   @override
   Future<void> setNotifiable(String deviceId, String service,
@@ -235,6 +242,34 @@ void main() {
     await service.resumeConnections();
     await settle();
     expect(sensor(hr)!.connected, isTrue);
+  });
+
+  test('resuming starts ONE direct attempt per sensor, not two', () async {
+    // resumeConnections() connects each target and then runs a retry tick at
+    // once; on the A33 that opened two GATT clients to the same HR strap.
+    await service.connect(hr); // absent: ends up on autoConnect
+    await settle();
+    await service.suspendConnections();
+    await settle();
+    ble.connects.clear();
+
+    await service.resumeConnections();
+    await settle(10); // both would have started within the same few ms
+    expect(ble.connects.where((c) => c.id == hr && !c.auto), hasLength(1));
+  });
+
+  test('a link that drops during service discovery falls back to autoConnect',
+      () async {
+    // Seen on the A33 right after reinstalling: the strap linked in 80 ms,
+    // then Android tore that link down mid-discovery; the direct attempt had
+    // already succeeded, so nothing was left pending for the sensor.
+    ble.inRange.add(hr);
+    ble.dropDuringDiscovery.add(hr);
+    await service.connect(hr);
+    await settle();
+
+    expect(ble.connects.last, (id: hr, auto: true));
+    expect(sensor(hr)!.connected, isTrue); // relinked by autoConnect
   });
 
   test('a mid-ride drop clears the value and registers autoConnect', () async {
