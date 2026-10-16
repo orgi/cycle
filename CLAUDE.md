@@ -461,9 +461,19 @@ together with an address service (ladungsfähige Anschrift) and the flutter_blue
 commercial licence.
 Store-readiness work so far: Komoot upload removed (unofficial API), iOS volume keys removed
 (guideline 2.5.9), Elements map themes replaced by mapsforge's LGPL ones (licence). Still open
-(see the store-launch plan): new name + icon, relicensing away from GPL-2.0, OSM attribution,
+(see the store-launch plan): new name + icon, OSM attribution,
 open-source licences screen, OpenAndroMaps permission for in-app downloads, a store build
 without `MANAGE_EXTERNAL_STORAGE`, privacy policy.
+**Licence: GPL-3.0-or-later** (`LICENSE` is the verbatim FSF text, so GitHub detects it; keep
+it that way) **plus two GPL §7 additional permissions in `NOTICE.md`**: linking with
+flutter_blue_plus (its licence forbids relicensing and restricts commercial use, so without
+the exception the combination couldn't be conveyed under the GPL) and app-store
+distribution (the App Store's terms add restrictions the GPL forbids; allowed as long as the
+Corresponding Source stays public). Only valid while the user is the sole copyright holder of
+the app code: before accepting outside contributions, get them under the same permissions
+(e.g. a short CLA or a contributor note). A new dependency must be GPL-3.0-compatible (MIT,
+BSD, Apache-2.0, LGPL, MPL-2.0 are fine; GPL-2.0-only and "non-commercial" licences are not)
+or needs its own exception — list it in `NOTICE.md`'s third-party table.
 
 ## Milestone progress
 

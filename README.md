@@ -1,17 +1,16 @@
-# cycle
+# Cycle
 
-A new Flutter project.
+A bike computer for the phone on your handlebar, for Android and iOS: large live ride stats
+on a true-black screen, offline vector maps, Bluetooth heart-rate, speed, cadence and power
+sensors, GPX route following, a ride history with bike profiles, and ride sync between your
+own phones through your own Nextcloud or WebDAV server. Built with Flutter.
 
-## Getting Started
+Developer notes (architecture, toolchain, testing, versioning) are in [CLAUDE.md](CLAUDE.md),
+and the release history is in [CHANGELOG.md](CHANGELOG.md).
 
-This project is a starting point for a Flutter application.
+## Licence
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Cycle is free software, licensed under the
+[GNU General Public License v3.0 or later](LICENSE), with two additional permissions: one for
+linking with the flutter_blue_plus Bluetooth library and one for distribution through app
+stores. Third-party components keep their own licences. Details are in [NOTICE.md](NOTICE.md).
