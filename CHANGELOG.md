@@ -8,6 +8,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+
+Everything since 0.1.0. These changes were installed as builds `0.1.0+2` … `0.1.0+2048`:
+they added features but only the build number went up, which broke semantic versioning.
+0.2.0 is the first version number that reflects them; from here on every installed build
+carries the version its changes call for (see CLAUDE.md → Versioning).
+
 ### Added
 - **Battery runtime test** (Settings → Data → Battery runtime test): simulates a ride until the
   battery runs out, so you learn how long the phone really lasts on the bike. The map moves
@@ -448,5 +455,6 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://example.com/cycle/compare/v0.1.0...HEAD
-[0.1.0]: https://example.com/cycle/releases/tag/v0.1.0
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/orgi/cycle/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/orgi/cycle/releases/tag/v0.1.0

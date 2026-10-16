@@ -31,6 +31,10 @@ Target use case:
 For all builds that will be installed on the device, make sure to strictly follow semantic versioning. Also, every build MUST ALWAYS increase the build number.
 Also, a changelog has to be maintained.
 
+**The build number alone is NEVER enough when the change adds a feature or fixes a bug.** Every
+installed build is a release: bump MINOR for new features (reset PATCH), PATCH for fixes only —
+see the detailed rules in the second "Versioning" section at the end of this file.
+
 ## Testing
 
 Every feature, bugfix other other changes to the source code ALWAYS needs to be tested.
@@ -937,10 +941,40 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 [Semantic versioning](https://semver.org) (currently **0.x** = pre-1.0, active dev). The single
 source of truth is `version:` in `pubspec.yaml` (`X.Y.Z+build`, where `+build` = Android
-`versionCode` — bump it every release). On each release: update `pubspec.yaml`, move the
-`CHANGELOG.md` `[Unreleased]` items into a new dated `[X.Y.Z]` section, and run
-`tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
-Settings → About; never hand-edit it). Keep `CHANGELOG.md` in [Keep a Changelog] form.
+`versionCode`).
+
+**Every build that gets installed on a phone (adb, sideloaded `.ipa`, CI artifact handed to the
+user) is a release.** There are no "just a new build" installs of an unchanged version that
+carry new features. For each one, decide the bump from the changes since the last version:
+
+| Changes since the last version | Bump | Example |
+| --- | --- | --- |
+| Any new user-visible feature/capability (with or without fixes) | **MINOR**, PATCH → 0 | 0.2.3 → 0.3.0 |
+| Only bug fixes / internal changes, no new feature | **PATCH** | 0.2.3 → 0.2.4 |
+| Breaking change (incompatible data/sync format, removed feature) | pre-1.0: **MINOR**; from 1.0 on: **MAJOR** | 0.2.3 → 0.3.0 |
+| Rebuild of the *same* code (e.g. re-signing, a reinstall) | build number only | 0.2.3+2050 → +2051 |
+
+* The **build number increases on every build, always**, and is never reset (it's Android's
+  `versionCode` — a lower one can't be installed over a higher one without uninstalling).
+  `--split-per-abi` APKs add an ABI offset (arm64 = +2000, so `+2049` shows as `versionCode`
+  4049 on the A33) — keep building the phones' APKs the same way, or a lower code won't install.
+* Several commits can share one version **only if none of them was installed** in between.
+  Once a version has been installed, the next installed build with new changes gets a new
+  version number per the table above.
+* A feature branch that adds a feature bumps MINOR on its first installed build; further
+  fixes on the same branch before merge stay in that version (build number still increases).
+  If `main` has meanwhile moved to a higher version, re-bump on merge.
+
+On each release:
+1. Set `version:` in `pubspec.yaml` (`X.Y.Z+build`, build = previous build + 1).
+2. Move the `CHANGELOG.md` `[Unreleased]` items into a new dated `## [X.Y.Z] - YYYY-MM-DD`
+   section and add its compare link at the bottom (`[Unreleased]` then compares from it).
+3. Run `tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
+   Settings → About; never hand-edit it).
+
+Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
+added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
+Don't repeat that.
 
 ## Updating this file
 
