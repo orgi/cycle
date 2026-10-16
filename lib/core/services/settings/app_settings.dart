@@ -20,18 +20,31 @@ enum AppColorScheme {
   /// Black & white: dark background with a grayscale map.
   bw('Black & white', 'assets/render_themes/bw.xml'),
 
-  /// Detailed OpenAndroMaps "Elements" theme (contours, POIs, cycle routes,
-  /// symbols). Richer but busier and heavier than the minimal themes.
-  elements('Detailed (Elements)', 'assets/render_themes/elements/Elements.xml'),
+  /// Detailed light map: the mapsforge default theme (POI symbols, area
+  /// patterns, more labels). Richer but busier and heavier than the minimal
+  /// themes. LGPL-3.0, from mapsforge_flutter (see the file's header).
+  detailed('Detailed', 'assets/render_themes/detailed.xml'),
 
-  /// Dark/night variant of the detailed Elements theme.
-  elementsDark('Detailed (Elements) — Dark',
-      'assets/render_themes/elements/Elements-dark.xml');
+  /// Detailed dark map: mapsforge_flutter's dark theme.
+  detailedDark('Detailed — Dark', 'assets/render_themes/detailed_dark.xml');
 
   const AppColorScheme(this.label, this.renderThemeAsset);
   final String label;
   final String renderThemeAsset;
 }
+
+/// Decodes a stored [AppColorScheme] name. The detailed OpenAndroMaps
+/// "Elements" themes (`elements`, `elementsDark`) were replaced by the mapsforge
+/// detailed themes, so a rider who had picked one keeps a detailed map of the
+/// same brightness. Anything unknown falls back to [AppColorScheme.dark].
+AppColorScheme _colorSchemeFromName(Object? name) => switch (name) {
+      'elements' => AppColorScheme.detailed,
+      'elementsDark' => AppColorScheme.detailedDark,
+      _ => AppColorScheme.values.firstWhere(
+          (s) => s.name == name,
+          orElse: () => AppColorScheme.dark,
+        ),
+    };
 
 /// Sentinel so [AppSettings.copyWith] can set a nullable field back to null.
 const Object _unset = Object();
@@ -60,13 +73,12 @@ class AppSettings {
   /// Wheel circumference used to derive speed from a BLE CSC sensor.
   final double wheelCircumferenceMeters;
 
-  /// When true, the phone's volume keys start/stop recording (Android, and iOS
-  /// via the volume-level workaround in `AppDelegate.swift`).
+  /// When true, the phone's volume keys start/stop recording (Android only).
   final bool hardwareButtonsEnabled;
 
   /// When true, show the on-screen Start/Stop button. Off by default — recording
   /// is started/stopped with the volume keys. It is shown regardless when the
-  /// volume keys are disabled (e.g. iOS), so there's always a way to start.
+  /// volume keys are disabled or unsupported (iOS), so there's always a way to start.
   final bool showStartStopButton;
 
   /// Which installed map to display (its `<id>.map` filename), or null to pick
@@ -170,10 +182,7 @@ class AppSettings {
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
         showStartStopButton: json['show_start_stop_button'] as bool? ?? false,
         selectedMapFileName: json['selected_map'] as String?,
-        colorScheme: AppColorScheme.values.firstWhere(
-          (s) => s.name == json['color_scheme'],
-          orElse: () => AppColorScheme.dark,
-        ),
+        colorScheme: _colorSchemeFromName(json['color_scheme']),
         mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
         autoPauseEnabled: json['auto_pause'] as bool? ?? true,
         autoPauseSpeedKmh:

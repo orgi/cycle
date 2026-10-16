@@ -20,7 +20,7 @@ Target use case:
   * Map with current location (openstreetmaps offline maps, vector-based maps)
 * Additional features
   * Follow track (loaded GPX)
-  * Upload track to Komoot and other online services
+  * Upload track to Strava and other online services (official APIs only — see M6)
   * Upload track to self-hosted server
 * Usage features
   * Possible to start/stop track using physical buttons (where possible)
@@ -30,6 +30,10 @@ Target use case:
 
 For all builds that will be installed on the device, make sure to strictly follow semantic versioning. Also, every build MUST ALWAYS increase the build number.
 Also, a changelog has to be maintained.
+
+**The build number alone is NEVER enough when the change adds a feature or fixes a bug.** Every
+installed build is a release: bump MINOR for new features (reset PATCH), PATCH for fixes only —
+see the detailed rules in the second "Versioning" section at the end of this file.
 
 ## Testing
 
@@ -59,8 +63,20 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   offline **vector** `.map` files. Maps are **not bundled in the build**; users download
   ready-made per-region packs (Alps/Europe/by country) on demand from **OpenAndroMaps**
   (free, no account) — OruxMaps-style. A small `monaco.map` ships as a demo so the map
-  works out of the box. Render theme: bundled minimal dark theme (`assets/render_themes/dark.xml`),
-  no external symbol assets. [M2]
+  works out of the box. Render themes: our own minimal Dark/Light/B&W (`assets/render_themes/
+  {dark,light,bw}.xml`, no symbol assets) are the default; the optional **Detailed** and
+  **Detailed — Dark** styles are mapsforge_flutter's own LGPL-3.0 themes (`detailed.xml` =
+  upstream `mapsforge_default.xml`, `detailed_dark.xml` = upstream `darkrender.xml`, both
+  unmodified apart from a provenance header). Their symbols/patterns are `src="jar:…"`, which
+  mapsforge's default loader resolves to `packages/mapsforge_flutter_rendertheme/assets/`; that
+  package doesn't declare them, so `pubspec.yaml` lists exactly the files used and
+  `test/unit/detailed_theme_assets_test.dart` loads each one from the bundle (a missing
+  symbol doesn't fail the build, it just doesn't render). **Don't bundle OpenAndroMaps'
+  Elevate/Elements themes** (they replaced them): their licence (CC BY-NC-SA; commercial use
+  only as the complete unmodified theme, OpenAndroMaps asks for written permission) rules out
+  a store release; `biker.xml` in the upstream example app is Elevate-derived too. A stored
+  `elements`/`elementsDark` choice is read as `detailed`/`detailedDark`
+  (`_colorSchemeFromName`). [M2]
   * **Vendored + patched** at `third_party/mapsforge_flutter` (via `dependency_overrides`,
     see `third_party/mapsforge_flutter/PATCH.md`): upstream 4.0.0's `TileJobQueue` emitted
     tilesets stamped with the render's *old* center and dropped position updates while a
@@ -431,6 +447,34 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   keystore — losing it forces an uninstall to update again. The build falls back to the debug
   key when the keystore is absent (so a fresh clone still builds).
 
+## Store release & monetisation (decided 2026-10-16)
+
+Preparing for Google Play + the App Store. **The app stays free with no in-app purchases,
+ads or subscriptions; donations happen outside the app only** (GitHub/website). Reason: any
+in-app earning (even an IAP tip jar) most likely makes the publisher a "trader" under the EU
+Digital Services Act, and the stores then show their address and phone to EU users. A free
+app with no in-app monetisation can be listed as a non-trader. It also keeps
+flutter_blue_plus within its free personal-use licence. So: **don't add IAP/tips, ads, or a
+donation link/button inside the app** (Apple only allows external donation links for
+registered nonprofits; mentioning one in the store listing is risky too). Revisit only
+together with an address service (ladungsfähige Anschrift) and the flutter_blue_plus
+commercial licence.
+Store-readiness work so far: Komoot upload removed (unofficial API), iOS volume keys removed
+(guideline 2.5.9), Elements map themes replaced by mapsforge's LGPL ones (licence). Still open
+(see the store-launch plan): new name + icon, OSM attribution,
+open-source licences screen, OpenAndroMaps permission for in-app downloads, a store build
+without `MANAGE_EXTERNAL_STORAGE`, privacy policy.
+**Licence: GPL-3.0-or-later** (`LICENSE` is the verbatim FSF text, so GitHub detects it; keep
+it that way) **plus two GPL §7 additional permissions in `NOTICE.md`**: linking with
+flutter_blue_plus (its licence forbids relicensing and restricts commercial use, so without
+the exception the combination couldn't be conveyed under the GPL) and app-store
+distribution (the App Store's terms add restrictions the GPL forbids; allowed as long as the
+Corresponding Source stays public). Only valid while the user is the sole copyright holder of
+the app code: before accepting outside contributions, get them under the same permissions
+(e.g. a short CLA or a contributor note). A new dependency must be GPL-3.0-compatible (MIT,
+BSD, Apache-2.0, LGPL, MPL-2.0 are fine; GPL-2.0-only and "non-commercial" licences are not)
+or needs its own exception — list it in `NOTICE.md`'s third-party table.
+
 ## Milestone progress
 
 * **M1 — Skeleton & always-on dashboard:** done. Live speed/avg/max/distance/time from GPS,
@@ -536,17 +580,21 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   recording. **Live metrics now only accumulate while recording** (TIME/dist/avg/max stay 0
   until Start; current speed still shows). Also fixed a mapsforge GPS-follow drift here — see
   the vendored patch in tech stack/Known gotchas.
-* **M6 — Upload (Strava + Komoot):** done (self-hosted skipped per user). `lib/core/services/upload/`:
-  `StravaClient` (official OAuth2 + multipart `/uploads` + poll), `KomootClient` (UNOFFICIAL
-  session-cookie login + `/v007/tours/` — Komoot's official API is partner-only; fragile, may
-  break), `UploadStore` (creds/token in `shared_preferences`), `RideUploader` (token/refresh/
+* **M6 — Upload (Strava):** done (self-hosted skipped per user). `lib/core/services/upload/`:
+  `StravaClient` (official OAuth2 + multipart `/uploads` + poll), `UploadStore` (creds/token in
+  `shared_preferences`), `RideUploader` (token/refresh/
   interactive-OAuth orchestration). OAuth is plugin-free: native `MainActivity` `cycle/oauth`
   channel (`openUrl` + capture `cycle://strava-callback` redirect) + manifest intent-filter;
   `NativeOAuthAuthenticator` polls it. UI: Rides → "Upload accounts" settings (`/upload-accounts`)
   + cloud-upload action on ride detail. Verified: 23 unit/widget tests + a real-socket
   mock-server Strava test; build/launch on the emulator. **Real OAuth + a real upload need the
   user's own Strava API app (client_id/secret) + account, done once on a device — see the M6
-  device checklist.** Komoot is unverifiable without a live account + attempt.
+  device checklist.**
+  **Komoot upload was removed** (store readiness): Komoot's official API is partner-only, so it
+  logged in with the rider's email + password against Komoot's private endpoints — against
+  Komoot's terms and App Store guideline 5.2.2. `SharedPrefsUploadStore.forgetKomootLogin()`
+  (run from `main()`) deletes a password an older build saved. Don't re-add an unofficial
+  upload; GPX export is the route into Komoot unless they grant API access.
 * **M7 — Physical buttons & polish:** done. **Volume-key start/stop:** native `MainActivity`
   intercepts VOLUME_UP (start) / VOLUME_DOWN (stop) in **`dispatchKeyEvent`** (NOT `onKeyDown`
   — a FlutterActivity routes keys through the FlutterView first, which swallows the volume keys
@@ -555,19 +603,17 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   (plugin-free). Consumes both down+up (ignores key-repeat) so the volume neither changes nor
   shows its UI. `HardwareButtonService`/`HardwareButtonController` toggle recording, gated by a
   setting. **Foreground+screen-on only** (capturing keys with the screen off needs a media
-  session / accessibility service — out of scope); iOS can't intercept volume keys (no-op), so
-  **iOS volume keys (workaround):** iOS has no public API to intercept them
-  (`AVCaptureEventInteraction` needs a running camera session), so `AppDelegate.swift`'s
-  `HardwareButtons` implements the same `cycle/hardware_buttons` protocol by keeping an ambient
-  (`mixWithOthers`) audio session active, KVO-observing `AVAudioSession.outputVolume`, and
-  resetting the volume to 0.5 after each press via an off-screen `MPVolumeView` slider (which
-  also suppresses the system HUD). Direction = new level above/below 0.5; changes within 0.6s of
-  the previous one are key-repeat and ignored (one event per hold). Attached only while the app
-  is active (rider's own volume saved and restored on resign-active), so — like Android — a
-  backgrounded ride can't be stopped from a pocket. Unofficial: an iOS update could break it,
-  and it can only be verified on the real iPhone. `volumeKeysSupported` (Android + iOS) gates
-  the settings switches and `AppSettings.startStopButtonVisible` (button shown when volume
-  keys are off or unsupported).
+  session / accessibility service — out of scope).
+  **Volume keys are Android-only.** iOS has no public API to intercept them
+  (`AVCaptureEventInteraction` needs a running camera session). An earlier iOS workaround —
+  pin the media volume at 0.5 via an off-screen `MPVolumeView` and KVO-observe
+  `AVAudioSession.outputVolume` — worked, but **was removed because it breaks App Store
+  guideline 2.5.9** (apps must not alter the volume buttons). Don't bring it back for store
+  builds. `volumeKeysSupported` (Android only) gates the settings switches, the
+  `setEnabled` call (`HardwareButtonController` never sends it on iOS) and
+  `AppSettings.startStopButtonVisible` (button shown when volume keys are off or unsupported,
+  i.e. always on iOS). iOS's `HardwareButtons` in `AppDelegate.swift` now only serves the
+  proximity half of the `cycle/hardware_buttons` channel.
   **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
   `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over
   the same channel (`UIDevice.isProximityMonitoringEnabled`, active only while foreground +
@@ -599,9 +645,9 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
 * **Post-M7 polish.** Home screen also shows **HR/Cadence/Power** boxes (live BLE
   `sensorSnapshotProvider`, always visible, "—" with no data). **Colour schemes**
-  (`AppColorScheme` Dark/Light/B&W, Settings → Appearance): each restyles the app
-  `ThemeData` (`buildAppTheme`), the offline map render theme (`dark.xml`/`light.xml`/
-  `bw.xml`, swapped via `activeMapModelProvider` reloading), and the overlay accents
+  (`AppColorScheme` Dark/Light/B&W + Detailed/Detailed — Dark, Settings → Appearance): each
+  restyles the app `ThemeData` (`buildAppTheme`), the offline map render theme (`dark.xml`/
+  `light.xml`/`bw.xml`/`detailed.xml`/`detailed_dark.xml`, swapped via `activeMapModelProvider` reloading), and the overlay accents
   (`MapAccents`). The app theme + accents switch live; the **map render theme** applies on the
   next map (re)load (cold start, or as tiles redraw on pan) — already-rendered tiles stay in
   mapsforge's cache, and force-purging them (`MemoryTileCache.purgeAllCaches`) ANRs the main
@@ -937,10 +983,40 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
 
 [Semantic versioning](https://semver.org) (currently **0.x** = pre-1.0, active dev). The single
 source of truth is `version:` in `pubspec.yaml` (`X.Y.Z+build`, where `+build` = Android
-`versionCode` — bump it every release). On each release: update `pubspec.yaml`, move the
-`CHANGELOG.md` `[Unreleased]` items into a new dated `[X.Y.Z]` section, and run
-`tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
-Settings → About; never hand-edit it). Keep `CHANGELOG.md` in [Keep a Changelog] form.
+`versionCode`).
+
+**Every build that gets installed on a phone (adb, sideloaded `.ipa`, CI artifact handed to the
+user) is a release.** There are no "just a new build" installs of an unchanged version that
+carry new features. For each one, decide the bump from the changes since the last version:
+
+| Changes since the last version | Bump | Example |
+| --- | --- | --- |
+| Any new user-visible feature/capability (with or without fixes) | **MINOR**, PATCH → 0 | 0.2.3 → 0.3.0 |
+| Only bug fixes / internal changes, no new feature | **PATCH** | 0.2.3 → 0.2.4 |
+| Breaking change (incompatible data/sync format, removed feature) | pre-1.0: **MINOR**; from 1.0 on: **MAJOR** | 0.2.3 → 0.3.0 |
+| Rebuild of the *same* code (e.g. re-signing, a reinstall) | build number only | 0.2.3+2050 → +2051 |
+
+* The **build number increases on every build, always**, and is never reset (it's Android's
+  `versionCode` — a lower one can't be installed over a higher one without uninstalling).
+  `--split-per-abi` APKs add an ABI offset (arm64 = +2000, so `+2049` shows as `versionCode`
+  4049 on the A33) — keep building the phones' APKs the same way, or a lower code won't install.
+* Several commits can share one version **only if none of them was installed** in between.
+  Once a version has been installed, the next installed build with new changes gets a new
+  version number per the table above.
+* A feature branch that adds a feature bumps MINOR on its first installed build; further
+  fixes on the same branch before merge stay in that version (build number still increases).
+  If `main` has meanwhile moved to a higher version, re-bump on merge.
+
+On each release:
+1. Set `version:` in `pubspec.yaml` (`X.Y.Z+build`, build = previous build + 1).
+2. Move the `CHANGELOG.md` `[Unreleased]` items into a new dated `## [X.Y.Z] - YYYY-MM-DD`
+   section and add its compare link at the bottom (`[Unreleased]` then compares from it).
+3. Run `tool/fl python3 tool/gen_version.py` to regenerate `lib/core/app_version.dart` (shown in
+   Settings → About; never hand-edit it).
+
+Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
+added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
+Don't repeat that.
 
 ## Updating this file
 

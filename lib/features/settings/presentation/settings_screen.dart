@@ -84,8 +84,7 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Volume keys start/stop'),
               subtitle: const Text(
                 'Volume up starts a ride, volume down stops it. Works with '
-                'gloves. On iPhone the media volume is held at half while '
-                'Cycle is open.',
+                'gloves.',
               ),
               value: settings.hardwareButtonsEnabled,
               onChanged: controller.setHardwareButtons,
@@ -176,7 +175,7 @@ class SettingsScreen extends ConsumerWidget {
             key: const Key('uploadAccountsTile'),
             leading: const Icon(Icons.cloud_upload_outlined),
             title: const Text('Upload accounts'),
-            subtitle: const Text('Connect Strava and Komoot for ride upload'),
+            subtitle: const Text('Connect Strava for ride upload'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/upload-accounts'),
           ),

@@ -1,7 +1,6 @@
 /// Where a recorded ride can be uploaded.
 enum UploadProvider {
-  strava('Strava'),
-  komoot('Komoot');
+  strava('Strava');
 
   const UploadProvider(this.label);
   final String label;

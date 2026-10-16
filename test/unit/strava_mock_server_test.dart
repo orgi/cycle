@@ -21,10 +21,6 @@ class _Store implements UploadStore {
   Future<OAuthToken?> stravaToken() async => _token;
   @override
   Future<void> setStravaToken(OAuthToken? t) async => _token = t;
-  @override
-  Future<KomootCredentials?> komootCredentials() async => null;
-  @override
-  Future<void> setKomootCredentials(KomootCredentials? c) async {}
 }
 
 class _NoAuth implements OAuthAuthenticator {

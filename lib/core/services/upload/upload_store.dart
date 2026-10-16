@@ -30,22 +30,6 @@ class StravaConfig {
       );
 }
 
-/// Komoot account credentials (unofficial API).
-class KomootCredentials {
-  const KomootCredentials({required this.email, required this.password});
-
-  final String email;
-  final String password;
-
-  Map<String, dynamic> toJson() => {'email': email, 'password': password};
-
-  factory KomootCredentials.fromJson(Map<String, dynamic> j) =>
-      KomootCredentials(
-        email: j['email'] as String,
-        password: j['password'] as String,
-      );
-}
-
 /// Persists upload credentials + the Strava OAuth token.
 ///
 /// NOTE: secrets live in `shared_preferences` (plain prefs) for now. A
@@ -57,15 +41,21 @@ abstract class UploadStore {
 
   Future<OAuthToken?> stravaToken();
   Future<void> setStravaToken(OAuthToken? token);
-
-  Future<KomootCredentials?> komootCredentials();
-  Future<void> setKomootCredentials(KomootCredentials? credentials);
 }
 
 class SharedPrefsUploadStore implements UploadStore {
   static const _stravaConfigKey = 'upload.strava.config';
   static const _stravaTokenKey = 'upload.strava.token';
-  static const _komootCredsKey = 'upload.komoot.credentials';
+
+  /// Where the removed Komoot upload kept the rider's Komoot email + password
+  /// (plain prefs). Only read by [forgetKomootLogin].
+  static const _legacyKomootCredsKey = 'upload.komoot.credentials';
+
+  /// Deletes a Komoot login saved by an older version. Komoot upload was
+  /// removed (it used Komoot's unofficial API with the rider's password), so
+  /// nothing reads it any more and the password shouldn't linger on the phone.
+  static Future<void> forgetKomootLogin() async =>
+      (await SharedPreferences.getInstance()).remove(_legacyKomootCredsKey);
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -103,12 +93,4 @@ class SharedPrefsUploadStore implements UploadStore {
   @override
   Future<void> setStravaToken(OAuthToken? token) =>
       _writeJson(_stravaTokenKey, token?.toJson());
-
-  @override
-  Future<KomootCredentials?> komootCredentials() =>
-      _readJson(_komootCredsKey, KomootCredentials.fromJson);
-
-  @override
-  Future<void> setKomootCredentials(KomootCredentials? credentials) =>
-      _writeJson(_komootCredsKey, credentials?.toJson());
 }

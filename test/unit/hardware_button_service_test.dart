@@ -47,12 +47,12 @@ void main() {
   group('platform support', () {
     tearDown(() => debugDefaultTargetPlatformOverride = null);
 
-    test('volume keys on Android and iOS; proximity hold on iOS only', () {
+    test('volume keys on Android only; proximity hold on iOS only', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       expect(volumeKeysSupported, isTrue);
       expect(proximityHoldSupported, isFalse);
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      expect(volumeKeysSupported, isTrue);
+      expect(volumeKeysSupported, isFalse);
       expect(proximityHoldSupported, isTrue);
       debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       expect(volumeKeysSupported, isFalse);

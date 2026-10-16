@@ -13,7 +13,7 @@ final uploadStoreProvider =
 final oauthAuthenticatorProvider =
     Provider<OAuthAuthenticator>((ref) => NativeOAuthAuthenticator());
 
-/// Uploads a ride's GPX to Strava/Komoot. Overridable in tests.
+/// Uploads a ride's GPX to Strava. Overridable in tests.
 final rideUploaderProvider = Provider<RideUploader>((ref) => RideUploader(
       store: ref.watch(uploadStoreProvider),
       authenticator: ref.watch(oauthAuthenticatorProvider),
@@ -22,10 +22,6 @@ final rideUploaderProvider = Provider<RideUploader>((ref) => RideUploader(
 /// Reads the currently-stored Strava config (null = not connected).
 final stravaConfigProvider =
     FutureProvider<StravaConfig?>((ref) => ref.watch(uploadStoreProvider).stravaConfig());
-
-/// Reads the currently-stored Komoot credentials (null = not connected).
-final komootCredentialsProvider = FutureProvider<KomootCredentials?>(
-    (ref) => ref.watch(uploadStoreProvider).komootCredentials());
 
 /// One-shot upload state for the ride-detail screen.
 class UploadState {
@@ -47,14 +43,12 @@ class UploadController extends Notifier<UploadState> {
     UploadProvider provider, {
     required List<int> gpxBytes,
     required String name,
-    int movingSeconds = 0,
   }) async {
     state = UploadState(busy: true, provider: provider);
     final result = await ref.read(rideUploaderProvider).upload(
           provider,
           gpxBytes: gpxBytes,
           name: name,
-          movingSeconds: movingSeconds,
         );
     state = UploadState(busy: false, provider: provider, result: result);
     return result;

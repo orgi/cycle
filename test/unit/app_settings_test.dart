@@ -32,6 +32,19 @@ void main() {
         AppColorScheme.dark);
   });
 
+  test('a removed Elements choice becomes the detailed map of the same brightness',
+      () {
+    expect(AppSettings.fromJson({'color_scheme': 'elements'}).colorScheme,
+        AppColorScheme.detailed);
+    expect(AppSettings.fromJson({'color_scheme': 'elementsDark'}).colorScheme,
+        AppColorScheme.detailedDark);
+    // ... and is saved under the new name from then on.
+    expect(
+        AppSettings.fromJson({'color_scheme': 'elementsDark'})
+            .toJson()['color_scheme'],
+        'detailedDark');
+  });
+
   test('selectedMapFileName defaults to null (auto) and copyWith can clear it',
       () {
     const auto = AppSettings();

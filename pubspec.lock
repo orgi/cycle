@@ -679,7 +679,7 @@ packages:
     source: hosted
     version: "4.0.0"
   mapsforge_flutter_rendertheme:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: mapsforge_flutter_rendertheme
       sha256: bb3cdc2878765d63759433c8a549708a31840f224a879634bd7b9ef5f439436c

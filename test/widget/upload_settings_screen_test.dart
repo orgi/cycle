@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('saves Strava + Komoot credentials', (tester) async {
+  testWidgets('saves Strava credentials', (tester) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(
@@ -22,13 +22,6 @@ void main() {
     await tester.tap(find.byKey(const Key('saveStravaButton')));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const Key('komootEmail')));
-    await tester.enterText(
-        find.byKey(const Key('komootEmail')), 'rider@example.com');
-    await tester.enterText(find.byKey(const Key('komootPassword')), 'pw');
-    await tester.ensureVisible(find.byKey(const Key('saveKomootButton')));
-    await tester.tap(find.byKey(const Key('saveKomootButton')));
-    await tester.pumpAndSettle();
 
     final store = SharedPrefsUploadStore();
     final strava = await store.stravaConfig();
@@ -37,9 +30,7 @@ void main() {
     expect(strava.clientSecret, 'shhh');
     expect(strava.redirectUri, 'cycle://strava-callback');
 
-    final komoot = await store.komootCredentials();
-    expect(komoot!.email, 'rider@example.com');
-    expect(komoot.password, 'pw');
+    expect(find.text('Komoot'), findsNothing);
   });
 
   testWidgets('clearing the fields disconnects the account', (tester) async {

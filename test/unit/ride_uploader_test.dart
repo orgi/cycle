@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:cycle/core/services/upload/komoot_client.dart';
 import 'package:cycle/core/services/upload/oauth_authenticator.dart';
 import 'package:cycle/core/services/upload/ride_uploader.dart';
 import 'package:cycle/core/services/upload/strava_client.dart';
@@ -15,7 +14,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class FakeUploadStore implements UploadStore {
   StravaConfig? config;
   OAuthToken? token;
-  KomootCredentials? komoot;
 
   @override
   Future<StravaConfig?> stravaConfig() async => config;
@@ -25,10 +23,6 @@ class FakeUploadStore implements UploadStore {
   Future<OAuthToken?> stravaToken() async => token;
   @override
   Future<void> setStravaToken(OAuthToken? t) async => token = t;
-  @override
-  Future<KomootCredentials?> komootCredentials() async => komoot;
-  @override
-  Future<void> setKomootCredentials(KomootCredentials? c) async => komoot = c;
 }
 
 class FakeAuthenticator implements OAuthAuthenticator {
@@ -73,13 +67,11 @@ void main() {
     required FakeUploadStore store,
     required FakeAuthenticator auth,
     MockClient? strava,
-    MockClient? komoot,
   }) =>
       RideUploader(
         store: store,
         authenticator: auth,
         strava: StravaClient(client: strava ?? stravaBackend()),
-        komoot: komoot == null ? null : KomootClient(client: komoot),
         pollInterval: Duration.zero,
         maxPolls: 5,
       );
@@ -159,42 +151,21 @@ void main() {
     expect(result.error, contains('duplicate'));
   });
 
-  test('Komoot: no credentials -> friendly failure', () async {
-    final result = await uploader(
-      store: FakeUploadStore(),
-      auth: FakeAuthenticator('X'),
-      komoot: MockClient((_) async => http.Response('{}', 200)),
-    ).uploadToKomoot(gpxBytes: const [1], name: 'ride', movingSeconds: 60);
-    expect(result.ok, isFalse);
-    expect(result.error, contains('Komoot'));
-  });
-
-  test('Komoot: logs in, uploads, returns tour URL', () async {
-    final store = FakeUploadStore()
-      ..komoot = const KomootCredentials(email: 'a@b.c', password: 'pw');
-    final backend = MockClient((req) async {
-      if (req.url.path == '/v1/signin') {
-        return http.Response('{}', 200,
-            headers: {'set-cookie': 'kmt=tok; Path=/'});
-      }
-      if (req.url.path == '/api/account/v1/session') {
-        return http.Response(jsonEncode({'username': '42'}), 200);
-      }
-      if (req.url.path == '/v007/tours/') {
-        return http.Response(jsonEncode({'id': 'tour-9'}), 201);
-      }
-      return http.Response('not found', 404);
+  test('forgetKomootLogin deletes a Komoot login saved by an older version',
+      () async {
+    SharedPreferences.setMockInitialValues({
+      'upload.komoot.credentials': '{"email":"e","password":"p"}',
+      'upload.strava.config':
+          '{"client_id":"c","client_secret":"s","redirect_uri":"cycle://strava-callback"}',
     });
-    final result = await uploader(
-      store: store,
-      auth: FakeAuthenticator('X'),
-      komoot: backend,
-    ).uploadToKomoot(gpxBytes: const [1], name: 'ride', movingSeconds: 1200);
-    expect(result.ok, isTrue);
-    expect(result.activityUrl, 'https://www.komoot.com/tour/tour-9');
+    await SharedPrefsUploadStore.forgetKomootLogin();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.containsKey('upload.komoot.credentials'), isFalse);
+    // Strava stays connected.
+    expect((await SharedPrefsUploadStore().stravaConfig())!.clientId, 'c');
   });
 
-  test('SharedPrefsUploadStore round-trips config, token and credentials',
+  test('SharedPrefsUploadStore round-trips config and token',
       () async {
     SharedPreferences.setMockInitialValues({});
     final store = SharedPrefsUploadStore();
@@ -206,10 +177,6 @@ void main() {
 
     await store.setStravaToken(const OAuthToken(accessToken: 'A', refreshToken: 'R'));
     expect((await store.stravaToken())!.refreshToken, 'R');
-
-    await store.setKomootCredentials(
-        const KomootCredentials(email: 'e', password: 'p'));
-    expect((await store.komootCredentials())!.email, 'e');
 
     await store.setStravaToken(null);
     expect(await store.stravaToken(), isNull);

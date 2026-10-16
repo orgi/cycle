@@ -10,12 +10,12 @@ import 'services/settings/app_settings.dart';
 ThemeData buildAppTheme(AppColorScheme scheme) {
   switch (scheme) {
     case AppColorScheme.light:
-    case AppColorScheme.elements: // light detailed map → light app chrome
+    case AppColorScheme.detailed: // light detailed map → light app chrome
       return _light();
     case AppColorScheme.bw:
       return _oled(const Color(0xFFE0E0E0));
     case AppColorScheme.dark:
-    case AppColorScheme.elementsDark: // dark detailed map → dark app chrome
+    case AppColorScheme.detailedDark: // dark detailed map → dark app chrome
       return _oled(const Color(0xFF00E5FF));
   }
 }
@@ -126,12 +126,12 @@ class MapAccents {
   static MapAccents of(AppColorScheme scheme) {
     switch (scheme) {
       case AppColorScheme.light:
-      case AppColorScheme.elements: // Elements is a light map
+      case AppColorScheme.detailed: // a light map
         return _light;
       case AppColorScheme.bw:
         return _bw;
       case AppColorScheme.dark:
-      case AppColorScheme.elementsDark: // Elements dark is a dark map
+      case AppColorScheme.detailedDark: // a dark map
         return _dark;
     }
   }

@@ -1,27 +1,22 @@
-import 'komoot_client.dart';
 import 'oauth_authenticator.dart';
 import 'strava_client.dart';
 import 'upload_models.dart';
 import 'upload_store.dart';
 
-/// Orchestrates uploading a ride's GPX to Strava or Komoot: ensures auth
-/// (stored token / refresh / interactive OAuth for Strava; session login for
-/// Komoot), uploads, and (Strava) polls until the activity is ready.
+/// Orchestrates uploading a ride's GPX to Strava: ensures auth (stored token /
+/// refresh / interactive OAuth), uploads, and polls until the activity is ready.
 class RideUploader {
   RideUploader({
     required this.store,
     required this.authenticator,
     StravaClient? strava,
-    KomootClient? komoot,
     this.pollInterval = const Duration(seconds: 1),
     this.maxPolls = 20,
-  })  : strava = strava ?? StravaClient(),
-        komoot = komoot ?? KomootClient();
+  }) : strava = strava ?? StravaClient();
 
   final UploadStore store;
   final OAuthAuthenticator authenticator;
   final StravaClient strava;
-  final KomootClient komoot;
   final Duration pollInterval;
   final int maxPolls;
 
@@ -30,15 +25,11 @@ class RideUploader {
     required List<int> gpxBytes,
     required String name,
     String? description,
-    int movingSeconds = 0,
   }) {
     switch (provider) {
       case UploadProvider.strava:
         return uploadToStrava(
             gpxBytes: gpxBytes, name: name, description: description);
-      case UploadProvider.komoot:
-        return uploadToKomoot(
-            gpxBytes: gpxBytes, name: name, movingSeconds: movingSeconds);
     }
   }
 
@@ -105,35 +96,5 @@ class RideUploader {
     );
     await store.setStravaToken(token);
     return token;
-  }
-
-  Future<UploadResult> uploadToKomoot({
-    required List<int> gpxBytes,
-    required String name,
-    required int movingSeconds,
-    String sport = 'touringbicycle',
-  }) async {
-    try {
-      final creds = await store.komootCredentials();
-      if (creds == null) {
-        return const UploadResult.failure(
-            'Add your Komoot login in Settings first.');
-      }
-      final session = await komoot.login(creds.email, creds.password);
-      final tourId = await komoot.uploadGpx(
-        session: session,
-        gpxBytes: gpxBytes,
-        sport: sport,
-        timeInMotionSeconds: movingSeconds,
-        name: name,
-      );
-      return UploadResult.success(
-        activityId: tourId,
-        activityUrl:
-            tourId.isEmpty ? null : 'https://www.komoot.com/tour/$tourId',
-      );
-    } on UploadException catch (e) {
-      return UploadResult.failure(e.message);
-    }
   }
 }

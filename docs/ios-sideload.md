@@ -101,12 +101,10 @@ once the plain USB route works.
 
 ## What differs from Android
 
-* **Volume buttons start/stop a ride** (up = start, down = stop), as on
-  Android, but through a workaround because iOS has no official API for it.
-  While Cycle is open, the media volume is held at half; your own level comes
-  back when you leave the app. If the buttons ever stop working (e.g. after an
-  iOS update), turn off *Volume keys start/stop* in Settings and the on-screen
-  Start/Stop button comes back.
+* **No volume-button start/stop.** iOS has no official way for an app to use
+  the volume buttons, and the earlier workaround breaks the App Store rules, so
+  it was removed. Use the on-screen Start/Stop button (always shown on iPhone)
+  or one of the extras below.
 * **Glove-friendly extras** in Settings → Controls (both off by default):
   *Hand over screen start/stop* (hold a hand over the top of the screen for
   2 s) and *Auto-start ride* (starts by itself once you ride above 8 km/h).
