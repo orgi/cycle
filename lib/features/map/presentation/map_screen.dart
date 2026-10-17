@@ -40,6 +40,7 @@ import '../../tracks/application/track_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_catalog.dart';
+import 'osm_attribution.dart';
 import 'route_arrows_marker.dart';
 import 'time_stat.dart';
 
@@ -890,6 +891,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Required map-data credit (ODbL), just above the stats
+                      // so it rides along with them and never covers a value.
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: OsmAttribution(),
+                      ),
+                      const SizedBox(height: 4),
                       // Live BLE sensor values — shown for paired sensors the
                       // active bike is configured to use, regardless of
                       // whether they're currently connected ("—" while no

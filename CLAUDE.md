@@ -505,10 +505,13 @@ app with no in-app monetisation can be listed as a non-trader. So: **don't add I
 donation link/button inside the app** (Apple only allows external donation links for
 registered nonprofits; mentioning one in the store listing is risky too). Revisit only
 together with an address service (ladungsfähige Anschrift).
+**OSM attribution (ODbL):** every map view shows `OsmAttribution` ("© OpenStreetMap
+contributors", taps open openstreetmap.org/copyright via the `cycle/oauth` `openUrl` channel)
+— home map above the bottom stats, `RideMap` bottom-left — plus a credit tile in About. A new
+map view must show it too.
 Store-readiness work so far: Komoot upload removed (unofficial API), iOS volume keys removed
 (guideline 2.5.9), Elements map themes replaced by mapsforge's LGPL ones (licence). Still open
-(see the store-launch plan): new name + icon, OSM attribution,
-open-source licences screen, OpenAndroMaps permission for in-app downloads, a store build
+(see the store-launch plan): open-source licences screen, OpenAndroMaps permission for in-app downloads, a store build
 without `MANAGE_EXTERNAL_STORAGE`, privacy policy.
 **Licence: GPL-3.0-or-later** (`LICENSE` is the verbatim FSF text, so GitHub detects it; keep
 it that way) **plus one GPL §7 additional permission in `NOTICE.md`**: app-store
