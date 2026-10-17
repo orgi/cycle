@@ -82,7 +82,7 @@ class CycleApp extends ConsumerWidget {
     final scheme = ref.watch(settingsProvider.select((s) => s.colorScheme));
     final theme = buildAppTheme(scheme);
     return MaterialApp.router(
-      title: 'Cycle',
+      title: 'Radl',
       debugShowCheckedModeBanner: false,
       // `theme` always wins under ThemeMode.light; the scheme's ThemeData already
       // carries the right brightness (light vs true-black).

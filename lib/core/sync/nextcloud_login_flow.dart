@@ -52,7 +52,7 @@ class NextcloudLoginFlow {
     try {
       start = await _client
           .post(Uri.parse('$base/index.php/login/v2'),
-              headers: {'User-Agent': 'Cycle'})
+              headers: {'User-Agent': 'Radl'})
           .timeout(const Duration(seconds: 15));
     } on TimeoutException {
       throw const WebDavException('Server not reachable (timed out)');

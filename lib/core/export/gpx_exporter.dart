@@ -9,7 +9,7 @@ class GpxExporter {
 
   static String export(Track track, List<TrackPoint> points) {
     final gpx = Gpx()
-      ..creator = 'Cycle'
+      ..creator = 'Radl'
       ..metadata = (Metadata()
         ..name = track.name
         ..time = track.startedAt)

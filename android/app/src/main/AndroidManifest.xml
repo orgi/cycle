@@ -40,7 +40,7 @@
         android:maxSdkVersion="30"/>
 
     <application
-        android:label="cycle"
+        android:label="Radl"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:largeHeap="true"><!-- headroom for large offline maps -->
@@ -184,6 +184,12 @@
         </provider>
         <!-- flutter_foreground_task service (keeps recording alive in the
              background). foregroundServiceType=location: we record GPS. -->
+        <!-- Status-bar icon of the recording notification (white silhouette of
+             the logo, from tool/gen_icons.py). Without it the plugin falls back
+             to the launcher icon, which Android draws as a plain white blob. -->
+        <meta-data
+            android:name="com.cycleapp.cycle.notification_icon"
+            android:resource="@drawable/ic_stat_radl"/>
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="location"

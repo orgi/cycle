@@ -41,7 +41,10 @@ class FgTaskRecordingService implements RecordingForegroundService {
     await FlutterForegroundTask.startService(
       serviceId: 256,
       notificationTitle: 'Recording ride',
-      notificationText: 'Cycle is recording your ride',
+      notificationText: 'Radl is recording your ride',
+      // The logo's silhouette (manifest meta-data → @drawable/ic_stat_radl).
+      notificationIcon: const NotificationIcon(
+          metaDataName: 'com.cycleapp.cycle.notification_icon'),
       serviceTypes: [ForegroundServiceTypes.location],
       // no callback → no background isolate / second engine
     );

@@ -254,7 +254,7 @@ class SettingsScreen extends ConsumerWidget {
           const ListTile(
             key: Key('appVersionTile'),
             leading: Icon(Icons.info_outline),
-            title: Text('Cycle'),
+            title: Text('Radl'),
             subtitle: Text('Version $kAppVersion (build $kAppBuild)'),
           ),
         ],

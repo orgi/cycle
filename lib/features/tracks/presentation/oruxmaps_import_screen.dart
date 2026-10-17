@@ -84,7 +84,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
           const Text(
             'OruxMaps\' track database is normally hidden from every other '
             'app (including file managers) by Android\'s storage rules. '
-            'Granting Cycle "All files access" — the same permission a file '
+            'Granting Radl "All files access" — the same permission a file '
             'manager holds — lifts that just for this import.',
             style: TextStyle(color: Colors.white70),
           ),
@@ -139,7 +139,7 @@ class _OruxMapsImportScreenState extends ConsumerState<OruxMapsImportScreen>
           const Text(
             'Alternative: import a single ride without granting anything — '
             'in OruxMaps, Track Manager → long-press a ride → Export/Share → '
-            'GPX → choose Cycle. Cycle detects it\'s a recorded ride and '
+            'GPX → choose Radl. Radl detects it\'s a recorded ride and '
             'offers to add it to your history.',
             style: TextStyle(color: Colors.white54, fontSize: 12),
           ),

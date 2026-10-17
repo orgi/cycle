@@ -1,12 +1,22 @@
 # Changelog
 
-All notable changes to **Cycle** are documented here.
+All notable changes to **Radl** (called Cycle before 0.4.0) are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Pre-1.0 (0.x) means the app is under active development and things may still change.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-10-17
+
+### Changed
+- **New name: Radl** (Bavarian for bicycle), with a new icon: a bike wheel that is also a
+  speedometer. Android shows it as a modern adaptive icon, including the single-colour
+  version for themed icons, and the recording notification now shows the wheel instead of a
+  white blob. The update installs over the old app and keeps all rides and settings. Ride
+  sync keeps using the "Cycle" folder on your server, so phones on older versions stay in
+  sync.
 
 ## [0.3.3] - 2026-10-17
 
@@ -509,7 +519,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/orgi/cycle/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/orgi/cycle/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.2
 [0.3.1]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.2
