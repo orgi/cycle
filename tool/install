@@ -1,33 +1,219 @@
 #!/usr/bin/env bash
-# One-command, no-parameter install of the current app onto the connected phone.
+# Installs a Radl release on every connected phone — Android and iPhone.
 #
-#   tool/install
+#   tool/install              # the newest release tag (vX.Y.Z)
+#   tool/install v0.4.0       # a specific release
+#   tool/install --dry-run    # show what would happen; build/install nothing
 #
-# Installs the release-signed APK in place (adb install -r, NEVER uninstalls —
-# so your rides, downloaded maps and settings survive). Builds the release APK
-# first if one isn't already present. Release-signed matches what's on the phone,
-# so the update applies in place without a data-wiping reinstall.
+# Android: builds that release locally from its tag (in a separate checkout under
+#   .cache/install/, so your working copy is untouched), signed with the release
+#   key — CI can't, it doesn't have the key, and Android refuses an update signed
+#   with a different key. Before installing it checks the APK really carries the
+#   release key's certificate, then installs the matching APK (32-bit armeabi-v7a
+#   or 64-bit arm64-v8a) with `adb install -r`. NEVER uninstalls: rides, maps and
+#   settings stay. A phone that already has this version or newer is skipped.
+# iPhone: downloads that release's unsigned .ipa from its GitHub Actions run (kept
+#   30 days), signs it with your Apple ID and installs it (Impactor's plumesign),
+#   replacing the app in place so its data stays. The phone must be unlocked.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+REPO_DIR="$PWD"
+APP_ID=com.cycleapp.cycle
+GH_REPO=orgi/cycle
 
-APK="build/app/outputs/flutter-apk/app-release.apk"
+DRY=0
+TAG=""
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY=1 ;;
+    v*) TAG="$arg" ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    *) echo "Unknown argument: $arg (expected a tag like v0.4.0, or --dry-run)"; exit 2 ;;
+  esac
+done
 
-# Need a device before we spend time building.
-if ! adb get-state >/dev/null 2>&1; then
-  echo "No device connected. Plug in the phone (and accept the USB-debugging"
-  echo "prompt if it appears), then run tool/install again."
-  echo
-  echo "Connected devices:"
-  adb devices -l
+git fetch -q --tags origin 2>/dev/null || true
+[[ -n "$TAG" ]] || TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+[[ -n "$TAG" ]] || { echo "No release tags (vX.Y.Z) found."; exit 1; }
+SHA=$(git rev-parse --verify -q "$TAG^{commit}") || { echo "Unknown tag: $TAG"; exit 1; }
+VERSION_LINE=$(git show "$TAG:pubspec.yaml" | grep -m1 '^version:' | awk '{print $2}')
+VERSION=${VERSION_LINE%%+*}
+BUILD=${VERSION_LINE##*+}
+echo ">> Release $TAG: version $VERSION, build $BUILD (commit ${SHA:0:7})"
+
+# ---------------------------------------------------------------- devices
+ANDROID=()
+while read -r serial state _; do
+  [[ "$state" == device ]] && ANDROID+=("$serial")
+done < <(adb devices 2>/dev/null | tail -n +2)
+
+IPHONES=()
+if command -v idevice_id >/dev/null; then
+  while read -r udid; do [[ -n "$udid" ]] && IPHONES+=("$udid"); done \
+    < <(idevice_id -l 2>/dev/null || true)
+fi
+
+if (( ${#ANDROID[@]} == 0 && ${#IPHONES[@]} == 0 )); then
+  echo "No phone connected. Plug one in (Android: allow USB debugging; iPhone:"
+  echo "unlock it and trust this computer), then run tool/install again."
   exit 1
 fi
 
-if [[ ! -f "$APK" ]]; then
-  echo ">> No release APK yet — building it (this takes a couple of minutes)…"
-  tool/fl flutter build apk --release
+declare -A RESULT=()
+
+# ---------------------------------------------------------------- Android
+apk_suffix_for() {  # ABI -> split APK name and versionCode offset
+  case "$1" in
+    arm64-v8a) echo "arm64-v8a 2000" ;;
+    armeabi-v7a) echo "armeabi-v7a 1000" ;;
+    *) echo "" ;;
+  esac
+}
+
+if (( ${#ANDROID[@]} > 0 )); then
+  declare -A NEED=()
+  for s in "${ANDROID[@]}"; do
+    model=$(adb -s "$s" shell getprop ro.product.model | tr -d '\r')
+    abi=$(adb -s "$s" shell getprop ro.product.cpu.abi | tr -d '\r')
+    read -r split offset <<<"$(apk_suffix_for "$abi")"
+    if [[ -z "${split:-}" ]]; then
+      RESULT["$model ($s)"]="skipped: unsupported ABI $abi"; continue
+    fi
+    want=$((BUILD + offset))
+    have=$(adb -s "$s" shell dumpsys package "$APP_ID" | grep -m1 -oE 'versionCode=[0-9]+' | cut -d= -f2 || true)
+    if [[ -n "$have" ]] && (( have >= want )); then
+      RESULT["$model ($s)"]="up to date (versionCode $have)"; continue
+    fi
+    NEED["$s"]="$model|$split|$want|${have:-none}"
+    echo ">> $model: $abi, has ${have:-no app}, will get $VERSION (versionCode $want)"
+  done
+
+  if (( ${#NEED[@]} > 0 )); then
+    if (( DRY )); then
+      echo ">> [dry run] would build $TAG locally and install it on ${#NEED[@]} Android phone(s)"
+    else
+      [[ -f android/key.properties && -f android/app/cycle-release.jks ]] || {
+        echo "Release key missing (android/key.properties + android/app/cycle-release.jks)."
+        echo "Without it the APK can't update the installed app. Aborting."; exit 1; }
+      # Build the tagged commit: in place when the working copy is exactly that
+      # commit and clean, otherwise in a separate checkout.
+      if [[ "$(git rev-parse HEAD)" == "$SHA" && -z "$(git status --porcelain)" ]]; then
+        BUILD_DIR="."
+      else
+        BUILD_DIR=".cache/install/$TAG"
+        if [[ ! -d "$BUILD_DIR" ]]; then
+          git worktree add -q --detach "$BUILD_DIR" "$SHA"
+        fi
+        git -C "$BUILD_DIR" checkout -q --detach "$SHA"
+        cp android/key.properties "$BUILD_DIR/android/key.properties"
+        cp android/app/cycle-release.jks "$BUILD_DIR/android/app/cycle-release.jks"
+      fi
+      echo ">> Building $TAG (release, signed with the release key) in $BUILD_DIR …"
+      tool/fl bash -c "cd /work/$BUILD_DIR && flutter build apk --release --split-per-abi \
+        --target-platform android-arm,android-arm64" 2>&1 | grep -E "✓ Built|FAILURE|Error:" || true
+      OUT="$BUILD_DIR/build/app/outputs/flutter-apk"
+
+      # Refuse to install anything not signed with the release key: Android
+      # would reject it, and the only way round that (uninstalling) loses data.
+      STORE_PASS=$(grep '^storePassword=' android/key.properties | cut -d= -f2-)
+      ALIAS=$(grep '^keyAlias=' android/key.properties | cut -d= -f2-)
+      CHECK=$(tool/fl bash -c "
+        set -e
+        want=\$(keytool -list -v -keystore /work/android/app/cycle-release.jks \
+          -storepass '$STORE_PASS' -alias '$ALIAS' | grep -m1 'SHA256:' | sed 's/.*SHA256: //' | tr -d ':' | tr 'A-F' 'a-f')
+        signer=\$(ls /opt/android-sdk-linux/build-tools/*/apksigner | sort -V | tail -1)
+        for apk in /work/$OUT/app-armeabi-v7a-release.apk /work/$OUT/app-arm64-v8a-release.apk; do
+          got=\$(\$signer verify --print-certs \"\$apk\" | grep -m1 'SHA-256 digest' | awk '{print \$NF}')
+          [ \"\$got\" = \"\$want\" ] && echo ok || echo \"MISMATCH \$apk\"
+        done" 2>/dev/null)
+      if [[ "$(echo "$CHECK" | grep -c '^ok$')" != 2 ]]; then
+        echo "The built APKs are NOT signed with the release key — not installing."
+        echo "$CHECK"; exit 1
+      fi
+      echo ">> Release-key signature verified."
+
+      for s in "${!NEED[@]}"; do
+        IFS='|' read -r model split want have <<<"${NEED[$s]}"
+        apk="$OUT/app-$split-release.apk"
+        echo ">> Installing on $model (in place, keeping data) …"
+        if adb -s "$s" install -r "$apk" >/tmp/radl_install_$$.log 2>&1; then
+          now=$(adb -s "$s" shell dumpsys package "$APP_ID" | grep -m1 -oE 'versionCode=[0-9]+' | cut -d= -f2)
+          RESULT["$model ($s)"]="installed $VERSION (versionCode $now, was $have)"
+        else
+          RESULT["$model ($s)"]="FAILED: $(tail -1 /tmp/radl_install_$$.log)"
+        fi
+        rm -f /tmp/radl_install_$$.log
+      done
+    fi
+  fi
 fi
 
-echo ">> Installing $APK (in place, keeping your data)…"
-adb install -r "$APK"
-echo ">> Done. Installed version:"
-adb shell dumpsys package com.cycleapp.cycle 2>/dev/null | grep -m1 versionName || true
+# ---------------------------------------------------------------- iPhone
+# plumesign's --udid is matched against usbmuxd's numeric DeviceID, not the
+# UDID (Impactor 2.6.5), so look the numbers up from usbmuxd itself.
+usbmux_ids() {
+  python3 - <<'PY'
+import plistlib, socket, struct
+s = socket.socket(socket.AF_UNIX); s.connect("/var/run/usbmuxd")
+body = plistlib.dumps({"MessageType": "ListDevices", "ClientVersionString": "radl-install",
+                       "ProgName": "radl-install"})
+s.sendall(struct.pack("<IIII", 16 + len(body), 1, 8, 1) + body)
+size = struct.unpack("<I", s.recv(4))[0]
+data = b""
+while len(data) < size - 4: data += s.recv(size - 4 - len(data))
+for d in plistlib.loads(data[12:]).get("DeviceList", []):
+    p = d.get("Properties", {})
+    if p.get("ConnectionType") == "USB":
+        print(p.get("SerialNumber"), d.get("DeviceID"))
+PY
+}
+
+if (( ${#IPHONES[@]} > 0 )); then
+  declare -A MUXID=()
+  while read -r udid id; do MUXID["$udid"]="$id"; done < <(usbmux_ids 2>/dev/null || true)
+  IPA="$HOME/Downloads/radl-$VERSION-$BUILD.ipa"  # the Impactor Flatpak can only read ~/Downloads
+  if (( DRY )); then
+    echo ">> [dry run] would install $IPA on ${#IPHONES[@]} iPhone(s)"
+  elif [[ ! -f "$IPA" ]]; then
+    TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill 2>/dev/null | sed -n 's/^password=//p')
+    H=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json")
+    RUN=$(curl -s "${H[@]}" "https://api.github.com/repos/$GH_REPO/actions/runs?head_sha=$SHA&status=success" \
+      | python3 -c 'import json,sys; r=json.load(sys.stdin)["workflow_runs"]; print(r[0]["id"] if r else "")')
+    URL=""
+    [[ -n "$RUN" ]] && URL=$(curl -s "${H[@]}" "https://api.github.com/repos/$GH_REPO/actions/runs/$RUN/artifacts" \
+      | python3 -c 'import json,sys; a=[x for x in json.load(sys.stdin)["artifacts"] if x["name"]=="ios-ipa-unsigned" and not x["expired"]]; print(a[0]["archive_download_url"] if a else "")')
+    if [[ -z "$URL" ]]; then
+      for u in "${IPHONES[@]}"; do RESULT["iPhone $u"]="FAILED: no iOS build for $TAG on GitHub (none, or expired after 30 days)"; done
+    else
+      tmp=$(mktemp -d)
+      curl -sL "${H[@]}" "$URL" -o "$tmp/ipa.zip" && (cd "$tmp" && unzip -q ipa.zip)
+      cp "$(ls "$tmp"/*.ipa | head -1)" "$IPA"; rm -rf "$tmp"
+      echo ">> Downloaded the iOS build of $TAG to $IPA"
+    fi
+  fi
+  if (( ! DRY )) && [[ -f "$IPA" ]]; then
+    for u in "${IPHONES[@]}"; do
+      name=$(ideviceinfo -u "$u" -k DeviceName 2>/dev/null || echo "iPhone")
+      id=${MUXID[$u]:-}
+      [[ -n "$id" ]] || { RESULT["$name"]="FAILED: not found in usbmuxd"; continue; }
+      echo ">> Installing on $name (sign with your Apple ID; keep it unlocked) …"
+      log=$(timeout 300 flatpak run --command=plumesign dev.khcrysalis.PlumeImpactor sign \
+        --package "$IPA" --apple-id --register-and-install --udid "$id" 2>&1 || true)
+      if grep -q "Installation complete" <<<"$log"; then
+        RESULT["$name"]="installed $VERSION"
+      else
+        RESULT["$name"]="FAILED: $(grep -aiE 'error|failed' <<<"$log" | tail -1 | cut -c1-160)"
+      fi
+    done
+  elif (( DRY )); then
+    for u in "${IPHONES[@]}"; do
+      echo "   $(ideviceinfo -u "$u" -k DeviceName 2>/dev/null || echo "$u") (usbmux id ${MUXID[$u]:-?})"
+    done
+  fi
+fi
+
+# ---------------------------------------------------------------- summary
+echo
+echo "== $TAG on connected phones =="
+for k in "${!RESULT[@]}"; do printf '  %-40s %s\n' "$k" "${RESULT[$k]}"; done
+(( ${#RESULT[@]} )) || echo "  (nothing installed — dry run)"

@@ -80,6 +80,15 @@ jobs:
       # and installs it over USB.
       - name: Build iOS (unsigned)
         run: flutter build ios --release --no-codesign
+      # The build is unsigned, so it carries no entitlements — but the sideload
+      # signer (Impactor) enables App ID capabilities from the entitlements it
+      # finds in the binary. Ad-hoc sign just the executable with
+      # Runner.entitlements so HealthKit (Apple Health) is requested.
+      - name: Embed entitlements (ad-hoc)
+        run: |
+          codesign --force --sign - --entitlements ios/Runner/Runner.entitlements \
+            build/ios/iphoneos/Runner.app/Runner
+          codesign -d --entitlements - build/ios/iphoneos/Runner.app/Runner
       - name: Package unsigned .ipa
         run: |
           version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | tr '+' '-')

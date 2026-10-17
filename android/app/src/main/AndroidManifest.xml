@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <!-- Network: map-region downloads (OpenAndroMaps) + ride uploads (Strava)
+    <!-- Network: map-region downloads (OpenAndroMaps)
          + ride sync. Without this a release build's HTTP calls fail instantly;
          debug/profile builds get it auto-added for tooling, which hid the bug. -->
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -173,13 +173,6 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mf-v4-map"/>
                 <data android:scheme="mf-V4-map"/>
-            </intent-filter>
-            <!-- Strava OAuth redirect (cycle://strava-callback?code=…). -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="cycle" android:host="strava-callback"/>
             </intent-filter>
         </activity>
         <!-- FileProvider for "Share backup": exposes a file:// backup as a

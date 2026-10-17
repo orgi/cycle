@@ -8,17 +8,29 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-17
+
+### Added
+- **Map credit "© OpenStreetMap contributors"** on the home map, on each ride's map and in
+  Settings → About. All map data comes from OpenStreetMap, whose licence (ODbL) requires it;
+  tapping it opens OpenStreetMap's copyright page.
+- **Save rides to Apple Health (iPhone).** Settings → Apple Health → "Save rides to Apple
+  Health" saves each finished ride as a cycling workout with route, distance and heart rate;
+  a ride's screen also has a "Save to Apple Health" button for older rides. Strava can import
+  them from Apple Health. Each ride is saved only once.
+
+### Removed
+- **Direct Strava upload.** Strava now charges for API access and limits apps to 10 riders
+  without its approval, which doesn't fit a free app. On iPhone, rides reach Strava through
+  Apple Health instead; on Android, export the ride as GPX and upload it on strava.com. A
+  Strava login saved by an older version is deleted on the next launch.
+
 ### Changed
 - **Maps now come straight from OpenAndroMaps' website.** Their terms don't allow apps to
   link to their map files, so the built-in region list is gone. Manage maps now opens their
   download page in the browser: pick a region, tap its install button for "Others", and
   confirm in Radl. The download then runs in Manage maps as before. Installed maps stay, and
   deleting one now asks first.
-
-### Added
-- **Map credit "© OpenStreetMap contributors"** on the home map, on each ride's map and in
-  Settings → About. All map data comes from OpenStreetMap, whose licence (ODbL) requires it;
-  tapping it opens OpenStreetMap's copyright page.
 
 ## [0.4.0] - 2026-10-17
 
@@ -531,7 +543,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/orgi/cycle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/orgi/cycle/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/orgi/cycle/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.2

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
-import 'core/services/upload/upload_store.dart';
+import 'core/services/removed_logins.dart';
 import 'features/dashboard/application/ride_providers.dart';
 import 'features/map/application/map_providers.dart';
 import 'features/sensors/application/sensor_power_gate.dart';
@@ -42,6 +42,6 @@ void main() {
   // (SyncController.startupDelay), so it never competes with GPS/map startup.
   container.read(syncControllerProvider);
 
-  // Komoot upload was removed; delete any Komoot password an older version saved.
-  unawaited(SharedPrefsUploadStore.forgetKomootLogin());
+  // Komoot and Strava upload were removed; delete logins older versions saved.
+  unawaited(forgetRemovedLogins());
 }

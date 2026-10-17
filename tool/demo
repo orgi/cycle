@@ -103,11 +103,6 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     cap shot_4a_ride_detail
     adb shell input keyevent KEYCODE_BACK; sleep 2
 
-    # Rides app bar -> "Upload accounts" (cloud icon, the only action = rightmost).
-    echo ">> upload accounts settings"
-    adb shell input tap "$MAP_X" "$APPBAR_Y"; sleep 2
-    cap shot_6_upload_settings
-
     echo ">> finishing"
     adb shell pkill -INT screenrecord || true
     wait "$SR" 2>/dev/null || true

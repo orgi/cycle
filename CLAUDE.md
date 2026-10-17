@@ -643,21 +643,34 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   recording. **Live metrics now only accumulate while recording** (TIME/dist/avg/max stay 0
   until Start; current speed still shows). Also fixed a mapsforge GPS-follow drift here — see
   the vendored patch in tech stack/Known gotchas.
-* **M6 — Upload (Strava):** done (self-hosted skipped per user). `lib/core/services/upload/`:
-  `StravaClient` (official OAuth2 + multipart `/uploads` + poll), `UploadStore` (creds/token in
-  `shared_preferences`), `RideUploader` (token/refresh/
-  interactive-OAuth orchestration). OAuth is plugin-free: native `MainActivity` `cycle/oauth`
-  channel (`openUrl` + capture `cycle://strava-callback` redirect) + manifest intent-filter;
-  `NativeOAuthAuthenticator` polls it. UI: Rides → "Upload accounts" settings (`/upload-accounts`)
-  + cloud-upload action on ride detail. Verified: 23 unit/widget tests + a real-socket
-  mock-server Strava test; build/launch on the emulator. **Real OAuth + a real upload need the
-  user's own Strava API app (client_id/secret) + account, done once on a device — see the M6
-  device checklist.**
-  **Komoot upload was removed** (store readiness): Komoot's official API is partner-only, so it
-  logged in with the rider's email + password against Komoot's private endpoints — against
-  Komoot's terms and App Store guideline 5.2.2. `SharedPrefsUploadStore.forgetKomootLogin()`
-  (run from `main()`) deletes a password an older build saved. Don't re-add an unofficial
-  upload; GPX export is the route into Komoot unless they grant API access.
+* **M6 — Upload → Apple Health (no direct uploads any more).** The original M6 built direct
+  Strava (official OAuth2 API) and Komoot (unofficial login) uploads; **both were removed**.
+  Komoot: private endpoints with the rider's password, against Komoot's terms and App Store
+  guideline 5.2.2. Strava (0.5.0): since June 2026 a Strava API app needs a paid Strava
+  subscription and is capped at 10 athletes without Strava's review — no fit for a free public
+  app — and **Strava does NOT import from Health Connect** (its Android integration only sends
+  out), so there is no Android equivalent. `forgetRemovedLogins()`
+  (`lib/core/services/removed_logins.dart`, run from `main()`) deletes credentials/tokens older
+  builds saved. `cycle/oauth` survives only for `openUrl` (Nextcloud login, OpenAndroMaps, OSM
+  credit); its `consumeRedirect` and the `cycle://` redirect scheme are gone. GPX export stays.
+  **Apple Health (iOS):** Settings → Apple Health → "Save rides to Apple Health"
+  (`AppSettings.saveToAppleHealth`, off by default; turning it on calls `requestAccess` and
+  stays off unless iOS reports write access), plus a "Save to Apple Health" action on each
+  ride. `RecordingController.stop()` calls `AppleHealthExporter.saveIfEnabled` unawaited (never
+  throws, never delays stopping). A ride becomes an `HKWorkout` (cycling, outdoor; distance +
+  heart-rate samples; `HKMetadataKeyExternalUUID` = `radl-ride-<startSec>`, the sync identity)
+  with its GPS route via `HKWorkoutRouteBuilder` (`AppleHealth` in `AppDelegate.swift`,
+  `cycle/health` channel; `healthRideFrom` builds the payload, pure + unit-tested). Write-only:
+  no read permission, so duplicates are prevented by remembering saved ride ids in prefs
+  (`apple_health.saved_rides`), not by querying Health. Strava imports it from Apple Health
+  (Strava → Settings → Applications, Services, and Devices → Health); whether the route comes
+  along is Strava's side. **Entitlement:** `ios/Runner/Runner.entitlements`
+  (`com.apple.developer.healthkit`, `CODE_SIGN_ENTITLEMENTS` on the Runner configs). CI builds
+  unsigned, which embeds no entitlements, and the sideload signer (Impactor) enables App ID
+  capabilities only from the entitlements it finds in the binary — so CI ad-hoc signs
+  `Runner.app/Runner` with that file (`Embed entitlements (ad-hoc)` step). Impactor's
+  free-account blocklist doesn't include HealthKit, but whether Apple grants it to a free
+  Apple ID is only proven on the phone.
 * **M7 — Physical buttons & polish:** done. **Volume-key start/stop:** native `MainActivity`
   intercepts VOLUME_UP (start) / VOLUME_DOWN (stop) in **`dispatchKeyEvent`** (NOT `onKeyDown`
   — a FlutterActivity routes keys through the FlutterView first, which swallows the volume keys
@@ -1084,6 +1097,11 @@ On each release:
 5. Tag that commit with an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -m "Radl X.Y.Z"`) and push
    the tag with the branch — the `CHANGELOG.md` compare links point at these tags. A release
    made on a feature branch is tagged there; the tag stays valid after a merge commit.
+6. Install with **`tool/install`** (newest tag; `tool/install vX.Y.Z` for another, `--dry-run`
+   to preview) on every connected phone. Android is built locally from the tag (CI has no
+   release key, and an update signed with another key would need an uninstall) and checked for
+   the release-key certificate before `adb install -r`; iPhones get the tag's CI `.ipa`
+   (artifacts expire after 30 days — wait for CI to finish before installing a fresh tag).
 
 Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
 added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
