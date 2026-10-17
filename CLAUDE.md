@@ -1097,6 +1097,11 @@ On each release:
 5. Tag that commit with an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -m "Radl X.Y.Z"`) and push
    the tag with the branch — the `CHANGELOG.md` compare links point at these tags. A release
    made on a feature branch is tagged there; the tag stays valid after a merge commit.
+6. Install with **`tool/install`** (newest tag; `tool/install vX.Y.Z` for another, `--dry-run`
+   to preview) on every connected phone. Android is built locally from the tag (CI has no
+   release key, and an update signed with another key would need an uninstall) and checked for
+   the release-key certificate before `adb install -r`; iPhones get the tag's CI `.ipa`
+   (artifacts expire after 30 days — wait for CI to finish before installing a fresh tag).
 
 Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
 added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
