@@ -1,6 +1,8 @@
-# Installing Cycle on an iPhone (free, no Mac)
+# Installing Radl on an iPhone (free, no Mac)
 
-How to get Cycle onto an iPhone **without a paid Apple Developer account and
+(Radl was called Cycle before version 0.4.0.)
+
+How to get Radl onto an iPhone **without a paid Apple Developer account and
 without a Mac**, from this Linux machine. Verified target: iPhone 12 mini.
 
 ## How it works
@@ -74,7 +76,7 @@ Labels below are English / German. Impactor follows the desktop language.
 4. On the app screen that opens, click **Install** / *Installieren*. If it is
    greyed out, no device is selected in step 2.
 
-The Cycle icon then appears on the home screen but won't open until step 5.
+The Radl icon then appears on the home screen but won't open until step 5.
 
 Impactor registers the device, creates the free certificate and profile, and
 re-signs the app. It keeps the bundle ID stable across installs, which is what
@@ -90,7 +92,7 @@ keeps the database when you re-install.
 2. **Trust the developer**: Settings → General → **VPN & Device Management** →
    your Apple ID → **Trust**. German: *Allgemein → VPN & Geräteverwaltung →
    … vertrauen*.
-3. Open Cycle. Allow **Location → While Using the App** and **Bluetooth**.
+3. Open Radl. Allow **Location → While Using the App** and **Bluetooth**.
 
 ## Optional: refresh without a computer
 
@@ -114,7 +116,7 @@ once the plain USB route works.
   (`AppleLocationService`). It keeps recording with the screen off (iOS shows
   the blue location pill) and is released when the app is backgrounded with no
   ride, the same lifecycle gate as Android.
-* **Not wired up on iOS yet:** opening/sharing a `.gpx` or backup *into* Cycle,
+* **Not wired up on iOS yet:** opening/sharing a `.gpx` or backup *into* Radl,
   sharing a backup out, the Strava OAuth redirect, and OruxMaps import. Their Android-native channels have no iOS counterpart, and
   the Dart side no-ops there.
 * **Battery used per ride** is recorded, but iOS only tells apps the battery
@@ -148,4 +150,4 @@ once the plain USB route works.
 * **Impactor doesn't see the phone**: unlock it, re-plug it, re-tap Trust, and
   check that `usbmuxd` is running.
 * **"Maximum number of apps"**: a free Apple ID allows 3 sideloaded apps.
-  Remove one you don't need (not Cycle, or you'll lose its data).
+  Remove one you don't need (not Radl, or you'll lose its data).

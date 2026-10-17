@@ -71,6 +71,16 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('About shows the app name Radl and the version', (tester) async {
+    await pumpSettings(tester, FakeSettingsStore());
+    final about = find.byKey(const Key('appVersionTile'));
+    await tester.scrollUntilVisible(about, 300);
+    expect(find.descendant(of: about, matching: find.text('Radl')),
+        findsOneWidget);
+    expect(find.descendant(of: about, matching: find.textContaining('Version')),
+        findsOneWidget);
+  });
+
   testWidgets('iOS shows the hand-over-screen and Start/Stop switches, no volume keys',
       (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

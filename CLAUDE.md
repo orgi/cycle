@@ -476,6 +476,25 @@ This machine has no local Flutter/Android SDK; the toolchain runs in a container
   keystore — losing it forces an uninstall to update again. The build falls back to the debug
   key when the keystore is absent (so a fresh clone still builds).
 
+## Name & logo (decided 2026-10-17)
+
+The app is called **Radl** (Bavarian for bicycle; *Rad* = wheel). It was "Cycle" until 0.4.0.
+**Deliberately still "cycle":** the Android `applicationId`/namespace `com.cycleapp.cycle`
+(changing it would make a separate app — no in-place update, data left behind), the Dart
+package name, the repo, and the sync folder `SyncService.root = 'Cycle'` (renaming it would
+split sync between phones on old and new versions). Everything user-visible says Radl.
+**Logo:** a bike wheel that is also a speedometer — white tyre, 24 laced spokes, an orange
+speed arc and a tapered needle on a near-black ground (chosen over phone-shaped concepts:
+one shape stays readable at 24 px). **Single source of truth: `tool/gen_icons.py`** writes
+the master SVGs (`assets/branding/`) and the Android vector drawables — adaptive icon
+foreground + monochrome layer (API 26+, `mipmap-anydpi-v26/ic_launcher.xml`) and the
+status-bar icon `ic_stat_radl` used by the recording notification (manifest meta-data
+`com.cycleapp.cycle.notification_icon`; without it the plugin used the launcher icon, a white
+blob). `tool/gen_icon_pngs.sh` (host: headless Firefox + ImageMagick, because ImageMagick's
+own SVG renderer drops strokes) renders the legacy Android PNGs, every iOS AppIcon size
+(opaque `PNG24:` — iOS rejects alpha) and the store icons (`assets/branding/store/`). Never
+hand-edit the generated files.
+
 ## Store release & monetisation (decided 2026-10-16)
 
 Preparing for Google Play + the App Store. **The app stays free with no in-app purchases,
@@ -1044,7 +1063,7 @@ On each release:
    phone, with the new version in `pubspec.yaml`. Never install from a dirty working tree:
    0.3.1 was, its fix got committed together with 0.3.2's, and so no commit (and no tag)
    matches what was installed.
-5. Tag that commit with an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -m "Cycle X.Y.Z"`) and push
+5. Tag that commit with an annotated tag `vX.Y.Z` (`git tag -a vX.Y.Z -m "Radl X.Y.Z"`) and push
    the tag with the branch — the `CHANGELOG.md` compare links point at these tags. A release
    made on a feature branch is tagged there; the tag stays valid after a merge commit.
 

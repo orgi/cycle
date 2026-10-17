@@ -77,6 +77,8 @@ class SyncService {
         saveSensors = saveSensors ?? ((_) async {}),
         _clientFactory = clientFactory ?? _defaultClient;
 
+  // The app's former name. Kept on purpose: renaming the folder would split
+  // sync between phones on older and newer versions.
   static const root = 'Cycle';
   static const _ridesDir = '$root/rides';
   static const _profilesDir = '$root/profiles';

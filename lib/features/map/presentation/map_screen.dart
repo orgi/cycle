@@ -704,9 +704,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cycle'),
+        title: const Text('Radl'),
         // A dedicated, fixed-width slot for the bike-profile chip — putting it
-        // in the title Row instead overflowed on a narrow phone once "Cycle" +
+        // in the title Row instead overflowed on a narrow phone once the title +
         // the chip + the 5 action icons all competed for the same app bar
         // width (verified on the emulator).
         leadingWidth: 96,

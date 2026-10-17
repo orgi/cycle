@@ -9,9 +9,9 @@
 	     the `location` background mode below (iOS shows the blue location pill).
 	     The Always text is required by geolocator's plugin build regardless. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Cycle uses your location to measure speed, distance and your route while you ride.</string>
+	<string>Radl uses your location to measure speed, distance and your route while you ride.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Cycle uses your location to keep recording your ride while the screen is off.</string>
+	<string>Radl uses your location to keep recording your ride while the screen is off.</string>
 	<!-- location: keep a recording ride's GPS running when backgrounded (the
 	     Dart-side gate in AppleLocationService releases it when no ride runs).
 	     bluetooth-central: keep BLE sensor notifications flowing meanwhile. -->
@@ -29,15 +29,15 @@
 	</array>
 	<!-- BLE cycling sensors (heart rate, speed/cadence, power). -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Cycle connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>
+	<string>Radl connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>
 	<!-- Ride sync to a server on the home network (self-hosted Nextcloud):
 	     iOS 14+ asks before an app may reach local-network addresses. -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Cycle syncs your rides with your own server on your home network.</string>
+	<string>Radl syncs your rides with your own server on your home network.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Cycle</string>
+	<string>Radl</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -45,7 +45,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>cycle</string>
+	<string>Radl</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

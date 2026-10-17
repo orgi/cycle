@@ -39,11 +39,11 @@ class BatteryTestScreen extends ConsumerWidget {
             'zigzag through your area, drawing and saving the track, the real '
             'GPS stays on and the screen stays on, like on a ride. Every minute the time and battery level '
             'are saved, so the result survives the phone switching itself off.\n\n'
-            'Unplug the charger, keep Cycle open and the phone unlocked, set '
+            'Unplug the charger, keep Radl open and the phone unlocked, set '
             'the brightness you ride with, and connect your sensors if you '
             'ride with them. After the phone has switched off, charge it to '
             '100 % in one go (this also recalibrates the battery display), '
-            'open Cycle, and the result appears here.',
+            'open Radl, and the result appears here.',
           ),
           const SizedBox(height: 16),
           if (run == null)

@@ -1,6 +1,6 @@
 # Licence notice
 
-Cycle, a bike computer app for Android and iOS.
+Radl (formerly Cycle), a bike computer app for Android and iOS.
 Copyright (C) 2026 orgi (https://github.com/orgi)
 
 This program is free software: you can redistribute it and/or modify it under the terms
