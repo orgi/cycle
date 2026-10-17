@@ -130,7 +130,7 @@ class MapDownloadService {
   }
 
   /// Total download size: from `Content-Range` (resume), else `Content-Length`,
-  /// else the catalogue's known size.
+  /// else the region's size if known (0 = unknown: no percentage).
   int _totalBytes(http.StreamedResponse response, MapRegion region,
       {required bool resuming}) {
     if (resuming) {

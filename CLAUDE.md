@@ -538,14 +538,29 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     on the active map's bounding-box centre (see the camera gotcha), re-centring when a
     different map loads.
 * **M2 — Offline map + region download manager:** done. Mapsforge map screen (dark theme,
-  live location marker) + OpenAndroMaps "Manage maps" downloader (catalogue, download with
-  progress, delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
-  * **Catalogue** (`lib/features/map/domain/map_catalog.dart`) is the **full** OpenAndroMaps
-    Europe + Germany listing (~80 regions: Alpine/multi-country regions, countries, and German
-    Bundesländer incl. Bayern), grouped greater-region-first then alphabetical. It is
-    **generated** from the live mirror by `tool/gen_map_catalog.py` (`tool/fl python3
-    tool/gen_map_catalog.py > …/map_catalog.dart`) — don't hand-edit names/URLs/sizes; re-run to
-    refresh. Add other continents by extending that script.
+  live location marker) + OpenAndroMaps "Manage maps" downloader (download with progress,
+  delete). Bundled `monaco.map` demo. Host + emulator GUI tests green.
+  * **Getting maps: through OpenAndroMaps' own page, never a built-in list.** Their terms
+    forbid direct links to their map files, so the old generated catalogue (every region with
+    its download URL) was **removed — don't bring one back**. Manage maps opens
+    openandromaps.org/en/downloads in the browser; the rider taps the **"Others" install
+    button** (`mf-V4-map://ftp.gwdg.de/pub/misc/openstreetmap/openandromaps/mapsV5/…/X.zip`, the
+    link their site offers to any Mapsforge-v4 app); the browser hands it to Radl (Android
+    intent filter for `mf-v4-map` **and** `mf-V4-map` — Android matches schemes
+    case-sensitively and the site writes the capital V; iOS `CFBundleURLTypes` +
+    `IncomingMapLinks` in `AppDelegate.swift`) over the `cycle/incoming_map` channel; Dart
+    checks it on resume (`map_screen` `_checkIncomingMapLink`). `parseMapInstallLink` (pure,
+    unit-tested) accepts **only** that host and the `mapsV5/` path with a plain file name —
+    any web page can fire such a link, so nothing else may download — and explains the
+    `pois/…Poi.zip` button instead. Nothing downloads without the rider confirming
+    (`confirmAndDownloadMapLink`); an installed map isn't overwritten (the renderer may have
+    it open — delete first). The region id is the zip's stem, the same ids the old catalogue
+    used, so earlier downloads stay recognised; names come from `mapDisplayName`.
+    **iOS:** the app uses a scene delegate, and Flutter 3.44's `FlutterSceneDelegate` keeps
+    `scene(_:willConnectTo:)`/`openURLContexts` out of its public header, so a Swift subclass
+    can neither override nor call them — hence the `addSceneDelegate` registration instead.
+    Verified end to end on the emulator (real link → dialog → 34 MB Andorra download →
+    installed); the iOS path is unverified until tried on the iPhone.
   * **Which map is displayed** (only one renders at a time — no multi-datastore in this
     mapsforge port): `pickMapPath` (pure, unit-tested) chooses the user's manually picked map
     (`AppSettings.selectedMapFileName`) if still installed, else the **smallest installed map

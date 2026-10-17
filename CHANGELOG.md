@@ -8,6 +8,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Changed
+- **Maps now come straight from OpenAndroMaps' website.** Their terms don't allow apps to
+  link to their map files, so the built-in region list is gone. Manage maps now opens their
+  download page in the browser: pick a region, tap its install button for "Others", and
+  confirm in Radl. The download then runs in Manage maps as before. Installed maps stay, and
+  deleting one now asks first.
+
 ### Added
 - **Map credit "© OpenStreetMap contributors"** on the home map, on each ride's map and in
   Settings → About. All map data comes from OpenStreetMap, whose licence (ODbL) requires it;

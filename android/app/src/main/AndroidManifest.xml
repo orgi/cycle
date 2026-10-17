@@ -162,6 +162,18 @@
                 <data android:mimeType="application/vnd.sqlite3"/>
                 <data android:mimeType="application/x-sqlite3"/>
             </intent-filter>
+            <!-- OpenAndroMaps "Others" install button (mf-V4-map://ftp.gwdg.de/…/X.zip):
+                 the rider taps it on openandromaps.org in the browser, and Radl
+                 downloads that map after asking. Android matches schemes
+                 case-sensitively and the site writes "mf-V4-map", so both
+                 spellings are listed; Dart refuses anything but their maps. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="mf-v4-map"/>
+                <data android:scheme="mf-V4-map"/>
+            </intent-filter>
             <!-- Strava OAuth redirect (cycle://strava-callback?code=…). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

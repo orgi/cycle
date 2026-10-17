@@ -67,6 +67,7 @@ class MainActivity : FlutterActivity() {
     private val gpxChannel = "cycle/incoming_gpx"
     private val backupChannel = "cycle/incoming_backup"
     private val oruxmapsChannel = "cycle/incoming_oruxmaps"
+    private val mapLinkChannel = "cycle/incoming_map"
     private val shareChannel = "cycle/share"
     private val oauthChannel = "cycle/oauth"
     private val hapticsChannel = "cycle/haptics"
@@ -78,6 +79,7 @@ class MainActivity : FlutterActivity() {
     private var pendingName: String? = null
     private var pendingXml: String? = null
     private var pendingRedirect: String? = null
+    private var pendingMapLink: String? = null
     private var pendingBackupName: String? = null
     private var pendingBackupBytes: ByteArray? = null
     private var pendingOruxName: String? = null
@@ -117,6 +119,17 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        // OpenAndroMaps map install link (mf-V4-map://…), kept until Dart
+        // collects it on resume; Dart validates it and asks before downloading.
+        MethodChannel(messenger, mapLinkChannel).setMethodCallHandler { call, result ->
+            if (call.method == "consumePending") {
+                result.success(pendingMapLink)
+                pendingMapLink = null
+            } else {
+                result.notImplemented()
+            }
+        }
 
         MethodChannel(messenger, gpxChannel).setMethodCallHandler { call, result ->
             if (call.method == "consumePending") {
@@ -565,6 +578,13 @@ class MainActivity : FlutterActivity() {
             else -> null
         }
         uri ?: return
+
+        // OpenAndroMaps install button — a link, not a file.
+        if (uri.scheme.equals("mf-v4-map", ignoreCase = true)) {
+            pendingMapLink = uri.toString()
+            Log.i(TAG, "captured map install link")
+            return
+        }
 
         // OAuth redirect (cycle://strava-callback?code=…) — not a file.
         if (uri.scheme == "cycle") {

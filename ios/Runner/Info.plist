@@ -107,6 +107,16 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<!-- OpenAndroMaps "Others" install button (mf-V4-map://…); iOS matches
+			     schemes case-insensitively. Handled by IncomingMapLinks. -->
+			<key>CFBundleURLName</key>
+			<string>com.cycleapp.cycle.mapinstall</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mf-v4-map</string>
+			</array>
+		</dict>
+		<dict>
 			<key>CFBundleURLName</key>
 			<string>com.cycleapp.cycle.oauth</string>
 			<key>CFBundleURLSchemes</key>
