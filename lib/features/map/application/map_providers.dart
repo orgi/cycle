@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapsforge_flutter_core/model.dart' show BoundingBox;
 
 import '../../../core/models/geo_sample.dart';
+import '../../../core/services/external_url.dart';
+import '../../../core/services/incoming_map_link_service.dart';
 import '../../../core/services/map_download_service.dart';
 import '../../../core/services/map_storage_service.dart';
 import '../../../core/services/screen_wake_service.dart';
@@ -129,9 +131,20 @@ final activeMapModelProvider = FutureProvider<LoadedMap>((ref) async {
   return loaded;
 });
 
+/// Opens a web page in the browser. Overridable in tests.
+final externalUrlOpenerProvider =
+    Provider<Future<bool> Function(Uri)>((ref) => openExternalUrl);
+
+/// OpenAndroMaps install links the app was opened with. Overridable in tests.
+final incomingMapLinkServiceProvider =
+    Provider<IncomingMapLinkService>((ref) => IncomingMapLinkService());
+
 /// Progress/error state for in-flight region downloads, keyed by region id.
 class MapDownloadProgress {
-  const MapDownloadProgress({this.progress = 0, this.error});
+  const MapDownloadProgress(this.region, {this.progress = 0, this.error});
+
+  /// What is being downloaded (shown in Manage maps; used to retry).
+  final MapRegion region;
   final double progress;
   final String? error;
 
@@ -150,7 +163,7 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
 
   Future<void> download(MapRegion region) async {
     if (state.containsKey(region.id) && !state[region.id]!.hasError) return;
-    _set(region.id, const MapDownloadProgress(progress: 0));
+    _set(region.id, MapDownloadProgress(region));
     // Keep the screen on during a (potentially long, multi-GB) download so the
     // OS doesn't suspend the app and drop the connection. An interrupted
     // download still resumes from its .part file on retry.
@@ -160,14 +173,14 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
       await ref.read(mapDownloadServiceProvider).download(
             region,
             onProgress: (p) =>
-                _set(region.id, MapDownloadProgress(progress: p)),
+                _set(region.id, MapDownloadProgress(region, progress: p)),
           );
       _remove(region.id);
       ref.invalidate(installedMapsProvider);
     } catch (e) {
       // download() already normalises failures to a short reason.
       final reason = e is MapDownloadException ? e.message : describeDownloadError(e);
-      _set(region.id, MapDownloadProgress(progress: 0, error: reason));
+      _set(region.id, MapDownloadProgress(region, error: reason));
     } finally {
       // Release only this owner's claim: a recording ride holds its own, and
       // keep-awake stays on until the last owner lets go (see ScreenWakeService).
@@ -175,10 +188,15 @@ class MapDownloadController extends Notifier<Map<String, MapDownloadProgress>> {
     }
   }
 
-  Future<void> delete(MapRegion region) async {
-    await ref.read(mapStorageServiceProvider).delete(region);
+  /// Deletes an installed map.
+  Future<void> deleteInstalled(InstalledMap map) async {
+    await ref.read(mapStorageServiceProvider).deleteFile(map.fileName);
     ref.invalidate(installedMapsProvider);
   }
+
+  /// Forgets a failed download (its `.part` file stays, so a later download of
+  /// the same map resumes).
+  void dismiss(String regionId) => _remove(regionId);
 
   void _set(String id, MapDownloadProgress p) =>
       state = {...state, id: p};

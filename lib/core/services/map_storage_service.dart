@@ -137,9 +137,12 @@ class MapStorageService {
     return list;
   }
 
-  Future<void> delete(MapRegion region) async {
+  Future<void> delete(MapRegion region) => deleteFile(region.fileName);
+
+  /// Deletes an installed map by its file name, on whichever volume it is.
+  Future<void> deleteFile(String fileName) async {
     for (final dir in await _scanDirs()) {
-      final file = File('${dir.path}/${region.fileName}');
+      final file = File('${dir.path}/$fileName');
       if (await file.exists()) await file.delete();
     }
   }

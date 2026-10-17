@@ -22,6 +22,9 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     let messenger = engineBridge.applicationRegistrar.messenger()
     hardwareButtons = HardwareButtons(messenger: messenger)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IncomingMapLinks") {
+      IncomingMapLinks.register(with: registrar)
+    }
 
     // Start/stop confirmation buzzes (`HapticsService` in Dart): `vibrate(n)` =
     // n distinct pulses, so start (1) / stop (2) / bike switch (3) can be told
@@ -222,5 +225,56 @@ final class HardwareButtons: NSObject {
   @objc private func proximityChanged() {
     guard UIDevice.current.isProximityMonitoringEnabled else { return }
     channel.invokeMethod("onProximity", arguments: UIDevice.current.proximityState)
+  }
+}
+
+/// OpenAndroMaps' "Others" install button (`mf-V4-map://ftp.gwdg.de/…/X.zip`),
+/// tapped on openandromaps.org in the browser. Keeps the latest such link until
+/// Dart collects it over `cycle/incoming_map` (`consumePending`); Dart then
+/// validates it and asks the rider before downloading anything.
+///
+/// The app runs with a scene delegate, so links arrive as scene events, not at
+/// the app delegate. This registers through Flutter's scene-lifecycle hook
+/// (`addSceneDelegate`) instead of overriding `SceneDelegate`: Flutter's own
+/// `scene(_:willConnectTo:)` / `openURLContexts` aren't in its public header,
+/// so a Swift subclass could neither override nor call them.
+final class IncomingMapLinks: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
+  private var pending: String?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let instance = IncomingMapLinks()
+    let channel = FlutterMethodChannel(
+      name: "cycle/incoming_map", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(instance, channel: channel)
+    registrar.addSceneDelegate(instance)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "consumePending" else { return result(FlutterMethodNotImplemented) }
+    result(pending)
+    pending = nil
+  }
+
+  /// Cold start from a link: the URL comes with the connection options.
+  /// Returns false so Flutter still treats the connection as unhandled and
+  /// sets up its window as usual.
+  func scene(
+    _ scene: UIScene, willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    if let contexts = connectionOptions?.urlContexts { _ = capture(contexts) }
+    return false
+  }
+
+  /// A link while the app is running or in the background.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    capture(URLContexts)
+  }
+
+  private func capture(_ contexts: Set<UIOpenURLContext>) -> Bool {
+    guard let url = contexts.map(\.url).first(where: { $0.scheme?.lowercased() == "mf-v4-map" })
+    else { return false }
+    pending = url.absoluteString
+    return true
   }
 }

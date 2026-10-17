@@ -39,8 +39,8 @@ void main() {
     await tester.tap(find.byKey(const Key('manageMapsButton')));
     await tester.pumpAndSettle();
     expect(find.text('Manage maps'), findsOneWidget);
-    expect(find.text('Alps'), findsOneWidget);
-    expect(find.byKey(const Key('download_Alps')), findsOneWidget);
+    // Maps come from OpenAndroMaps' page in the browser, not a built-in list.
+    expect(find.byKey(const Key('openAndroMapsButton')), findsOneWidget);
   });
 
   testWidgets('follows a GPX route: overlay banner + remaining distance',

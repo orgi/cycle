@@ -39,7 +39,8 @@ import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../tracks/application/track_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
-import '../domain/map_catalog.dart';
+import '../domain/map_install_link.dart';
+import 'manage_maps_screen.dart';
 import 'osm_attribution.dart';
 import 'route_arrows_marker.dart';
 import 'time_stat.dart';
@@ -87,11 +88,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _seedFromCurrentRecording();
-    // Pick up a GPX / ride-backup / OruxMaps db the app was opened/shared with.
+    // Pick up a GPX / ride-backup / OruxMaps db / map install link the app was
+    // opened/shared with.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkIncomingGpx();
       _checkIncomingBackup();
       _checkIncomingOruxMaps();
+      _checkIncomingMapLink();
     });
   }
 
@@ -110,6 +113,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _checkIncomingGpx();
       _checkIncomingBackup();
       _checkIncomingOruxMaps();
+      _checkIncomingMapLink();
     }
     // Remember the current zoom when leaving the foreground.
     if (state == AppLifecycleState.inactive ||
@@ -263,6 +267,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
         ),
       );
     }
+  }
+
+  /// An OpenAndroMaps install button the rider tapped in the browser
+  /// (`mf-V4-map://…`): confirm, then download (see Manage maps).
+  Future<void> _checkIncomingMapLink() async {
+    final link =
+        await ref.read(incomingMapLinkServiceProvider).consumePending();
+    if (link == null || !mounted) return;
+    await confirmAndDownloadMapLink(context, ref, link);
   }
 
   Future<void> _seedFromCurrentRecording() async {
@@ -1237,18 +1250,11 @@ class _MapPickerMenu extends ConsumerWidget {
           (m) => CheckedPopupMenuItem<String>(
             value: m.fileName,
             checked: selected == m.fileName,
-            child: Text(_mapName(m.fileName)),
+            child: Text(mapDisplayName(m.fileName)),
           ),
         ),
       ],
     );
-  }
-
-  static String _mapName(String fileName) {
-    for (final region in kMapCatalog) {
-      if (region.fileName == fileName) return region.name;
-    }
-    return fileName.replaceAll('.map', '');
   }
 }
 
