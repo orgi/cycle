@@ -6,6 +6,7 @@ import '../../../core/app_version.dart';
 import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../map/presentation/osm_attribution.dart';
 import '../../tracks/application/track_providers.dart';
 import '../../tracks/application/track_repair.dart';
 import '../application/bike_profile_providers.dart';
@@ -256,6 +257,14 @@ class SettingsScreen extends ConsumerWidget {
             leading: Icon(Icons.info_outline),
             title: Text('Radl'),
             subtitle: Text('Version $kAppVersion (build $kAppBuild)'),
+          ),
+          const ListTile(
+            key: Key('osmCreditTile'),
+            leading: Icon(Icons.map_outlined),
+            title: Text('Map data © OpenStreetMap contributors'),
+            subtitle: Text('Available under the Open Database License (ODbL)'),
+            trailing: Icon(Icons.open_in_new),
+            onTap: openOsmCopyright,
           ),
         ],
       ),

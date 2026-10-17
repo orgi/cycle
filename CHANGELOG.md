@@ -8,6 +8,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Added
+- **Map credit "© OpenStreetMap contributors"** on the home map, on each ride's map and in
+  Settings → About. All map data comes from OpenStreetMap, whose licence (ODbL) requires it;
+  tapping it opens OpenStreetMap's copyright page.
+
 ## [0.4.0] - 2026-10-17
 
 ### Changed

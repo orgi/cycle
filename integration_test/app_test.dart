@@ -42,6 +42,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('SPEED'), findsOneWidget);
+    expect(find.text('Radl'), findsOneWidget); // app bar title
+    // The map's required OpenStreetMap credit is on screen.
+    expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
 
     // Start recording.
     await tester.tap(find.byKey(const Key('startStopButton')));

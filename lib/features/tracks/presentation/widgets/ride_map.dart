@@ -9,6 +9,7 @@ import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../../core/db/database.dart';
 import '../../../../core/utils/geo.dart';
+import '../../../map/presentation/osm_attribution.dart';
 import '../../../map/application/map_render_service.dart';
 import '../../application/track_providers.dart';
 import 'speed_color.dart';
@@ -154,16 +155,29 @@ class _RideMapState extends ConsumerState<RideMap> {
           return LayoutBuilder(
             builder: (ctx, constraints) {
               _centerOnTrack(loaded.model, constraints.biggest);
-              return MapsforgeView(
-                mapModel: loaded.model,
+              return Stack(
                 children: [
-                  MarkerDatastoreOverlay(
-                    mapModel: loaded.model,
-                    datastore: _markers,
-                    zoomlevelRange: kZoomRange,
+                  Positioned.fill(
+                    child: MapsforgeView(
+                      mapModel: loaded.model,
+                      children: [
+                        MarkerDatastoreOverlay(
+                          mapModel: loaded.model,
+                          datastore: _markers,
+                          zoomlevelRange: kZoomRange,
+                        ),
+                        // +/- zoom buttons (pinch can be eaten by the scroll
+                        // view).
+                        ZoomOverlay(mapModel: loaded.model),
+                      ],
+                    ),
                   ),
-                  // +/- zoom buttons (pinch can be eaten by the scroll view).
-                  ZoomOverlay(mapModel: loaded.model),
+                  // Required map-data credit (ODbL).
+                  const Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: OsmAttribution(),
+                  ),
                 ],
               );
             },

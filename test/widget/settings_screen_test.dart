@@ -79,6 +79,12 @@ void main() {
         findsOneWidget);
     expect(find.descendant(of: about, matching: find.textContaining('Version')),
         findsOneWidget);
+     final osm = find.byKey(const Key('osmCreditTile'));
+    await tester.scrollUntilVisible(osm, 300);
+    expect(
+        find.descendant(
+            of: osm, matching: find.textContaining('© OpenStreetMap contributors')),
+        findsOneWidget);
   });
 
   testWidgets('iOS shows the hand-over-screen and Start/Stop switches, no volume keys',
