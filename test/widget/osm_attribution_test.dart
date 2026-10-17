@@ -17,4 +17,15 @@ void main() {
     expect(opened, 1);
     expect(osmCopyrightUri.toString(), 'https://www.openstreetmap.org/copyright');
   });
+
+  test('goes below the stats only where the strip there is big enough', () {
+    // iPhone 12/13 mini: 34 pt home-indicator inset + 8 pt margin.
+    expect(osmCreditFitsBelowStats(8 + 34), isTrue);
+    // Android with a nav bar (no inset reported) or the Start/Stop button
+    // below the stats: just the 8 pt margin.
+    expect(osmCreditFitsBelowStats(8), isFalse);
+    // Just enough room from a 16 dp inset (Android gesture navigation) on.
+    expect(osmCreditFitsBelowStats(8 + 16), isTrue);
+    expect(osmCreditFitsBelowStats(8 + 15), isFalse);
+  });
 }

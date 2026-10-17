@@ -11,6 +11,17 @@ final Uri osmCopyrightUri = Uri.parse('https://www.openstreetmap.org/copyright')
 /// credit itself is still what the licence requires.
 Future<void> openOsmCopyright() => openExternalUrl(osmCopyrightUri);
 
+/// Height of [OsmAttribution] (10 pt text plus padding), for placing it.
+const double kOsmAttributionHeight = 18;
+
+/// Whether the home map's credit fits in the free strip between the bottom
+/// stats and the screen edge ([gapBelowStats], in logical pixels) — on iPhones
+/// with a home indicator that strip is ~34 pt and otherwise unused. Where it
+/// doesn't fit (a navigation bar handles its own inset, or the Start/Stop
+/// button sits below the stats) the credit goes just above the stats instead.
+bool osmCreditFitsBelowStats(double gapBelowStats) =>
+    gapBelowStats >= kOsmAttributionHeight + 6;
+
 /// The "© OpenStreetMap contributors" credit every map view must show: all map
 /// data comes from OpenStreetMap under the ODbL, which requires visible
 /// attribution. Small and translucent so it doesn't compete with the ride

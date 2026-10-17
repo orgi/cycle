@@ -8,6 +8,10 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Changed
+- On iPhones without a home button, the map credit "© OpenStreetMap contributors" now sits in
+  the free strip below the ride stats instead of above them. Elsewhere it stays above.
+
 ## [0.5.0] - 2026-10-17
 
 ### Added
