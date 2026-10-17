@@ -34,12 +34,6 @@ class TracksScreen extends ConsumerWidget {
             tooltip: 'Classify rides',
             onPressed: () => context.push('/classify-rides'),
           ),
-          IconButton(
-            key: const Key('uploadAccountsButton'),
-            icon: const Icon(Icons.cloud_outlined),
-            tooltip: 'Upload accounts',
-            onPressed: () => context.push('/upload-accounts'),
-          ),
         ],
       ),
       body: tracks.when(

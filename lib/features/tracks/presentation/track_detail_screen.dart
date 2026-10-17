@@ -1,4 +1,3 @@
-import 'dart:convert';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -6,15 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/db/database.dart';
-import '../../../core/export/gpx_exporter.dart';
-import '../../../core/services/upload/upload_models.dart';
+import '../../../core/services/apple_health_service.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
+import '../../health/application/apple_health_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import '../../settings/presentation/widgets/bike_profile_picker.dart';
-import '../../upload/application/upload_providers.dart';
 import '../application/track_providers.dart';
 import '../application/track_repair.dart';
 import 'widgets/ride_map.dart';
@@ -34,12 +32,13 @@ class TrackDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Ride'),
         actions: [
-          IconButton(
-            key: const Key('uploadRideButton'),
-            icon: const Icon(Icons.cloud_upload_outlined),
-            tooltip: 'Upload',
-            onPressed: () => _upload(context, ref),
-          ),
+          if (appleHealthSupported)
+            IconButton(
+              key: const Key('saveToAppleHealthButton'),
+              icon: const Icon(Icons.favorite_border),
+              tooltip: 'Save to Apple Health',
+              onPressed: () => _saveToAppleHealth(context, ref),
+            ),
           IconButton(
             key: const Key('cleanSpikesButton'),
             icon: const Icon(Icons.auto_fix_high),
@@ -119,50 +118,10 @@ class TrackDetailScreen extends ConsumerWidget {
     ));
   }
 
-  Future<void> _upload(BuildContext context, WidgetRef ref) async {
-    final track = ref.read(trackProvider(trackId)).value;
-    final points =
-        ref.read(trackPointsProvider(trackId)).value ?? const <TrackPoint>[];
-    if (track == null) return;
-
-    final provider = await showModalBottomSheet<UploadProvider>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final p in UploadProvider.values)
-              ListTile(
-                key: Key('upload_${p.name}'),
-                leading: const Icon(Icons.cloud_upload_outlined),
-                title: Text('Upload to ${p.label}'),
-                onTap: () => Navigator.pop(ctx, p),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (provider == null || !context.mounted) return;
-
+  Future<void> _saveToAppleHealth(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final gpx = GpxExporter.export(track, points);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    final result = await ref.read(uploadControllerProvider.notifier).upload(
-          provider,
-          gpxBytes: utf8.encode(gpx),
-          name: track.name,
-        );
-    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
-    messenger.showSnackBar(SnackBar(
-      content: Text(result.ok
-          ? 'Uploaded to ${provider.label}'
-              '${result.activityUrl != null ? ' — ${result.activityUrl}' : ''}'
-          : 'Upload failed: ${result.error}'),
-    ));
+    final result = await ref.read(appleHealthExporterProvider).saveRide(trackId);
+    messenger.showSnackBar(SnackBar(content: Text(result.userMessage)));
   }
 }
 

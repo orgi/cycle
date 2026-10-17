@@ -23,6 +23,7 @@ import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
 import '../../../core/services/settings/app_settings.dart';
+import '../../health/application/apple_health_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
@@ -228,6 +229,9 @@ class RecordingController extends Notifier<bool> {
             maxSpeedMps: m.maxSpeedMps,
             batteryEndPercent: battery,
           );
+      // iOS: save it to Apple Health if that's switched on. Unawaited and
+      // never throwing — it mustn't hold up or break stopping the ride.
+      unawaited(ref.read(appleHealthExporterProvider).saveIfEnabled(id));
     }
     await ref.read(recordingForegroundServiceProvider).stop();
     // No ride: the GPS request may now be dropped whenever the app goes to the

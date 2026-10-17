@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/app_version.dart';
+import '../../../core/services/apple_health_service.dart';
 import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/settings/app_settings.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../health/application/apple_health_providers.dart';
 import '../../map/presentation/osm_attribution.dart';
 import '../../tracks/application/track_providers.dart';
 import '../../tracks/application/track_repair.dart';
@@ -171,16 +173,11 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => context.push('/bike-profiles'),
             );
           }),
-          const Divider(),
-          const _Header('Accounts'),
-          ListTile(
-            key: const Key('uploadAccountsTile'),
-            leading: const Icon(Icons.cloud_upload_outlined),
-            title: const Text('Upload accounts'),
-            subtitle: const Text('Connect Strava for ride upload'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/upload-accounts'),
-          ),
+          if (appleHealthSupported) ...[
+            const Divider(),
+            const _Header('Apple Health'),
+            const _AppleHealthSwitch(),
+          ],
           const Divider(),
           const _Header('Data'),
           ListTile(
@@ -493,6 +490,50 @@ class _Header extends StatelessWidget {
           color: Theme.of(context).colorScheme.primary,
         ),
       ),
+    );
+  }
+}
+
+/// "Save rides to Apple Health" (iOS). Turning it on asks iOS for permission
+/// first and stays off if it isn't granted.
+class _AppleHealthSwitch extends ConsumerWidget {
+  const _AppleHealthSwitch();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled =
+        ref.watch(settingsProvider.select((s) => s.saveToAppleHealth));
+    return SwitchListTile(
+      key: const Key('appleHealthSwitch'),
+      title: const Text('Save rides to Apple Health'),
+      subtitle: const Text(
+        'Each finished ride is saved as a cycling workout with route, distance '
+        'and heart rate. Strava can import it from there: in Strava, Settings → '
+        'Applications, Services, and Devices → Health.',
+      ),
+      value: enabled,
+      onChanged: (on) async {
+        final controller = ref.read(settingsProvider.notifier);
+        if (!on) return controller.setSaveToAppleHealth(false);
+        final messenger = ScaffoldMessenger.of(context);
+        bool allowed;
+        String? problem;
+        try {
+          allowed = await ref.read(appleHealthServiceProvider).requestAccess();
+        } on AppleHealthException catch (e) {
+          allowed = false;
+          problem = e.message;
+        }
+        if (allowed) {
+          await controller.setSaveToAppleHealth(true);
+        } else {
+          messenger.showSnackBar(SnackBar(
+            content: Text(problem ??
+                'Apple Health access was not granted. Allow it in the Health '
+                'app → Sharing → Apps → Radl.'),
+          ));
+        }
+      },
     );
   }
 }

@@ -52,6 +52,9 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setVibrateOnStartStop(bool enabled) =>
       update(state.copyWith(vibrateOnStartStop: enabled));
 
+  Future<void> setSaveToAppleHealth(bool enabled) =>
+      update(state.copyWith(saveToAppleHealth: enabled));
+
   Future<void> setRetentionDays(int days) =>
       update(state.copyWith(retentionDays: days.clamp(1, 365)));
 

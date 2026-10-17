@@ -1,8 +1,10 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
+import 'package:cycle/core/services/apple_health_service.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/health/application/apple_health_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/settings_screen.dart';
@@ -70,6 +72,53 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  group('Apple Health switch', () {
+    Future<_FakeHealth> pumpIos(WidgetTester tester, {required bool allow}) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final health = _FakeHealth(allow);
+      final store = FakeSettingsStore();
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+          appleHealthServiceProvider.overrideWithValue(health),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ));
+      await tester.pumpAndSettle();
+      final sw = find.byKey(const Key('appleHealthSwitch'));
+      await tester.scrollUntilVisible(sw, 300);
+      await tester.ensureVisible(sw); // it's tall; make sure all of it is in view
+      await tester.pumpAndSettle();
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+      health.store = store;
+      return health;
+    }
+
+    testWidgets('turns on once iOS grants access', (tester) async {
+      final health = await pumpIos(tester, allow: true);
+      expect(health.asked, 1);
+      expect((await health.store!.load()).saveToAppleHealth, isTrue);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('stays off and explains when access is refused',
+        (tester) async {
+      final health = await pumpIos(tester, allow: false);
+      expect((await health.store!.load()).saveToAppleHealth, isFalse);
+      expect(find.textContaining('Apple Health access was not granted'),
+          findsOneWidget);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('is not offered on Android', (tester) async {
+      await pumpSettings(tester, FakeSettingsStore());
+      expect(find.byKey(const Key('appleHealthSwitch')), findsNothing);
+    });
+  });
 
   testWidgets('About shows the app name Radl and the version', (tester) async {
     await pumpSettings(tester, FakeSettingsStore());
@@ -274,4 +323,20 @@ void main() {
     expect(find.textContaining('1 bike'), findsOneWidget);
     expect(find.textContaining('Gravel bike'), findsOneWidget);
   });
+}
+
+class _FakeHealth implements AppleHealthService {
+  _FakeHealth(this.allow);
+  final bool allow;
+  int asked = 0;
+  FakeSettingsStore? store;
+
+  @override
+  Future<bool> requestAccess() async {
+    asked++;
+    return allow;
+  }
+
+  @override
+  Future<void> saveRide(HealthRide ride) async {}
 }

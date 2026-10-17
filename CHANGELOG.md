@@ -8,6 +8,18 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Added
+- **Save rides to Apple Health (iPhone).** Settings → Apple Health → "Save rides to Apple
+  Health" saves each finished ride as a cycling workout with route, distance and heart rate;
+  a ride's screen also has a "Save to Apple Health" button for older rides. Strava can import
+  them from Apple Health. Each ride is saved only once.
+
+### Removed
+- **Direct Strava upload.** Strava now charges for API access and limits apps to 10 riders
+  without its approval, which doesn't fit a free app. On iPhone, rides reach Strava through
+  Apple Health instead; on Android, export the ride as GPX and upload it on strava.com. A
+  Strava login saved by an older version is deleted on the next launch.
+
 ### Changed
 - **Maps now come straight from OpenAndroMaps' website.** Their terms don't allow apps to
   link to their map files, so the built-in region list is gone. Manage maps now opens their

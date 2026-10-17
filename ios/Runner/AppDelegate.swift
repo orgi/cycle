@@ -1,11 +1,14 @@
 import AudioToolbox
+import CoreLocation
 import Flutter
+import HealthKit
 import Network
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var hardwareButtons: HardwareButtons?
+  private var appleHealth: AppleHealth?
   private var hapticsChannel: FlutterMethodChannel?
   private var batteryChannel: FlutterMethodChannel?
   private var networkEvents: NetworkEvents?
@@ -22,6 +25,7 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     let messenger = engineBridge.applicationRegistrar.messenger()
     hardwareButtons = HardwareButtons(messenger: messenger)
+    appleHealth = AppleHealth(messenger: messenger)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IncomingMapLinks") {
       IncomingMapLinks.register(with: registrar)
     }
@@ -60,8 +64,8 @@ import UIKit
     networkEvents = NetworkEvents(messenger: messenger)
 
     // `cycle/oauth` — iOS half of the Android channel: `openUrl` opens a page
-    // in the browser (Nextcloud login). Capturing a `cycle://` redirect back
-    // (Strava) isn't wired on iOS, so `consumeRedirect` reports none.
+    // in the browser (Nextcloud login, OpenAndroMaps, the OSM credit). The
+    // name dates from the removed Strava OAuth flow.
     let oauth = FlutterMethodChannel(name: "cycle/oauth", binaryMessenger: messenger)
     oauth.setMethodCallHandler { call, result in
       switch call.method {
@@ -73,8 +77,6 @@ import UIKit
           ok ? result(nil)
             : result(FlutterError(code: "open_failed", message: "cannot open \(s)", details: nil))
         }
-      case "consumeRedirect":
-        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -278,3 +280,166 @@ final class IncomingMapLinks: NSObject, FlutterPlugin, FlutterSceneLifeCycleDele
     return true
   }
 }
+
+/// `cycle/health`: saves finished rides to Apple Health as cycling workouts
+/// (Dart: `MethodChannelAppleHealthService`). Write-only — no read permission
+/// is asked for; Dart remembers which rides it already saved.
+///   `requestAccess` → Bool: shows the Health permission sheet the first time;
+///     true when saving workouts is allowed.
+///   `saveRide(map)`: workout (start/end, distance, heart-rate samples, the
+///     ride's id as `HKMetadataKeyExternalUUID`) plus its GPS route.
+/// Needs the `com.apple.developer.healthkit` entitlement (Runner.entitlements;
+/// the CI build embeds it so the sideload signer enables HealthKit).
+final class AppleHealth {
+  private let store = HKHealthStore()
+  private let channel: FlutterMethodChannel
+
+  private let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceCycling)!
+  private let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate)!
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "cycle/health", binaryMessenger: messenger)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else { return result(nil) }
+      switch call.method {
+      case "requestAccess":
+        self.requestAccess(result)
+      case "saveRide":
+        guard let args = call.arguments as? [String: Any] else {
+          return result(FlutterError(code: "bad_args", message: "ride expected", details: nil))
+        }
+        self.saveRide(args, result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private var shareTypes: Set<HKSampleType> {
+    [HKObjectType.workoutType(), HKSeriesType.workoutRoute(), distanceType, heartRateType]
+  }
+
+  /// FlutterResult must be called on the main thread; HealthKit calls back on
+  /// its own queues.
+  private func reply(_ result: @escaping FlutterResult, _ value: Any?) {
+    DispatchQueue.main.async { result(value) }
+  }
+
+  private func fail(_ result: @escaping FlutterResult, _ message: String) {
+    reply(result, FlutterError(code: "health_failed", message: message, details: nil))
+  }
+
+  private func requestAccess(_ result: @escaping FlutterResult) {
+    guard HKHealthStore.isHealthDataAvailable() else { return reply(result, false) }
+    store.requestAuthorization(toShare: shareTypes, read: nil) { [weak self] _, error in
+      guard let self = self else { return }
+      if let error = error { return self.fail(result, error.localizedDescription) }
+      // Write permission is visible to the app (read permission never is).
+      self.reply(result,
+        self.store.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized)
+    }
+  }
+
+  private func date(_ ms: Double) -> Date { Date(timeIntervalSince1970: ms / 1000) }
+
+  private func saveRide(_ args: [String: Any], _ result: @escaping FlutterResult) {
+    guard HKHealthStore.isHealthDataAvailable() else {
+      return fail(result, "Apple Health is not available on this device")
+    }
+    guard store.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized else {
+      return fail(result, "Radl may not save to Apple Health. Allow it in the Health app → Sharing → Apps → Radl.")
+    }
+    guard let startMs = (args["startMs"] as? NSNumber)?.doubleValue,
+      let endMs = (args["endMs"] as? NSNumber)?.doubleValue,
+      let externalId = args["externalId"] as? String
+    else { return fail(result, "Incomplete ride") }
+    let start = date(startMs), end = date(endMs)
+    let distance = (args["distanceMeters"] as? NSNumber)?.doubleValue ?? 0
+    let route = (args["route"] as? [[NSNumber]]) ?? []
+    let heartRates = (args["heartRates"] as? [[NSNumber]]) ?? []
+
+    var samples: [HKSample] = []
+    if distance > 0 {
+      samples.append(HKQuantitySample(
+        type: distanceType, quantity: HKQuantity(unit: .meter(), doubleValue: distance),
+        start: start, end: end))
+    }
+    let bpm = HKUnit.count().unitDivided(by: .minute())
+    for hr in heartRates where hr.count >= 2 {
+      let t = date(hr[0].doubleValue)
+      guard t >= start, t <= end else { continue }
+      samples.append(HKQuantitySample(
+        type: heartRateType, quantity: HKQuantity(unit: bpm, doubleValue: hr[1].doubleValue),
+        start: t, end: t))
+    }
+
+    let config = HKWorkoutConfiguration()
+    config.activityType = .cycling
+    config.locationType = .outdoor
+    let builder = HKWorkoutBuilder(healthStore: store, configuration: config, device: .local())
+    builder.beginCollection(withStart: start) { [weak self] ok, error in
+      guard let self = self else { return }
+      guard ok else { return self.fail(result, error?.localizedDescription ?? "Could not start the workout") }
+      let afterSamples = {
+        builder.addMetadata([HKMetadataKeyExternalUUID: externalId,
+                             HKMetadataKeyIndoorWorkout: false]) { _, _ in
+          builder.endCollection(withEnd: end) { ok, error in
+            guard ok else { return self.fail(result, error?.localizedDescription ?? "Could not end the workout") }
+            builder.finishWorkout { workout, error in
+              guard let workout = workout else {
+                return self.fail(result, error?.localizedDescription ?? "Could not save the workout")
+              }
+              self.saveRoute(route, to: workout, result)
+            }
+          }
+        }
+      }
+      if samples.isEmpty { return afterSamples() }
+      builder.add(samples) { ok, error in
+        guard ok else { return self.fail(result, error?.localizedDescription ?? "Could not add distance/heart rate") }
+        afterSamples()
+      }
+    }
+  }
+
+  /// Attaches the GPS route (in batches, as HealthKit recommends) to the saved
+  /// workout. A ride without a usable route is still a saved workout.
+  private func saveRoute(_ route: [[NSNumber]], to workout: HKWorkout,
+                         _ result: @escaping FlutterResult) {
+    let locations: [CLLocation] = route.compactMap { p in
+      guard p.count >= 3 else { return nil }
+      let alt = p.count > 3 ? p[3].doubleValue : Double.nan
+      let speed = p.count > 4 ? p[4].doubleValue : -1
+      return CLLocation(
+        coordinate: CLLocationCoordinate2D(latitude: p[1].doubleValue, longitude: p[2].doubleValue),
+        altitude: alt.isNaN ? 0 : alt,
+        horizontalAccuracy: 5,
+        verticalAccuracy: alt.isNaN ? -1 : 10,
+        course: -1,
+        speed: speed,
+        timestamp: date(p[0].doubleValue))
+    }
+    guard locations.count >= 2 else { return reply(result, nil) }
+    let routeBuilder = HKWorkoutRouteBuilder(healthStore: store, device: .local())
+    let batches = stride(from: 0, to: locations.count, by: 500).map {
+      Array(locations[$0..<min($0 + 500, locations.count)])
+    }
+    func insert(_ i: Int) {
+      if i == batches.count {
+        routeBuilder.finishRoute(with: workout, metadata: nil) { [weak self] _, error in
+          guard let self = self else { return }
+          if let error = error { return self.fail(result, "Workout saved, route not: \(error.localizedDescription)") }
+          self.reply(result, nil)
+        }
+        return
+      }
+      routeBuilder.insertRouteData(batches[i]) { [weak self] ok, error in
+        guard let self = self else { return }
+        guard ok else { return self.fail(result, "Workout saved, route not: \(error?.localizedDescription ?? "unknown error")") }
+        insert(i + 1)
+      }
+    }
+    insert(0)
+  }
+}
+

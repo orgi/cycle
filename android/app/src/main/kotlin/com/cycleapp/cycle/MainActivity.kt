@@ -42,8 +42,8 @@ import java.io.File
  *  - `cycle/share`: hands a local file to the OS share sheet (`ACTION_SEND`)
  *    via a `FileProvider` content Uri, so "Share backup" can target OneDrive/
  *    Drive/email/Bluetooth/etc. without Cycle doing any of that app's login.
- *  - `cycle/oauth`: open a browser URL and capture the `cycle://…` OAuth
- *    redirect (Strava sign-in) so Dart can pull the authorization code.
+ *  - `cycle/oauth`: open a browser URL (`openUrl`: Nextcloud login, OpenAndroMaps,
+ *    the OSM credit). The name dates from the removed Strava OAuth flow.
  *  - `cycle/file_access`: check/request the "All files access" special
  *    permission (`MANAGE_EXTERNAL_STORAGE`), so a bulk OruxMaps
  *    `oruxmapstracks.db` import can read it straight from OruxMaps' own
@@ -78,7 +78,6 @@ class MainActivity : FlutterActivity() {
 
     private var pendingName: String? = null
     private var pendingXml: String? = null
-    private var pendingRedirect: String? = null
     private var pendingMapLink: String? = null
     private var pendingBackupName: String? = null
     private var pendingBackupBytes: ByteArray? = null
@@ -248,11 +247,6 @@ class MainActivity : FlutterActivity() {
                             result.error("open_failed", e.message, null)
                         }
                     }
-                }
-                "consumeRedirect" -> {
-                    val r = pendingRedirect
-                    pendingRedirect = null
-                    result.success(r)
                 }
                 else -> result.notImplemented()
             }
@@ -583,13 +577,6 @@ class MainActivity : FlutterActivity() {
         if (uri.scheme.equals("mf-v4-map", ignoreCase = true)) {
             pendingMapLink = uri.toString()
             Log.i(TAG, "captured map install link")
-            return
-        }
-
-        // OAuth redirect (cycle://strava-callback?code=…) — not a file.
-        if (uri.scheme == "cycle") {
-            pendingRedirect = uri.toString()
-            Log.i(TAG, "captured oauth redirect host=${uri.host}")
             return
         }
 

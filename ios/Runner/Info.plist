@@ -32,6 +32,12 @@
 	<string>Radl connects to Bluetooth sensors for heart rate, cadence, speed and power.</string>
 	<!-- Ride sync to a server on the home network (self-hosted Nextcloud):
 	     iOS 14+ asks before an app may reach local-network addresses. -->
+	<!-- Apple Health: Radl only writes (finished rides as cycling workouts);
+	     iOS requires both texts when HealthKit is used. -->
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Radl saves your finished rides to Apple Health as cycling workouts, with route, distance and heart rate.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Radl does not read your health data; it only saves your rides.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Radl syncs your rides with your own server on your home network.</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -101,9 +107,6 @@
 	     `application(_:open:options:)` handler that forwards to the
 	     `cycle/incoming_gpx` MethodChannel — to be added when building on macOS.
 	     Until then the Dart side safely no-ops on iOS. -->
-	<!-- Custom URL scheme for the Strava OAuth redirect (cycle://strava-callback).
-	     Delivering it to Dart needs an AppDelegate application(_:open:options:)
-	     handler forwarding to the cycle/oauth channel — a macOS-time TODO. -->
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -114,14 +117,6 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>mf-v4-map</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.cycleapp.cycle.oauth</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>cycle</string>
 			</array>
 		</dict>
 	</array>

@@ -65,6 +65,7 @@ class AppSettings {
     this.proximityHoldEnabled = false,
     this.vibrateOnStartStop = true,
     this.retentionDays = 30,
+    this.saveToAppleHealth = false,
   });
 
   /// Distance/speed units shown in the UI.
@@ -115,6 +116,11 @@ class AppSettings {
   /// long automatic safety backups are kept, in days.
   final int retentionDays;
 
+  /// iOS: save each finished ride to Apple Health as a cycling workout (route,
+  /// distance, heart rate). Strava and others can import it from there. Off by
+  /// default: turning it on asks iOS for write access.
+  final bool saveToAppleHealth;
+
   /// Whether the home screen shows the Start/Stop button: on request, or
   /// whenever no hands-free control that can both start AND stop a ride is
   /// on — the volume keys (Android) or the hand-over-screen hold (iOS).
@@ -141,6 +147,7 @@ class AppSettings {
     bool? proximityHoldEnabled,
     bool? vibrateOnStartStop,
     int? retentionDays,
+    bool? saveToAppleHealth,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -160,6 +167,7 @@ class AppSettings {
         proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
         vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
         retentionDays: retentionDays ?? this.retentionDays,
+        saveToAppleHealth: saveToAppleHealth ?? this.saveToAppleHealth,
       );
 
   Map<String, dynamic> toJson() => {
@@ -176,6 +184,7 @@ class AppSettings {
         'proximity_hold': proximityHoldEnabled,
         'vibrate_start_stop': vibrateOnStartStop,
         'retention_days': retentionDays,
+        'apple_health': saveToAppleHealth,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -197,6 +206,7 @@ class AppSettings {
         proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
         vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
         retentionDays: (json['retention_days'] as num?)?.toInt() ?? 30,
+        saveToAppleHealth: json['apple_health'] as bool? ?? false,
       );
 
   @override
@@ -214,7 +224,8 @@ class AppSettings {
       other.autoStartEnabled == autoStartEnabled &&
       other.proximityHoldEnabled == proximityHoldEnabled &&
       other.vibrateOnStartStop == vibrateOnStartStop &&
-      other.retentionDays == retentionDays;
+      other.retentionDays == retentionDays &&
+      other.saveToAppleHealth == saveToAppleHealth;
 
   @override
   int get hashCode => Object.hash(
@@ -230,5 +241,6 @@ class AppSettings {
       autoStartEnabled,
       proximityHoldEnabled,
       vibrateOnStartStop,
-      retentionDays);
+      retentionDays,
+      saveToAppleHealth);
 }
