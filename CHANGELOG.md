@@ -8,6 +8,8 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
 ### Changed
 - **New name: Radl** (Bavarian for bicycle), with a new icon: a bike wheel that is also a
   speedometer. Android shows it as a modern adaptive icon, including the single-colour
@@ -517,7 +519,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/orgi/cycle/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/orgi/cycle/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.2
 [0.3.1]: https://github.com/orgi/cycle/compare/v0.3.0...v0.3.2
