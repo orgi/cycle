@@ -144,10 +144,15 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     volume-key start, with no re-registration); the four-state probe — foreground idle /
     background idle / foreground recording / background recording — is what makes this visible,
     so re-run it after touching either side of the gate.
-  * **Bad-fix rejection is accuracy-based, not speed-based.** Live fixes are dropped
-    at the source when the GPS chip's own accuracy estimate is worse than 10 m
+  * **Bad-fix rejection is accuracy-based, not speed-based.** A fix whose GPS-chip
+    accuracy estimate is worse than 10 m is kept out of the **ride** — distance/time/max,
+    saved points (`RideController`), the drawn track line and auto-start
     (`lib/core/utils/gps_accuracy_filter.dart`, `isAccurateEnough`; a fix with no
-    reported accuracy is kept). An earlier approach rejected fixes by *implied speed*
+    reported accuracy is kept). **Not at the source** (since 0.5.3): the location services
+    pass every fix on, so the location dot and the speed display follow it. Dropping them
+    at the source froze the dot while standing still — on the A33 nearly every gap in the
+    recorded fixes is at 0 km/h (3-79 s), so after a wrong turn the dot sat where the
+    rider had been, not where they'd stopped. An earlier approach rejected fixes by *implied speed*
     (`GpsOutlierFilter`, live in `location_service.dart` + a flat 200 m per-leg cap in
     `RideMetricsAccumulator`) — field data on the Galaxy A3 2017 showed this didn't
     work: a slow sustained drift (e.g. multipath under tree cover) never looks "too
@@ -760,8 +765,21 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
     only; iOS (`AppDelegate.swift`, `UIDevice.batteryLevel`) is rounded to **5 %** by iOS since
     iOS 17 — not fixable by the app — so short iOS rides read 0 %). The map **zoom is remembered** (`AppSettings.mapZoom`, saved on app pause, restored
-    as the initial/first-fix zoom). The recorded track + followed route render as a **dashed
-    line with chevron arrowheads** (`Icons.keyboard_arrow_up` `IconMarker`s). Map **rotation is
+    as the initial/first-fix zoom). The followed route renders as a dashed line of arrows
+    (`RouteArrowsMarker`). The **live recorded track and the location dot are two
+    long-lived custom markers** (`live_track_marker.dart`: `LiveTrackMarker` line +
+    chevrons, `LivePositionMarker`) updated **in place** on each fix — never a
+    `PolylineMarker`/`CircleMarker` removed and re-added per fix. mapsforge runs
+    Douglas-Peucker (5 px) over a polyline's whole path whenever it's built
+    (`WayProperties`), so rebuilding the track per fix re-drew already-drawn stretches
+    slightly differently and could simplify a short out-and-back away; the remove/add also
+    went through the datastore's async marker init (stale copies, late dot) and re-projected
+    the whole ride every second. The track is append-only (projected once per zoom, cached
+    `ui.Path` relative to its first point — absolute map pixels are too big for float32);
+    chevrons sit every 90 m at zoom 16 (constant on-screen spacing), placed by distance
+    from the start so they don't move as the ride grows. `_ScreenMarkerDatastore.topMarkers`
+    paints track then dot last — the route/ghost markers are re-added on change and would
+    otherwise cover them. Map **rotation is
     disabled** (vendored patch 2, `generic_gesture_detector` drops `RotationHandler`).
 * **OruxMaps import** (Settings → Data → "Import from OruxMaps",
   `oruxmaps_import_screen.dart`). `lib/features/tracks/application/oruxmaps_import_service.dart`

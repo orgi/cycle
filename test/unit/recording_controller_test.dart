@@ -149,6 +149,37 @@ void main() {
     expect(points.last.latitude, closeTo(0, 0.0001));
   });
 
+  test(
+      'an inaccurate fix updates the live speed but is neither counted nor '
+      'saved', () async {
+    final notifier = container.read(recordingProvider.notifier);
+    container.listen(rideControllerProvider, (_, _) {});
+
+    await notifier.start();
+    final trackId = notifier.currentTrackId!;
+
+    final t0 = DateTime.utc(2026, 1, 1, 12);
+    location.emit(GeoSample(
+        latitude: 0, longitude: 0, time: t0, speedMps: 5, accuracyMeters: 4));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    // 30 m accuracy, 200 m away: a drifting fix while standing still.
+    location.emit(GeoSample(
+      latitude: 0,
+      longitude: 0.0018,
+      time: t0.add(const Duration(seconds: 5)),
+      speedMps: 2,
+      accuracyMeters: 30,
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final metrics = container.read(rideControllerProvider);
+    expect(metrics.currentSpeedMps, 2); // the display follows the fix
+    expect(metrics.distanceMeters, 0); // the ride doesn't
+    expect(metrics.maxSpeedMps, 5);
+    expect(await db.pointsFor(trackId), hasLength(1));
+    await notifier.stop();
+  });
+
   test('recorded points flag whether their speed came from a BLE sensor',
       () async {
     final notifier = container.read(recordingProvider.notifier);

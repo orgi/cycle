@@ -26,20 +26,9 @@ class RideMetricsAccumulator {
   double _maxSpeedMps = 0;
   int _movingMillis = 0;
   bool _paused = false;
-  final List<GeoSample> _window = [];
 
   /// Whether the ride is currently auto-paused (last sample below threshold).
   bool get paused => _paused;
-
-  // Rolling-window speed fallback. The GPS chip's reported velocity regresses
-  // toward zero when the signal is poor (under tree cover), so it reads *low*.
-  // When accuracy is poor we instead use the speed implied by how far we've
-  // actually moved over the last few seconds, which keeps tracking as long as
-  // the position advances. (Tunable — these are field-test knobs.)
-  static const double _windowSeconds = 5.0;
-  static const double _windowMinMeters = 8.0; // below this = stopped / jitter
-  static const double _poorAccuracyMeters = 18.0; // canopy / weak signal
-  static const double _maxPlausibleMps = 30.0; // reject GPS teleports (108 km/h)
 
   // Distance is accumulated via streaming path simplification (an
   // incremental, buffered Douglas-Peucker-style simplifier), not by summing
@@ -79,18 +68,6 @@ class RideMetricsAccumulator {
       if (sample.speedMps == null || sample.speedMps! < 0) {
         current = dtSeconds > 0 ? leg / dtSeconds : 0.0;
       }
-    }
-
-    // When the fix is inaccurate (typically under tree cover) the chip speed is
-    // unreliable and reads low; use the larger of it and the position-window
-    // speed so we don't under-report while actually moving. With a good fix we
-    // keep the chip value (responsive, and correct when braking on open roads).
-    final windowed = _windowedSpeed(sample);
-    if (windowed != null &&
-        sample.accuracyMeters != null &&
-        sample.accuracyMeters! > _poorAccuracyMeters &&
-        windowed > current) {
-      current = windowed;
     }
 
     if (current > _maxSpeedMps) {
@@ -246,7 +223,6 @@ class RideMetricsAccumulator {
     _maxSpeedMps = 0;
     _movingMillis = 0;
     _paused = false;
-    _window.clear();
     _anchor = null;
     _pending.clear();
     _committedMeters = 0;
@@ -267,38 +243,10 @@ class RideMetricsAccumulator {
     _last = null;
     _startTime = null;
     _paused = false;
-    _window.clear();
     _anchor = null;
     _pending.clear();
   }
 
   double _gpsSpeedOrZero(GeoSample s) =>
       (s.speedMps != null && s.speedMps! >= 0) ? s.speedMps! : 0.0;
-
-  /// Speed (m/s) from straight-line displacement over the last [_windowSeconds],
-  /// or `null` when there isn't enough data / the result is implausible. Uses
-  /// displacement (start→now), not summed legs, so per-fix jitter cancels out
-  /// and a stationary rider doesn't accumulate phantom speed.
-  double? _windowedSpeed(GeoSample sample) {
-    _window.add(sample);
-    while (_window.length > 2 &&
-        sample.time.difference(_window.first.time).inMilliseconds / 1000.0 >
-            _windowSeconds) {
-      _window.removeAt(0);
-    }
-    if (_window.length < 2) return null;
-    final first = _window.first;
-    final seconds = sample.time.difference(first.time).inMilliseconds / 1000.0;
-    if (seconds <= 0) return null;
-    final disp = haversineMeters(
-      first.latitude,
-      first.longitude,
-      sample.latitude,
-      sample.longitude,
-    );
-    if (disp < _windowMinMeters) return 0.0; // not really moving
-    final speed = disp / seconds;
-    if (speed > _maxPlausibleMps) return null; // teleport / bad fix
-    return speed;
-  }
 }

@@ -2,7 +2,6 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
-import '../utils/gps_accuracy_filter.dart';
 import 'location_service.dart';
 
 /// Android GPS via ONE continuous native `LocationManager.requestLocationUpdates`
@@ -18,6 +17,9 @@ import 'location_service.dart';
 ///
 /// Permission still goes through geolocator (that part works fine); only the
 /// position stream is native.
+///
+/// Every fix is passed on, however inaccurate: the location dot shows them all,
+/// and the ride recording applies `isAccurateEnough` itself.
 class NativeLocationService implements LocationService {
   static const EventChannel _events = EventChannel('cycle/location');
 
@@ -38,7 +40,6 @@ class NativeLocationService implements LocationService {
   Stream<GeoSample> positions() => _shared ??= _events
       .receiveBroadcastStream()
       .map((e) => _toSample((e as Map).cast<String, Object?>()))
-      .where(isAccurateEnough)
       .asBroadcastStream();
 
   GeoSample _toSample(Map<String, Object?> m) => GeoSample(

@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
-import '../utils/gps_accuracy_filter.dart';
 
 /// Abstraction over the platform GPS so the rest of the app depends on a stream
 /// of [GeoSample]s rather than on geolocator directly. This keeps controllers
@@ -63,8 +62,7 @@ class GeolocatorLocationService implements LocationService {
     try {
       final last = await Geolocator.getLastKnownPosition();
       if (last != null) {
-        final seed = _toSample(last);
-        if (isAccurateEnough(seed)) yield seed;
+        yield _toSample(last);
       }
     } catch (_) {}
 
@@ -79,8 +77,7 @@ class GeolocatorLocationService implements LocationService {
         final position = await Geolocator.getCurrentPosition(
           locationSettings: useFused ? _fusedSettings() : _settings(),
         );
-        final sample = _toSample(position);
-        if (isAccurateEnough(sample)) yield sample;
+        yield _toSample(position);
         gpsFailures = 0;
         // No idle delay: loop straight into the next request so the GPS stays
         // warm between fixes instead of powering down.

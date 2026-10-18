@@ -28,6 +28,9 @@ exec docker run --rm "${DOCKER_ARGS[@]}" \
     echo ">> building…"; flutter build apk --debug >/dev/null
     adb install -r build/app/outputs/flutter-apk/app-debug.apk >/dev/null
     adb shell pm grant "$APP_ID" android.permission.ACCESS_FINE_LOCATION || true
+    # The recording foreground service asks for this on the first start; the
+    # dialog would sit over the map and hold the ride start.
+    adb shell pm grant "$APP_ID" android.permission.POST_NOTIFICATIONS || true
 
     # Replay a real Monaco-circuit route (follows actual streets). File has
     # "lon lat" per line.

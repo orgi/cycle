@@ -4,7 +4,6 @@ import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
-import '../utils/gps_accuracy_filter.dart';
 import 'location_power_control.dart';
 import 'location_service.dart';
 
@@ -114,10 +113,8 @@ class AppleLocationService implements LocationService, LocationPowerControl {
     final want = _listening && (_foreground || _recording);
     if (want && _source == null) {
       _source = _positionStream(settings).listen(
-        (p) {
-          final sample = toSample(p);
-          if (isAccurateEnough(sample)) _out.add(sample);
-        },
+        // Every fix, however inaccurate — see NativeLocationService.
+        (p) => _out.add(toSample(p)),
         onError: _out.addError,
       );
     } else if (!want && _source != null) {
