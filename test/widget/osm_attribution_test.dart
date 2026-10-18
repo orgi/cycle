@@ -18,14 +18,31 @@ void main() {
     expect(osmCopyrightUri.toString(), 'https://www.openstreetmap.org/copyright');
   });
 
-  test('goes below the stats only where the strip there is big enough', () {
-    // iPhone 12/13 mini: 34 pt home-indicator inset + 8 pt margin.
-    expect(osmCreditFitsBelowStats(8 + 34), isTrue);
-    // Android with a nav bar (no inset reported) or the Start/Stop button
-    // below the stats: just the 8 pt margin.
-    expect(osmCreditFitsBelowStats(8), isFalse);
-    // Just enough room from a 16 dp inset (Android gesture navigation) on.
-    expect(osmCreditFitsBelowStats(8 + 16), isTrue);
-    expect(osmCreditFitsBelowStats(8 + 15), isFalse);
+  group('osmCreditLayout', () {
+    test('iPhone: credit in the see-through home-indicator strip, stats stay',
+        () {
+      final l = osmCreditLayout(inset: 34, insetIsSeeThrough: true);
+      expect(l.statsBottom, 42); // 8 pt margin above the strip, as before
+      expect(l.creditBottom, (42 - kOsmAttributionHeight) / 2);
+      expect(l.creditBottom + kOsmAttributionHeight, lessThan(l.statsBottom));
+    });
+
+    test('Android nav bar: credit above the bar, stats moved up for it', () {
+      const bar = 48.0; // 3-button navigation, as on the A33
+      final l = osmCreditLayout(inset: bar, insetIsSeeThrough: false);
+      expect(l.creditBottom, greaterThanOrEqualTo(bar)); // never behind it
+      expect(l.statsBottom,
+          greaterThanOrEqualTo(l.creditBottom + kOsmAttributionHeight));
+    });
+
+    test('no inset (Start/Stop button below): credit right under the stats',
+        () {
+      for (final seeThrough in [true, false]) {
+        final l = osmCreditLayout(inset: 0, insetIsSeeThrough: seeThrough);
+        expect(l.creditBottom, greaterThan(0));
+        expect(l.statsBottom,
+            greaterThanOrEqualTo(l.creditBottom + kOsmAttributionHeight));
+      }
+    });
   });
 }

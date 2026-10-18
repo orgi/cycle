@@ -8,6 +8,11 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+### Fixed
+- On Android phones with the button navigation bar, the map credit "© OpenStreetMap
+  contributors" was hidden behind the bar (0.5.1). It now sits just above the bar, with the
+  ride stats moved up a little to make room.
+
 ## [0.5.1] - 2026-10-18
 
 ### Changed
