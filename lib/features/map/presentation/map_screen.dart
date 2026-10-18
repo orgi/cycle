@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -620,11 +621,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final showStartStop = settings.startStopButtonVisible(
         volumeKeysSupported: volumeKeysSupported,
         proximityHoldSupported: proximityHoldSupported);
-    // Gap between the bottom stats and the screen edge, and whether the
-    // OpenStreetMap credit fits in it.
-    final statsBottom = 8 +
-        (showStartStop ? 0.0 : MediaQuery.of(context).viewPadding.bottom);
-    final creditBelowStats = osmCreditFitsBelowStats(statsBottom);
+    // Bottom stats with the OpenStreetMap credit below them, clear of the
+    // system bar (see osmCreditLayout). The Start/Stop button's SafeArea
+    // clears the bar itself when it is shown.
+    final bottomLayout = osmCreditLayout(
+      inset: showStartStop ? 0.0 : MediaQuery.of(context).viewPadding.bottom,
+      insetIsSeeThrough: defaultTargetPlatform == TargetPlatform.iOS,
+    );
+    final statsBottom = bottomLayout.statsBottom;
     // Keep the volume-key/proximity control, auto-start + wheel-size sync
     // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
@@ -906,17 +910,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Required map-data credit (ODbL): below the stats when
-                      // the strip there is free (see the Positioned further
-                      // down), otherwise just above them, riding along so it
-                      // never covers a value.
-                      if (!creditBelowStats) ...[
-                        const Align(
-                          alignment: Alignment.centerRight,
-                          child: OsmAttribution(),
-                        ),
-                        const SizedBox(height: 4),
-                      ],
                       // Live BLE sensor values — shown for paired sensors the
                       // active bike is configured to use, regardless of
                       // whether they're currently connected ("—" while no
@@ -991,14 +984,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
                 ),
-                // The map-data credit in the otherwise unused strip below the
-                // stats (iPhone home-indicator inset), centred in it.
-                if (creditBelowStats)
-                  Positioned(
-                    right: 8,
-                    bottom: (statsBottom - kOsmAttributionHeight) / 2,
-                    child: const OsmAttribution(),
-                  ),
+                // Required map-data credit (ODbL), below the stats: in the
+                // iPhone's home-indicator strip, or just above Android's
+                // navigation bar (see osmCreditLayout).
+                Positioned(
+                  right: 8,
+                  bottom: bottomLayout.creditBottom,
+                  child: const OsmAttribution(),
+                ),
                 // Recenter button: shown once you've panned away (follow paused).
                 // Tap to recentre on your location and resume following.
                 if (!_follow)

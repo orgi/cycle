@@ -507,9 +507,11 @@ registered nonprofits; mentioning one in the store listing is risky too). Revisi
 together with an address service (ladungsfähige Anschrift).
 **OSM attribution (ODbL):** every map view shows `OsmAttribution` ("© OpenStreetMap
 contributors", taps open openstreetmap.org/copyright via the `cycle/oauth` `openUrl` channel)
-— home map in the free strip below the bottom stats where it fits (`osmCreditFitsBelowStats`:
-the iPhone home-indicator inset), else just above them; `RideMap` bottom-left — plus a credit
-tile in About. A new
+— home map **below** the bottom stats (`osmCreditLayout`): on iOS centred in the see-through
+home-indicator strip; on Android just **above** the navigation bar with the stats moved up,
+because the bar is opaque and `viewPadding.bottom` reports it like the iPhone strip (0.5.1
+treated both as free space and hid the credit behind the A33's button bar); `RideMap`
+bottom-left — plus a credit tile in About. A new
 map view must show it too.
 Store-readiness work so far: Komoot upload removed (unofficial API), iOS volume keys removed
 (guideline 2.5.9), Elements map themes replaced by mapsforge's LGPL ones (licence). Still open

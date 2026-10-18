@@ -8,6 +8,13 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-18
+
+### Fixed
+- On Android phones with the button navigation bar, the map credit "© OpenStreetMap
+  contributors" was hidden behind the bar (0.5.1). It now sits just above the bar, with the
+  ride stats moved up a little to make room.
+
 ## [0.5.1] - 2026-10-18
 
 ### Changed
@@ -549,7 +556,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/orgi/cycle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/orgi/cycle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/orgi/cycle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/orgi/cycle/compare/v0.3.3...v0.4.0

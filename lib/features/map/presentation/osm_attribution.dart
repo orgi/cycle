@@ -14,13 +14,33 @@ Future<void> openOsmCopyright() => openExternalUrl(osmCopyrightUri);
 /// Height of [OsmAttribution] (10 pt text plus padding), for placing it.
 const double kOsmAttributionHeight = 18;
 
-/// Whether the home map's credit fits in the free strip between the bottom
-/// stats and the screen edge ([gapBelowStats], in logical pixels) — on iPhones
-/// with a home indicator that strip is ~34 pt and otherwise unused. Where it
-/// doesn't fit (a navigation bar handles its own inset, or the Start/Stop
-/// button sits below the stats) the credit goes just above the stats instead.
-bool osmCreditFitsBelowStats(double gapBelowStats) =>
-    gapBelowStats >= kOsmAttributionHeight + 6;
+/// Where the home map's bottom stats and the credit below them go, as offsets
+/// from the bottom edge. [inset] is the system area at the bottom the map runs
+/// under (0 when the Start/Stop button's SafeArea already clears it).
+///
+/// * A **see-through** inset — the iPhone home indicator, ~34 pt — is free
+///   space: the credit is centred in it and the stats keep their place.
+/// * An **opaque** one — Android's navigation bar — covers whatever is drawn
+///   there (0.5.1 put the credit behind the A33's button bar). The credit then
+///   sits just above it and the stats move up to make room.
+({double statsBottom, double creditBottom}) osmCreditLayout({
+  required double inset,
+  required bool insetIsSeeThrough,
+}) {
+  const margin = 8.0, gap = 4.0;
+  if (insetIsSeeThrough && inset >= kOsmAttributionHeight + 6 - margin) {
+    final statsBottom = margin + inset;
+    return (
+      statsBottom: statsBottom,
+      creditBottom: (statsBottom - kOsmAttributionHeight) / 2,
+    );
+  }
+  final creditBottom = inset + gap;
+  return (
+    statsBottom: creditBottom + kOsmAttributionHeight + gap,
+    creditBottom: creditBottom,
+  );
+}
 
 /// The "© OpenStreetMap contributors" credit every map view must show: all map
 /// data comes from OpenStreetMap under the ODbL, which requires visible
