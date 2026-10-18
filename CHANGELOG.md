@@ -8,6 +8,8 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-18
+
 ### Changed
 - On iPhones without a home button, the map credit "© OpenStreetMap contributors" now sits in
   the free strip below the ride stats instead of above them. Elsewhere it stays above.
@@ -547,7 +549,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/orgi/cycle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/orgi/cycle/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/orgi/cycle/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/orgi/cycle/compare/v0.3.2...v0.3.3
