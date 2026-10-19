@@ -66,6 +66,18 @@ all following segments disappear (the gray base showing through). `reinitOneMark
 now wraps `changeZoomlevel` in try/catch and skips a marker that fails, so the
 rest of the batch still paints.
 
+## Patch 5 — an interrupted pinch leaves the map scaled
+
+`src/gesture/scale_handler.dart`: during a pinch the map is drawn scaled
+(`MapPosition.scale`); on release it either zooms a whole level or should snap
+back to scale 1. Upstream never snapped back: the "no zoom step" branch called
+`zoomTo(sameZoomlevel)`, which returns early without resetting the scale, and a
+cancelled pointer or a third finger only reset the handler's own state. Every
+later `moveTo()` (our 1 Hz GPS follow) carries the scale over, so the map stayed
+shrunk in a corner, with the location dot drifting off-screen, until restart.
+All three paths now restore scale 1 (`_restoreScale`). Tested in
+`test/unit/pinch_scale_reset_test.dart`.
+
 ## Removing this
 
 Delete the `dependency_overrides: mapsforge_flutter` block in the root `pubspec.yaml`
