@@ -8,6 +8,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-19
+
+### Fixed
+- After a small or interrupted pinch-zoom, the map could stay shrunk into a corner of the
+  screen, with the location dot drifting off it, until the app was restarted. A pinch that
+  doesn't change the zoom level now snaps back, as does one cut short (a third finger, a
+  system gesture).
+
 ## [0.5.3] - 2026-10-19
 
 ### Fixed
@@ -569,7 +577,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/orgi/cycle/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/orgi/cycle/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/orgi/cycle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/orgi/cycle/compare/v0.5.0...v0.5.1
