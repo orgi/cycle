@@ -18,6 +18,7 @@ import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
+import '../../../core/utils/gps_accuracy_filter.dart';
 import '../../../core/widgets/every_second.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../battery_test/application/battery_test_providers.dart';
@@ -42,6 +43,7 @@ import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_install_link.dart';
 import 'manage_maps_screen.dart';
+import 'live_track_marker.dart';
 import 'osm_attribution.dart';
 import 'route_arrows_marker.dart';
 import 'time_stat.dart';
@@ -62,15 +64,20 @@ class MapScreen extends ConsumerStatefulWidget {
 class _MapScreenState extends ConsumerState<MapScreen>
     with WidgetsBindingObserver {
   final _ScreenMarkerDatastore _markers = _ScreenMarkerDatastore();
-  final List<LatLong> _path = [];
-  CircleMarker? _meMarker;
+  // The recorded track and the location dot: one long-lived marker each,
+  // updated in place on every fix (see live_track_marker.dart for why).
+  late final LiveTrackMarker _track = LiveTrackMarker(
+    color: _accents.track,
+    arrowColor: _accents.meStroke,
+  );
+  late final LivePositionMarker _me = LivePositionMarker(
+    fillColor: _accents.me,
+    strokeColor: _accents.meStroke,
+  );
   CircleMarker? _ghostMarker;
-  PolylineMarker? _trackLine;
-  // Direction arrows along the recorded track (icon glyphs) and the followed
-  // route (a custom dashed-arrow marker, pixel-spaced + correctly rotated).
-  final List<IconMarker> _trackArrows = [];
+  // The followed route (a custom dashed-arrow marker, pixel-spaced + correctly
+  // rotated).
   RouteArrowsMarker? _routeArrowsMarker;
-  int _trackArrowsAtLen = 0;
   bool _initialPositionSet = false;
   LatLong? _centeredOn;
   // Follow mode: the map re-centres on each GPS fix. Panning the map turns it
@@ -88,6 +95,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _markers
+      ..addMarker(_track)
+      ..addMarker(_me)
+      ..topMarkers = [_track, _me];
     _seedFromCurrentRecording();
     // Pick up a GPX / ride-backup / OruxMaps db / map install link the app was
     // opened/shared with.
@@ -284,10 +295,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (trackId == null) return;
     final points = await ref.read(appDatabaseProvider).pointsFor(trackId);
     if (!mounted) return;
-    _path
-      ..clear()
-      ..addAll(points.map((p) => LatLong(p.latitude, p.longitude)));
-    _rebuildTrackLine();
+    _track.setAll(points.map((p) => LatLong(p.latitude, p.longitude)));
+    _markers.requestRepaint();
   }
 
   /// Prompts to resume a ride a crash/kill interrupted (recovered at startup).
@@ -314,8 +323,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // the map would draw a line just from idling/moving with the app open. A
     // battery test draws its simulated ride's track too: drawing it is part of
     // what a ride costs.
-    if (ref.read(recordingProvider) || ref.read(batteryTestProvider) != null) {
-      final last = _path.isNotEmpty ? _path.last : null;
+    // The line shows what is recorded, so it skips a fix the recording drops
+    // as too inaccurate (see RideController); the dot below shows every fix.
+    if ((ref.read(recordingProvider) || ref.read(batteryTestProvider) != null) &&
+        isAccurateEnough(sample)) {
+      final last = _track.last;
       if (last == null ||
           haversineMeters(
                 last.latitude,
@@ -324,22 +336,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 here.longitude,
               ) >
               2) {
-        _path.add(here);
-        _rebuildTrackLine();
+        _track.add(here);
       }
     }
 
-    final previous = _meMarker;
-    if (previous != null) _markers.removeMarker(previous);
-    // Small dot — only slightly larger than the track line.
-    _meMarker = CircleMarker(
-      latLong: here,
-      radius: 2.2,
-      fillColor: _accents.me,
-      strokeColor: _accents.meStroke,
-      strokeWidth: 0.8,
-    );
-    _markers.addMarker(_meMarker!);
+    // Every fix moves the dot, however inaccurate: it shows where the GPS
+    // thinks we are right now (stopped included), not the last recorded point.
+    _me.position = here;
+    _markers.requestRepaint();
 
     // Follow the rider, but keep the zoom they chose. Only the first fix sets a
     // zoom (the remembered one); later fixes use moveTo, which preserves the
@@ -449,112 +453,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   /// Wipes the recorded track from the map (on a recording start/stop).
   void _clearTrack() {
-    _path.clear();
-    if (_trackLine != null) {
-      _markers.removeMarker(_trackLine!);
-      _trackLine = null;
-    }
-    for (final a in _trackArrows) {
-      _markers.removeMarker(a);
-    }
-    _trackArrows.clear();
-    _trackArrowsAtLen = 0;
+    _track.clear();
     _markers.requestRepaint();
-  }
-
-  void _rebuildTrackLine() {
-    final previous = _trackLine;
-    if (previous != null) _markers.removeMarker(previous);
-    if (_path.length >= 2) {
-      _trackLine = PolylineMarker(
-        path: List.of(_path),
-        strokeColor: _accents.track,
-        strokeWidth: 1.6, // brightness (colour) carries readability, not width
-      );
-      _markers.addMarker(_trackLine!);
-    }
-    _rebuildTrackArrows();
-  }
-
-  /// Direction arrows along the recorded track. Rebuilt as the track grows
-  /// (rate-limited) or when the colour scheme changes (`force`).
-  void _rebuildTrackArrows({bool force = false}) {
-    if (!force && (_path.length - _trackArrowsAtLen).abs() < 5) return;
-    _trackArrowsAtLen = _path.length;
-    for (final a in _trackArrows) {
-      _markers.removeMarker(a);
-    }
-    _trackArrows
-      ..clear()
-      ..addAll(_arrowsAlong(_path, _accents.meStroke, size: 14));
-    for (final a in _trackArrows) {
-      _markers.addMarker(a);
-    }
-  }
-
-  /// Builds a chain of small [icon] glyphs along [pts] in [color], each rotated
-  /// to the travel direction (explicit per-segment bearing — no readability
-  /// flip, so they always point *forward*). Glyphs are *interpolated* at an even
-  /// [minSpacing] (independent of how the points fall), stretching out for long
-  /// lines so we never place more than [maxCount].
-  List<IconMarker> _arrowsAlong(
-    List<LatLong> pts,
-    int color, {
-    IconData icon = Icons.keyboard_arrow_up,
-    double size = 12,
-    double minSpacing = 90,
-    int maxCount = 100,
-  }) {
-    final out = <IconMarker>[];
-    if (pts.length < 2) return out;
-    var total = 0.0;
-    for (var i = 1; i < pts.length; i++) {
-      total += haversineMeters(
-        pts[i - 1].latitude,
-        pts[i - 1].longitude,
-        pts[i].latitude,
-        pts[i].longitude,
-      );
-    }
-    final spacing = math.max(total / maxCount, minSpacing);
-    var carry =
-        spacing / 2; // distance from the line start to the first chevron
-    for (var i = 1; i < pts.length; i++) {
-      final a = pts[i - 1];
-      final b = pts[i];
-      final seg = haversineMeters(
-        a.latitude,
-        a.longitude,
-        b.latitude,
-        b.longitude,
-      );
-      if (seg <= 0) continue;
-      final theta = bearingDegrees(
-        a.latitude,
-        a.longitude,
-        b.latitude,
-        b.longitude,
-      );
-      var d = carry;
-      while (d <= seg) {
-        final t = d / seg;
-        out.add(
-          IconMarker(
-            latLong: LatLong(
-              a.latitude + (b.latitude - a.latitude) * t,
-              a.longitude + (b.longitude - a.longitude) * t,
-            ),
-            iconData: icon, // rotated to the travel direction below
-            size: size,
-            bitmapColor: color,
-            rotation: theta,
-          ),
-        );
-        d += spacing;
-      }
-      carry = d - seg; // leftover distance carried into the next segment
-    }
-    return out;
   }
 
   /// Draws (or clears) the route being followed as a dashed blue guide line. The
@@ -715,8 +615,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // Recolour the overlays when the colour scheme changes (the map itself
     // reloads with the new render theme via activeMapModelProvider).
     ref.listen(settingsProvider.select((s) => s.colorScheme), (_, _) {
-      _rebuildTrackLine();
-      _rebuildTrackArrows(force: true);
+      final accents = _accents;
+      _track
+        ..color = accents.track
+        ..arrowColor = accents.meStroke;
+      _me
+        ..fillColor = accents.me
+        ..strokeColor = accents.meStroke;
       _onRouteChanged(
         ref.read(activeMapModelProvider).value?.model,
         ref.read(followRouteProvider),
@@ -1158,6 +1063,22 @@ class _MapStat extends StatelessWidget {
 /// real via [disposeForReal] from its own `dispose()`.
 class _ScreenMarkerDatastore extends DefaultMarkerDatastore {
   bool _allowDispose = false;
+
+  /// Painted last, in this order, i.e. above everything else: the recorded
+  /// track, then the location dot. The datastore otherwise paints in insertion
+  /// order, and the route/ghost markers are re-added whenever they change —
+  /// they'd end up over the long-lived track and dot.
+  List<Marker> topMarkers = const [];
+
+  @override
+  Iterable<Marker> askRetrieveMarkersToPaint() {
+    final all = super.askRetrieveMarkersToPaint();
+    if (topMarkers.isEmpty) return all;
+    return [
+      ...all.where((m) => !topMarkers.contains(m)),
+      ...topMarkers.where(all.contains),
+    ];
+  }
 
   @override
   void dispose() {

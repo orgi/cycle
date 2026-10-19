@@ -8,6 +8,19 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-19
+
+### Fixed
+- The location dot now always shows the latest GPS position, also while standing still.
+  Fixes the GPS rated as inaccurate (common when stopped) used to be thrown away entirely,
+  so after e.g. a wrong turn the dot stayed where you had been. They still don't count
+  towards the ride's distance or its saved track.
+- The live speed no longer freezes on such fixes.
+- The recorded track on the map no longer re-draws parts that were already drawn, and short
+  out-and-back stretches are no longer smoothed away. The line is only ever extended now,
+  and drawing it no longer gets slower the longer the ride goes on.
+- The direction arrows along the recorded track stay in place as the ride grows.
+
 ## [0.5.2] - 2026-10-18
 
 ### Fixed
@@ -556,7 +569,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/orgi/cycle/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/orgi/cycle/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/orgi/cycle/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/orgi/cycle/compare/v0.4.0...v0.5.0

@@ -93,14 +93,14 @@ void main() {
     });
     tearDown(() => service.dispose());
 
-    test('drops inaccurate fixes, forwards accurate ones', () async {
+    test('forwards every fix, inaccurate ones too (the dot shows them all)',
+        () async {
       final got = <GeoSample>[];
       final sub = service.positions().listen(got.add);
       core.current!.add(_pos(accuracy: 50));
       core.current!.add(_pos(accuracy: 5));
       await pumpEventQueue();
-      expect(got, hasLength(1));
-      expect(got.single.accuracyMeters, 5);
+      expect(got.map((s) => s.accuracyMeters), [50, 5]);
       await sub.cancel();
     });
 

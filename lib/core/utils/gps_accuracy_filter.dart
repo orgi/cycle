@@ -1,6 +1,15 @@
 import '../models/geo_sample.dart';
 
-/// Whether [sample] is accurate enough to keep, live, at the source.
+/// Whether [sample] is accurate enough to record.
+///
+/// Applied by the consumers that build a ride from fixes — `RideController`
+/// (distance/time/max + saved points), the drawn track line and auto-start —
+/// **not** at the location source: the location dot and the speed display get
+/// every fix. Dropping inaccurate fixes at the source froze the dot whenever
+/// the chip's estimate drifted past 10 m, which on the A33 happens mostly while
+/// standing still (rides since the native GPS fix: nearly every gap in the
+/// recorded fixes is at 0 km/h, 3-79 s long), so the dot didn't show where the
+/// rider had stopped.
 ///
 /// Replaces speed/distance-based outlier rejection (the old `GpsOutlierFilter`
 /// live use, and `RideMetricsAccumulator`'s flat per-leg distance cap): field

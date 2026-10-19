@@ -23,6 +23,7 @@ import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
 import '../../../core/services/settings/app_settings.dart';
+import '../../../core/utils/gps_accuracy_filter.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
@@ -326,6 +327,19 @@ class RideController extends Notifier<RideMetrics> {
       _fusion.updateGps(gps);
       final now = DateTime.now();
       state = RideMetrics.zero().copyWith(
+          currentSpeedMps: _fusion.fused(now),
+          speedFromSensor: _fusion.isUsingBle(now));
+      return;
+    }
+    // A fix too inaccurate to record (typically while standing still, when
+    // the chip's estimate drifts past 10 m) still updates the displayed speed,
+    // but never the ride's distance/time/max or its saved points.
+    if (!isAccurateEnough(sample)) {
+      if (sample.speedMps != null && sample.speedMps! >= 0) {
+        _fusion.updateGps(sample.speedMps!);
+      }
+      final now = DateTime.now();
+      state = state.copyWith(
           currentSpeedMps: _fusion.fused(now),
           speedFromSensor: _fusion.isUsingBle(now));
       return;

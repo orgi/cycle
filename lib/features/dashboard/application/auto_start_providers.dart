@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/controls/auto_start_detector.dart';
+import '../../../core/utils/gps_accuracy_filter.dart';
 import '../../settings/application/settings_providers.dart';
 import 'ride_providers.dart';
 
@@ -28,6 +29,8 @@ class AutoStartController extends Notifier<bool> {
 
     final detector = AutoStartDetector();
     final sub = ref.watch(locationServiceProvider).positions().listen((sample) {
+      // A poor fix's speed isn't trusted to start a ride (see RideController).
+      if (!isAccurateEnough(sample)) return;
       final recording = ref.read(recordingProvider);
       if (detector.update(sample, recording: recording)) {
         unawaited(ref.read(recordingProvider.notifier).start());
