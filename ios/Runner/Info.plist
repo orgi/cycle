@@ -102,11 +102,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<!-- Register Cycle as an opener for .gpx files (Files app, Mail, "Open in").
-	     NOTE: delivering the opened file to Dart still needs an AppDelegate
-	     `application(_:open:options:)` handler that forwards to the
-	     `cycle/incoming_gpx` MethodChannel — to be added when building on macOS.
-	     Until then the Dart side safely no-ops on iOS. -->
+	<!-- Opened files (.gpx) and links (mf-V4-map://) are handled natively
+	     (IncomingGpx / IncomingMapLinks in AppDelegate.swift) and handed to Dart
+	     over MethodChannels. Flutter's own deep linking (on unless this says
+	     false) would also pass the URL to go_router, which knows no such route:
+	     "GoException: no routes for location: file:///private/var/mobile/…".
+	     Same as `flutter_deeplinking_enabled` in the Android manifest. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -120,6 +123,8 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Register Radl as an opener for .gpx files (Komoot's GPX export, Files
+	     app, Mail, "Open in"); delivered to Dart by IncomingGpx. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

@@ -29,6 +29,9 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IncomingMapLinks") {
       IncomingMapLinks.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "IncomingGpx") {
+      IncomingGpx.register(with: registrar)
+    }
 
     // Start/stop confirmation buzzes (`HapticsService` in Dart): `vibrate(n)` =
     // n distinct pulses, so start (1) / stop (2) / bike switch (3) can be told
@@ -258,8 +261,9 @@ final class IncomingMapLinks: NSObject, FlutterPlugin, FlutterSceneLifeCycleDele
   }
 
   /// Cold start from a link: the URL comes with the connection options.
-  /// Returns false so Flutter still treats the connection as unhandled and
-  /// sets up its window as usual.
+  /// Returns false: Flutter hands the options to the first plugin that claims
+  /// them and nil to the rest, so claiming them would hide an opened GPX from
+  /// IncomingGpx.
   func scene(
     _ scene: UIScene, willConnectTo session: UISceneSession,
     options connectionOptions: UIScene.ConnectionOptions?
@@ -278,6 +282,81 @@ final class IncomingMapLinks: NSObject, FlutterPlugin, FlutterSceneLifeCycleDele
     else { return false }
     pending = url.absoluteString
     return true
+  }
+}
+
+/// A `.gpx` opened in Radl from another app (Komoot's GPX export via the share
+/// sheet, Files, Mail) — the iOS half of `MainActivity.kt`'s
+/// `cycle/incoming_gpx`. The file is read as it arrives and kept until Dart
+/// collects it on resume (`consumePending` → `{name, xml}`), which then follows
+/// it or asks whether it's a past ride. Scene events, like IncomingMapLinks.
+final class IncomingGpx: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
+  private var pending: [String: String]?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let instance = IncomingGpx()
+    let channel = FlutterMethodChannel(
+      name: "cycle/incoming_gpx", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(instance, channel: channel)
+    registrar.addSceneDelegate(instance)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "consumePending" else { return result(FlutterMethodNotImplemented) }
+    result(pending)
+    pending = nil
+  }
+
+  /// Cold start from a file: it comes with the connection options. Returns
+  /// false for the same reason as IncomingMapLinks.
+  func scene(
+    _ scene: UIScene, willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    if let contexts = connectionOptions?.urlContexts { _ = capture(contexts) }
+    return false
+  }
+
+  /// A file while the app is running or in the background.
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    capture(URLContexts)
+  }
+
+  /// Only GPX (and plain XML) are registered as document types, so any file URL
+  /// is taken as one; Dart reports a file that doesn't parse. Claimed even when
+  /// unreadable, so nothing else tries to open it.
+  private func capture(_ contexts: Set<UIOpenURLContext>) -> Bool {
+    guard let url = contexts.map(\.url).first(where: \.isFileURL) else { return false }
+    // A file opened in place (Files app) lies outside the sandbox.
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    var data: Data?
+    var error: NSError?
+    NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &error) { readURL in
+      data = try? Data(contentsOf: readURL)
+    }
+    guard let data = data else {
+      NSLog("%@", "Radl: could not read opened file \(url.lastPathComponent): \(String(describing: error))")
+      return true
+    }
+    pending = [
+      "name": url.deletingPathExtension().lastPathComponent,
+      "xml": String(decoding: data, as: UTF8.self),
+    ]
+    NSLog("%@", "Radl: opened GPX \(url.lastPathComponent) (\(data.count) bytes)")
+    if Self.isInboxCopy(url) { try? FileManager.default.removeItem(at: url) }
+    return true
+  }
+
+  /// A file shared from another app arrives as a copy in Documents/Inbox, which
+  /// the Files app shows (Documents is shared) — removed once read. A file
+  /// opened in place belongs to its owner and is left alone. Paths are compared
+  /// with symlinks resolved: the URL says /private/var/…, Documents /var/….
+  private static func isInboxCopy(_ url: URL) -> Bool {
+    guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    else { return false }
+    let inbox = documents.appendingPathComponent("Inbox").resolvingSymlinksInPath().path + "/"
+    return url.resolvingSymlinksInPath().path.hasPrefix(inbox)
   }
 }
 

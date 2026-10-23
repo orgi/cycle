@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 import 'route_import_service.dart';
 
 /// Bridges a GPX the app was opened/shared with from the platform (native
-/// MethodChannel) into Dart. See `MainActivity.kt` (Android). Returns null on
-/// platforms without a native handler, so callers can use it unconditionally.
+/// MethodChannel) into Dart. See `MainActivity.kt` (Android) and `IncomingGpx`
+/// in `AppDelegate.swift` (iOS). Returns null on platforms without a native
+/// handler, so callers can use it unconditionally.
 class IncomingGpxService {
   IncomingGpxService([MethodChannel? channel])
       : _channel = channel ?? const MethodChannel('cycle/incoming_gpx');
@@ -12,7 +13,7 @@ class IncomingGpxService {
   final MethodChannel _channel;
 
   /// Returns and clears a GPX delivered via "Open with" / "Share to" Cycle, or
-  /// null when there is none (or no native handler, e.g. iOS until implemented).
+  /// null when there is none (or no native handler, e.g. in tests).
   Future<ImportedGpx?> consumePending() async {
     try {
       final result =
