@@ -77,6 +77,32 @@ void main() {
     expect(points.single.heartRate, 140);
   });
 
+  test('importBackup brings saved routes the phone does not know, but not '
+      'deleted ones back', () async {
+    final source = AppDatabase(NativeDatabase.memory());
+    Future<void> save(AppDatabase db, String id) => db.saveRoute(
+        id: id, name: 'Route $id', gpx: '<gpx id="$id"/>', distanceMeters: 5);
+    await save(source, 'new');
+    await save(source, 'deletedHere');
+    await save(source, 'deletedInBackup');
+    await source.deleteRoute('deletedInBackup');
+    final backupFile =
+        await BackupService(source, directory: () async => tmp).exportBackup();
+    await source.close();
+
+    final target = AppDatabase(NativeDatabase.memory());
+    addTearDown(target.close);
+    await save(target, 'deletedHere');
+    await target.deleteRoute('deletedHere');
+    await BackupService(target, directory: () async => tmp)
+        .importBackup(backupFile.path);
+
+    final live = await target.watchSavedRoutes().first;
+    expect(live.map((r) => r.id), ['new']);
+    expect(await target.savedRouteGpx('new'), '<gpx id="new"/>');
+    expect(live.single.name, 'Route new');
+  });
+
   test('importBackup skips rides that already exist (dedup on re-import)',
       () async {
     final start = DateTime.utc(2026, 6, 1, 8);

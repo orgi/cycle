@@ -132,6 +132,9 @@ class BackupService {
   /// in the trash, so a ride the user deleted doesn't come back from an old
   /// backup (it can be restored from "Recently deleted" instead). Returns the
   /// number of rides actually imported.
+  ///
+  /// Saved routes the phone doesn't know yet come along too (a route deleted
+  /// here stays deleted, like a ride).
   Future<int> importBackup(String path) async {
     final source = AppDatabase(NativeDatabase(File(path)));
     try {
@@ -171,6 +174,15 @@ class BackupService {
           batteryEndPercent: track.batteryEndPercent,
         );
         imported++;
+      }
+      final knownRoutes = {
+        for (final r in await _db.allSavedRoutesIncludingDeleted()) r.id,
+      };
+      for (final r in await source.allSavedRoutesIncludingDeleted()) {
+        if (r.deletedAt != null || r.gpx == null || knownRoutes.contains(r.id)) {
+          continue;
+        }
+        await _db.putSyncedRoute(r.toCompanion(true));
       }
       return imported;
     } finally {

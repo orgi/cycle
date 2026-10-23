@@ -68,9 +68,17 @@ class Phone {
 
   Future<Track> only() async => (await db.allTracks()).single;
 
+  /// Saves a route as following it does.
+  Future<void> route(String id, {String name = 'Loop'}) => db.saveRoute(
+      id: id, name: name, gpx: _routeGpx(id), distanceMeters: 1200);
+
+  Future<List<SavedRouteInfo>> routes() => db.watchSavedRoutes().first;
+
   Future<List<String>> backupNames() async =>
       (await backups.listBackups()).map((b) => b.name).toList();
 }
+
+String _routeGpx(String id) => '<gpx><trk><name>$id</name></trk></gpx>';
 
 void main() {
   late FakeWebDavServer server;
@@ -408,5 +416,105 @@ void main() {
       expect(road.sensorKeys, {'hrm-pro:123456', 'spd-77'});
     }
     expect(b.sensors['hrm-pro:123456']!.address, 'AA:BB:CC:00:00:01');
+  });
+
+  group('saved routes', () {
+    test('a saved route reaches the other phone with its GPX; an unchanged '
+        'round moves nothing', () async {
+      final a = newPhone(), b = newPhone();
+      await a.route('r1', name: 'Lake loop');
+
+      final ra = await a.sync.sync(config);
+      expect(ra.routesSent, 1);
+      expect(server.filesIn('Cycle/routes/gpx/'), ['Cycle/routes/gpx/r1.gpx.gz']);
+
+      final rb = await b.sync.sync(config);
+      expect(rb.routesReceived, 1);
+      final got = (await b.routes()).single;
+      expect(got.name, 'Lake loop');
+      expect(await b.db.savedRouteGpx('r1'), _routeGpx('r1'));
+      expect(got.distanceMeters, 1200);
+
+      server.log.clear();
+      final again = await b.sync.sync(config);
+      expect(again.routesReceived + again.routesSent, 0);
+      // Index files are small and read every round; GPX moves only when needed.
+      expect(server.log.where((l) => l.startsWith('GET') && l.contains('/routes/gpx/')),
+          isEmpty);
+      expect(server.log.where((l) => l.startsWith('PUT') || l.startsWith('DELETE')),
+          isEmpty);
+    });
+
+    test('a rename reaches the other phone; a deletion removes the route '
+        'everywhere, its GPX from the server too', () async {
+      final a = newPhone(), b = newPhone();
+      await a.route('r1');
+      await a.sync.sync(config);
+      await b.sync.sync(config);
+
+      await b.db.renameRoute('r1', 'Harbour loop');
+      await b.sync.sync(config);
+      await a.sync.sync(config);
+      expect((await a.routes()).single.name, 'Harbour loop');
+      expect(await a.db.savedRouteGpx('r1'), _routeGpx('r1')); // GPX kept
+
+      await a.db.deleteRoute('r1');
+      await a.sync.sync(config);
+      expect(server.filesIn('Cycle/routes/gpx/'), isEmpty);
+      await b.sync.sync(config);
+      expect(await b.routes(), isEmpty);
+      expect((await b.backupNames()).any((n) => n.startsWith('cycle_backup_auto_')),
+          isTrue); // a safety backup before the GPX went
+      final marker = (await b.db.savedRoute('r1'))!;
+      expect(marker.deletedAt, isNotNull);
+      expect(marker.gpx, isNull);
+    });
+
+    test('importing a route again after another phone deleted it brings it '
+        'back everywhere', () async {
+      final a = newPhone(), b = newPhone();
+      await a.route('r1');
+      await a.sync.sync(config);
+      await b.sync.sync(config);
+
+      await a.db.deleteRoute('r1');
+      await a.sync.sync(config); // GPX gone from the server
+      await b.route('r1'); // later, before b has heard of the deletion
+      final rb = await b.sync.sync(config);
+      expect(rb.routesSent, 1); // b puts the GPX back
+      await a.sync.sync(config);
+
+      for (final p in [a, b]) {
+        expect(await p.routes(), hasLength(1));
+        expect(await p.db.savedRouteGpx('r1'), _routeGpx('r1'));
+      }
+    });
+
+    test('the same route imported on two phones ends up once', () async {
+      final a = newPhone(), b = newPhone();
+      await a.route('r1', name: 'From Komoot');
+      await b.route('r1', name: 'Shared by a friend');
+      for (final p in [a, b, a]) {
+        await p.sync.sync(config);
+      }
+      final names = {for (final p in [a, b]) (await p.routes()).single.name};
+      expect(names, hasLength(1));
+      expect(server.filesIn('Cycle/routes/gpx/'), hasLength(1));
+    });
+
+    test('a route whose GPX is not on the server yet arrives in a later round',
+        () async {
+      final a = newPhone(), b = newPhone();
+      await a.route('r1');
+      await a.sync.sync(config);
+      server.files.remove('Cycle/routes/gpx/r1.gpx.gz'); // e.g. upload lost
+
+      await b.sync.sync(config);
+      expect(await b.routes(), isEmpty); // listed, but nothing to follow yet
+      await a.sync.sync(config); // a notices and uploads it again
+      await b.sync.sync(config);
+      expect(await b.routes(), hasLength(1));
+      expect(await b.db.savedRouteGpx('r1'), _routeGpx('r1'));
+    });
   });
 }

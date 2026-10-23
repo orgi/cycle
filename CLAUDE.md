@@ -423,6 +423,19 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     `sensorIds` (sensor ids differ per phone — see sensor sync above) or the active profile. A
     fresh install's untouched "Bike 1" is dropped on its first sync if the server already has
     profiles and no local ride uses it.
+  * **Saved routes** (`lib/core/sync/route_sync.dart`, `SyncService._syncRoutes`, run *after*
+    the rides so a route problem never holds them up): `routes/index/<deviceId>.json` per
+    device (a `RoutesIndex`:
+    name + `nameClock`, deleted + `deletedClock`, earliest `importedAt`), read every round
+    and merged like the profiles (commutative/associative, a deletion wins a clock tie); each
+    live route's GPX once at `routes/gpx/<id>.gpx.gz`. A live route a phone lacks is
+    downloaded (if nobody uploaded it yet, a later round gets it), one the server lacks is
+    uploaded — which also repairs a delete that raced with a re-import — and a deleted
+    route's GPX file is removed (a deletion from another phone takes the daily `auto` safety
+    backup first, since the GPX goes here too). `SyncResult.routesReceived/routesSent` count
+    GPX transfers. List and sync read `SavedRouteInfo` (no GPX column — they're often several
+    hundred KB each); the GPX is loaded by id only to follow or upload one.
+    Backup import also adds saved routes the phone doesn't know (never revives a deleted one).
   * Tests: `test/support/fake_webdav_server.dart` (real sockets, ETag/If-Match) drives
     multi-phone convergence (`sync_service_test.dart`), widget tests and the emulator GUI test
     (`integration_test/sync_test.dart`). Widget tests must set `HttpOverrides.global = null` —
@@ -436,6 +449,23 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
   `routes/` folder (Android external files dir / iOS documents) and pick from an in-app list;
   a bundled `assets/routes/monaco_loop.gpx` is the "Follow demo route". We deliberately do
   **not** use `file_picker` — see Known gotchas.
+  * **Saved routes** (0.6.0, schema v6, `SavedRoutes` table): every route the rider follows
+    from a file (routes folder, or opened/shared from Komoot etc.) is kept with its raw GPX
+    (`FollowRouteController.followAndSave`); the demo route isn't. `/routes`
+    (`SavedRoutesScreen`, "Saved routes…" in the follow menu): tap = follow under the saved
+    name (`followSaved`), Rename, Delete (Undo snackbar = `saveRoute` again), Delete all.
+    **Id = `FollowRoute.fingerprint`**, a SHA-256 of the parsed points rounded to
+    microdegrees, so the same tour exported twice (other name/timestamps) or imported on two
+    phones is one route; re-importing keeps the stored name (it may have been renamed).
+    Delete keeps a GPX-less marker row (like a purged ride) so sync can spread it.
+    **`saveRoute` stamps `deletedClock` on every import**, not just on delete: the newest of
+    "deleted" and "imported again" wins across phones.
+  * **The followed route survives a restart** (0.7.0): every change goes through
+    `FollowRouteController._set` and is remembered in `SyncMeta` (`followed_route` = saved
+    route id or `demo`; local, not synced; cleared by "Stop following"); `main()` calls
+    `restore()` once after `runApp`. Restore applies only if nothing was followed meanwhile
+    (`_changes` counter) — on a cold start from Komoot the opened GPX must win over the
+    restored one. A route deleted since (here or via sync) isn't restored and is forgotten.
 * **Keep-awake:** `wakelock_plus` — note this is `FLAG_KEEP_SCREEN_ON` on the activity
   window, NOT a `PowerManager` wakelock, so it is inert while the app is backgrounded and
   dies with the process; there is nothing to "leak" and no battery to save by releasing it

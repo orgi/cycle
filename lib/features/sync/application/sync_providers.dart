@@ -244,6 +244,10 @@ class SyncController extends Notifier<SyncStatus> {
     final parts = [
       if (r.downloaded > 0) '${r.downloaded} received',
       if (r.uploaded > 0) '${r.uploaded} sent',
+      if (r.routesReceived > 0)
+        '${r.routesReceived} route${r.routesReceived == 1 ? '' : 's'} received',
+      if (r.routesSent > 0)
+        '${r.routesSent} route${r.routesSent == 1 ? '' : 's'} sent',
     ];
     return parts.isEmpty ? 'Up to date' : parts.join(', ');
   }

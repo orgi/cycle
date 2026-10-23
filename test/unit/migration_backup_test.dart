@@ -45,7 +45,8 @@ void main() {
     final backup = await backupBeforeMigration(dbFile, AppDatabase.kSchemaVersion,
         backupsDir: () async => backups);
     expect(backup, isNotNull);
-    expect(backup!.path, contains('cycle_backup_pre_v5_'));
+    expect(backup!.path,
+        contains('cycle_backup_pre_v${AppDatabase.kSchemaVersion}_'));
 
     // The snapshot is the untouched v4 DB with the ride.
     final snap = sqlite3.open(backup.path);
@@ -59,6 +60,7 @@ void main() {
     expect(rides.single.name, 'Old ride');
     expect(rides.single.deletedAt, isNull);
     expect(await db.pointsFor(rides.single.id), hasLength(1));
+    expect(await db.allSavedRoutesIncludingDeleted(), isEmpty); // v6 table
     await db.close();
 
     // Up to date now: no second snapshot.
@@ -83,6 +85,7 @@ void main() {
     var db = AppDatabase(NativeDatabase(dbFile));
     final id = (await db.allTracks()).single.id;
     await db.renameTrack(id, 'Renamed under v5');
+    await db.saveRoute(id: 'r1', name: 'Loop', gpx: '<gpx/>', distanceMeters: 1);
     await db.close();
     // … then an older (v4) build opens it: drift resets user_version to 4
     // while the v5 columns and tables stay.
@@ -96,9 +99,11 @@ void main() {
     expect(t.nameClock, isNotNull);
     expect(await db.pointsFor(t.id), hasLength(1));
     expect(await db.deviceId(), isNotEmpty); // SyncMeta table usable
+    expect((await db.savedRoute('r1'))!.name, 'Loop'); // v6 table kept
     await db.close();
     final check = sqlite3.open(dbFile.path);
-    expect(check.select('PRAGMA user_version').first.values.first, 5);
+    expect(check.select('PRAGMA user_version').first.values.first,
+        AppDatabase.kSchemaVersion);
     check.close();
   });
 }

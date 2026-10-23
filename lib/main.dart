@@ -8,6 +8,7 @@ import 'app.dart';
 import 'core/services/removed_logins.dart';
 import 'features/dashboard/application/ride_providers.dart';
 import 'features/map/application/map_providers.dart';
+import 'features/routing/application/follow_route_providers.dart';
 import 'features/sensors/application/sensor_power_gate.dart';
 import 'features/sync/application/sync_providers.dart';
 
@@ -37,6 +38,9 @@ void main() {
       child: const CycleApp(),
     ),
   );
+
+  // Follow again the route that was followed when the app last ran.
+  unawaited(container.read(followRouteProvider.notifier).restore());
 
   // Ride sync + trash/backup housekeeping. After runApp and self-delayed
   // (SyncController.startupDelay), so it never competes with GPS/map startup.

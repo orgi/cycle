@@ -300,7 +300,8 @@ class _SyncSettingsScreenState extends ConsumerState<SyncSettingsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Rides, edits, deletions and bike names sync through a folder '
+            'Rides, edits, deletions, bike names and saved routes sync '
+            'through a folder '
             '"Cycle" (the app\'s former name) on your own server whenever it '
             'can be reached — on app start, when the phone joins a network, '
             'after a ride and on demand. Never during a ride. Works with '

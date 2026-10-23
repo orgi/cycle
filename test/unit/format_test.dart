@@ -2,6 +2,10 @@ import 'package:cycle/core/utils/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('formatDate is the date part of formatDateTime', () {
+    expect(formatDate(DateTime(2026, 3, 7, 9, 5)), '2026-03-07');
+  });
+
   test('formatSpeedKmh keeps two decimals', () {
     expect(formatSpeedKmh(25.348), '25.35');
     expect(formatSpeedKmh(0), '0.00');

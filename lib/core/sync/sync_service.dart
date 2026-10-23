@@ -8,6 +8,7 @@ import '../services/sync/sync_store.dart';
 import 'local_ride_store.dart';
 import 'profile_sync.dart';
 import 'ride_doc.dart';
+import 'route_sync.dart';
 import 'webdav_client.dart';
 
 /// None of the configured addresses answered — the normal state while out of
@@ -26,12 +27,18 @@ class SyncResult {
     required this.downloaded,
     required this.uploaded,
     required this.pruned,
+    this.routesReceived = 0,
+    this.routesSent = 0,
   });
 
   final String address;
   final int downloaded;
   final int uploaded;
   final int pruned;
+
+  /// Saved routes whose GPX came from / went to the server this round.
+  final int routesReceived;
+  final int routesSent;
 }
 
 /// Progress of a running round: [done] of [total] rides in the current [phase].
@@ -50,6 +57,9 @@ typedef WebDavClientFactory = WebDavClient Function(Uri baseUrl, SyncConfig conf
 /// files, so there's no shared index two phones could race on:
 ///   * `rides/<startSec>~<deviceId>.json.gz` — a [RideDoc] (gzipped JSON).
 ///   * `profiles/<deviceId>.json` — that device's merged bike profiles.
+///   * `routes/index/<deviceId>.json` — that device's merged saved-route list
+///     ([RoutesIndex]: names, deletions), and `routes/gpx/<id>.gpx.gz` — each
+///     live route's GPX, stored once (the id is a fingerprint of its geometry).
 ///
 /// A round: list `rides/` → download only files whose ETag changed since
 /// last time → merge each into the local DB part by part ([RideDoc.merge]) →
@@ -82,6 +92,9 @@ class SyncService {
   static const root = 'Cycle';
   static const _ridesDir = '$root/rides';
   static const _profilesDir = '$root/profiles';
+  static const _routeIndexDir = '$root/routes/index';
+  static const _routeGpxDir = '$root/routes/gpx';
+  static const _routeGpxSuffix = '.gpx.gz';
   static const _ridesSuffix = '.json.gz';
   static const _firstSyncMeta = 'first_sync_backup_done';
 
@@ -250,8 +263,16 @@ class SyncService {
     }
     progress(SyncProgress('Uploading', local.length, local.length));
 
+    // Routes last: a problem with them never holds up the rides.
+    final (routesReceived, routesSent) = await _syncRoutes(client, deviceId);
+
     return SyncResult(
-        address: address, downloaded: downloaded, uploaded: uploaded, pruned: pruned);
+        address: address,
+        downloaded: downloaded,
+        uploaded: uploaded,
+        pruned: pruned,
+        routesReceived: routesReceived,
+        routesSent: routesSent);
   }
 
   /// Lists [dir], creating it (and its parents) on first use — so a normal
@@ -345,5 +366,84 @@ class SyncService {
           contentType: 'application/json');
     }
     return merged.aliases;
+  }
+
+  /// Syncs the saved routes; returns (GPX files received, sent).
+  ///
+  /// The lists merge like the bike profiles: every device's index file is
+  /// read, merged with the local rows, written back to the DB, and this
+  /// device's file is replaced when its content changed. GPX files follow
+  /// the merged state: a live route this phone lacks is downloaded (if no
+  /// phone has uploaded it yet, it arrives in a later round), a live route
+  /// the server lacks is uploaded, and a deleted route's file is removed.
+  /// Uploading whatever is missing also repairs a delete that raced with an
+  /// import on another phone.
+  Future<(int, int)> _syncRoutes(WebDavClient client, String deviceId) async {
+    final ownName = '$deviceId.json';
+    final remote = <String, RoutesIndex>{};
+    for (final e in await _listOrCreate(client, _routeIndexDir)) {
+      if (e.isCollection || !e.name.endsWith('.json')) continue;
+      try {
+        remote[e.name] = RoutesIndex.decode(await client.get('$_routeIndexDir/${e.name}'));
+      } on FormatException {
+        continue;
+      }
+    }
+    final rows = {for (final r in await _db.savedRouteInfos()) r.id: r};
+    var merged = RoutesIndex.ofRows(rows.values);
+    for (final e in remote.entries) {
+      if (e.key != ownName) merged = RoutesIndex.merge(merged, e.value);
+    }
+
+    final onServer = {
+      for (final e in await _listOrCreate(client, _routeGpxDir))
+        if (!e.isCollection) e.name,
+    };
+    var received = 0, sent = 0;
+    var backedUp = false;
+    for (final entry in merged.routes.values) {
+      final row = rows[entry.id];
+      final file = '${entry.id}$_routeGpxSuffix';
+      final changed = row == null || RouteEntry.ofRow(row).signature != entry.signature;
+      if (entry.isDeleted) {
+        if (row != null && row.hasGpx && !backedUp) {
+          // Deleted on another phone: its GPX goes here too.
+          await backups.autoBackupOncePerDay();
+          backedUp = true;
+        }
+        if (row == null || changed || row.hasGpx) {
+          await _db.putSyncedRoute(entry.toRow());
+        }
+        if (onServer.contains(file)) await client.delete('$_routeGpxDir/$file');
+        continue;
+      }
+      if (row == null || !row.hasGpx) {
+        if (!onServer.contains(file)) continue;
+        final String gpx;
+        try {
+          gpx = decodeRouteGpx(await client.get('$_routeGpxDir/$file'));
+        } on FormatException {
+          continue;
+        }
+        await _db.putSyncedRoute(entry.toRow(gpx));
+        received++;
+        continue;
+      }
+      if (!onServer.contains(file)) {
+        final gpx = await _db.savedRouteGpx(entry.id);
+        if (gpx != null) {
+          await client.put('$_routeGpxDir/$file', encodeRouteGpx(gpx),
+              contentType: 'application/gzip');
+          sent++;
+        }
+      }
+      if (changed) await _db.putSyncedRoute(entry.toRow());
+    }
+
+    if (remote[ownName]?.signature != merged.signature) {
+      await client.put('$_routeIndexDir/$ownName', merged.encode(),
+          contentType: 'application/json');
+    }
+    return (received, sent);
   }
 }

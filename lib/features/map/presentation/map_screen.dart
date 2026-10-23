@@ -168,10 +168,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (!mounted) return;
 
     if (!route.isTimed) {
-      ref.read(followRouteProvider.notifier).follow(route);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Following ${route.name}')));
+      await _followIncoming(route, incoming.xml);
       return;
     }
 
@@ -202,10 +199,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (!mounted || choice == null || choice == _GpxChoice.cancel) return;
 
     if (choice == _GpxChoice.follow) {
-      ref.read(followRouteProvider.notifier).follow(route);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Following ${route.name}')));
+      await _followIncoming(route, incoming.xml);
       return;
     }
 
@@ -227,6 +221,18 @@ class _MapScreenState extends ConsumerState<MapScreen>
       );
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  /// Follows an opened GPX and keeps it in the saved routes.
+  Future<void> _followIncoming(FollowRoute route, String xml) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(followRouteProvider.notifier).followAndSave(route, xml);
+      messenger.showSnackBar(SnackBar(content: Text('Following ${route.name}')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text('Following ${route.name}, but it could not be saved: $e')));
     }
   }
 
@@ -1200,6 +1206,11 @@ class _FollowRouteMenu extends ConsumerWidget {
       onSelected: (value) => _onSelected(context, ref, value),
       itemBuilder: (context) => [
         const PopupMenuItem(
+          key: Key('followSavedItem'),
+          value: 'saved',
+          child: _MenuRow(icon: Icons.bookmarks_outlined, label: 'Saved routes…'),
+        ),
+        const PopupMenuItem(
           key: Key('followImportItem'),
           value: 'import',
           child: _MenuRow(icon: Icons.file_open_outlined, label: 'Import GPX…'),
@@ -1231,6 +1242,8 @@ class _FollowRouteMenu extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     try {
       switch (value) {
+        case 'saved':
+          await context.push('/routes');
         case 'demo':
           await controller.loadDemo();
         case 'import':
