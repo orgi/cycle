@@ -8,6 +8,14 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-23
+
+### Fixed
+- iPhone: opening a GPX file in Radl from another app (e.g. Komoot's GPX export, or the
+  Files app) showed "GoException: no routes for location: file:///…" and the file was not
+  loaded. It now opens as on Android: a planned route is followed right away, and a GPX
+  with recorded times asks whether to follow it or add it to your rides.
+
 ## [0.5.4] - 2026-10-19
 
 ### Fixed
@@ -577,7 +585,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/orgi/cycle/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/orgi/cycle/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/orgi/cycle/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/orgi/cycle/compare/v0.5.1...v0.5.2

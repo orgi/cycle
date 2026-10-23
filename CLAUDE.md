@@ -642,8 +642,11 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `NoopRecordingForegroundService` remains for tests/platforms without it.
 * **M5 — Follow track (GPX):** done. Import a GPX (folder-based, see tech stack), load the
   bundled demo route, or **open/share a `.gpx` into the app** (Android intent-filters +
-  native `MainActivity` `cycle/incoming_gpx` MethodChannel → `IncomingGpxService`; iOS
-  document types registered, delivery handler is a macOS-time TODO). Slim dashed-blue route
+  native `MainActivity` `cycle/incoming_gpx` MethodChannel → `IncomingGpxService`; iOS:
+  GPX document type + `IncomingGpx` in `AppDelegate.swift`, a scene-lifecycle plugin like
+  `IncomingMapLinks` that reads the file as it arrives — security-scoped for Files-app
+  open-in-place, and deletes iOS's `Documents/Inbox` copy, since Documents is visible in
+  Files; unverified on the iPhone until tried there). Slim dashed-blue route
   overlay + nav banner (name · remaining km · OFF-ROUTE · ghost ±delta).
   `FollowRoute`/`parseGpxRoute`/`RouteNavigator`/`GhostRider` all unit-tested; follow-route
   GUI test on the emulator; build + follow + ghost + open-intent verified via `tool/demo`.
@@ -1076,7 +1079,14 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   opening a `.gpx` made go_router try to route the `file://…gpx` intent URI → "Page Not Found".
   We set `flutter_deeplinking_enabled=false` in the manifest and handle opened/shared GPX via
   the `cycle/incoming_gpx` MethodChannel instead. Re-enable deep linking only if you add real
-  URL routes (and then exclude the file/content intents).
+  URL routes (and then exclude the file/content intents). **iOS needs the same switch:**
+  `FlutterDeepLinkingEnabled` = false in `Info.plist` (missing until 0.5.5 → opening a GPX
+  from Komoot showed "GoException: no routes for location: file:///private/var/mobile/…").
+  Flutter's scene code (`FlutterSceneLifeCycle.mm`) deep-links every URL that no plugin
+  claims in `openURLContexts`, and on a **cold start** it deep-links the connection options'
+  URLs unless a plugin returns true from `willConnectTo`, which our plugins don't: only the
+  first plugin that does gets the options, and the rest get nil. So the plist flag is what
+  stops it on a cold start. `test/unit/deep_linking_disabled_test.dart` guards both flags.
 
 ## Versioning
 
