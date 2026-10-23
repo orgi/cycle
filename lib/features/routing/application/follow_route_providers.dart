@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/database.dart';
@@ -29,15 +32,62 @@ final savedRoutesProvider = StreamProvider<List<SavedRouteInfo>>(
 );
 
 /// The route currently being followed, or null. Set by importing a GPX file,
-/// picking a saved route or loading the bundled demo route.
+/// picking a saved route or loading the bundled demo route — and restored
+/// after a restart ([FollowRouteController.restore]).
 final followRouteProvider =
     NotifierProvider<FollowRouteController, FollowRoute?>(
       FollowRouteController.new,
     );
 
 class FollowRouteController extends Notifier<FollowRoute?> {
+  /// What is followed, for [restore]: a saved route's id or [_demoMemo]
+  /// (local to this phone, in the DB's key/value table).
+  static const _memoKey = 'followed_route';
+  static const _demoMemo = 'demo';
+
+  /// Bumped on every change, so a late [restore] never overrides a route
+  /// picked meanwhile.
+  int _changes = 0;
+
   @override
   FollowRoute? build() => null;
+
+  void _set(FollowRoute? route) {
+    _changes++;
+    state = route;
+  }
+
+  Future<void> _remember(String? memo) async {
+    try {
+      final db = ref.read(appDatabaseProvider);
+      if (memo == null) {
+        await db.clearMeta(_memoKey);
+      } else {
+        await db.setMeta(_memoKey, memo);
+      }
+    } on Object catch (e) {
+      debugPrint('Could not remember the followed route: $e');
+    }
+  }
+
+  /// Follows again what was followed when the app last ran — called once at
+  /// launch from `main()`. Skipped if a route was picked meanwhile (e.g. the
+  /// GPX the app was just opened with); a saved route deleted since, here or
+  /// on another phone, isn't followed again.
+  Future<void> restore() async {
+    final changes = _changes;
+    try {
+      final memo = await ref.read(appDatabaseProvider).meta(_memoKey);
+      if (memo == null) return;
+      final route =
+          memo == _demoMemo ? await _demoRoute() : await _savedRoute(memo);
+      if (_changes != changes) return;
+      if (route == null) return _remember(null);
+      _set(route);
+    } on Object catch (e) {
+      debugPrint('Could not restore the followed route: $e');
+    }
+  }
 
   /// `.gpx` files available to import from the routes folder.
   Future<List<RouteFile>> importableRoutes() =>
@@ -59,25 +109,31 @@ class FollowRouteController extends Notifier<FollowRoute?> {
   /// it can be followed again later — after a restart too, and on the other
   /// phones once synced.
   Future<void> followAndSave(FollowRoute route, String xml) async {
-    state = route;
+    _set(route);
     await ref.read(appDatabaseProvider).saveRoute(
           id: route.fingerprint,
           name: route.name,
           gpx: xml,
           distanceMeters: route.totalMeters,
         );
+    await _remember(route.fingerprint);
   }
 
   /// Follows a saved route, under its saved (possibly renamed) name. Throws
   /// [FormatException] if it's gone or its GPX doesn't parse.
   Future<void> followSaved(String id) async {
+    final route = await _savedRoute(id);
+    if (route == null) throw const FormatException('the route was deleted');
+    _set(route);
+    await _remember(id);
+  }
+
+  Future<FollowRoute?> _savedRoute(String id) async {
     final saved = await ref.read(appDatabaseProvider).savedRoute(id);
     final gpx = saved?.gpx;
-    if (saved == null || gpx == null) {
-      throw const FormatException('the route was deleted');
-    }
+    if (saved == null || gpx == null) return null;
     final parsed = parseGpxRoute(gpx, fallbackName: saved.name);
-    state = FollowRoute(name: saved.name, points: parsed.points);
+    return FollowRoute(name: saved.name, points: parsed.points);
   }
 
   /// A saved route was renamed: show the new name if it's the one followed.
@@ -90,10 +146,15 @@ class FollowRouteController extends Notifier<FollowRoute?> {
 
   /// Follows the bundled demo route.
   Future<void> loadDemo() async {
+    _set(await _demoRoute());
+    await _remember(_demoMemo);
+  }
+
+  Future<FollowRoute> _demoRoute() async {
     final imported = await ref
         .read(routeImportServiceProvider)
         .loadAsset(kDemoRouteAsset, name: 'Monaco loop');
-    state = parseGpxRoute(imported.xml, fallbackName: imported.name);
+    return parseGpxRoute(imported.xml, fallbackName: imported.name);
   }
 
   /// Follows (and saves) a GPX delivered via "Open with" / "Share to" Cycle,
@@ -109,8 +170,11 @@ class FollowRouteController extends Notifier<FollowRoute?> {
     return state?.name;
   }
 
-  /// Stops following.
-  void clear() => state = null;
+  /// Stops following (also after a restart).
+  void clear() {
+    _set(null);
+    unawaited(_remember(null));
+  }
 }
 
 /// Live navigation progress against the followed route — nearest point,

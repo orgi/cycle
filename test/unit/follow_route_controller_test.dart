@@ -30,6 +30,23 @@ const _sameLoopRenamed = '''<?xml version="1.0"?>
   </trkseg></trk>
 </gpx>''';
 
+const _otherGpx = '''<?xml version="1.0"?>
+<gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Other</name><trkseg>
+    <trkpt lat="43.7380" lon="7.4300"></trkpt>
+    <trkpt lat="43.7390" lon="7.4300"></trkpt>
+  </trkseg></trk>
+</gpx>''';
+
+/// No `<name>`, so it's called by the demo's fallback name.
+const _demoGpx = '''<?xml version="1.0"?>
+<gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="43.7300" lon="7.4100"></trkpt>
+    <trkpt lat="43.7310" lon="7.4100"></trkpt>
+  </trkseg></trk>
+</gpx>''';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -166,6 +183,7 @@ void main() {
       overrides: [
         routeImportServiceProvider.overrideWithValue(import),
         locationServiceProvider.overrideWithValue(location),
+        appDatabaseProvider.overrideWithValue(db),
       ],
     );
     addTearDown(container.dispose);
@@ -191,5 +209,98 @@ void main() {
     expect(progress, isNotNull);
     expect(progress!.offRoute, isFalse);
     expect(progress.remainingMeters, greaterThan(0));
+  });
+
+  group('after a restart', () {
+    /// A fresh app on the same database, as after closing it or a reboot.
+    ProviderContainer app([FakeRouteImportService? import]) {
+      final c = ProviderContainer(overrides: [
+        routeImportServiceProvider.overrideWithValue(import ??
+            FakeRouteImportService(
+                filesXml: {'a': _validGpx, 'b': _otherGpx}, assetXml: _demoGpx)),
+        appDatabaseProvider.overrideWithValue(db),
+      ]);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    Future<void> followFile(ProviderContainer c, String name) async {
+      final n = c.read(followRouteProvider.notifier);
+      await n.followFile(
+          (await n.importableRoutes()).firstWhere((f) => f.name == name));
+    }
+
+    test('the route followed last is followed again, under its saved name',
+        () async {
+      final before = app();
+      await followFile(before, 'a');
+      final id = before.read(followRouteProvider)!.fingerprint;
+      await db.renameRoute(id, 'Harbour loop');
+
+      final after = app();
+      expect(after.read(followRouteProvider), isNull);
+      await after.read(followRouteProvider.notifier).restore();
+      final route = after.read(followRouteProvider)!;
+      expect(route.fingerprint, id);
+      expect(route.name, 'Harbour loop');
+    });
+
+    test('so is a route picked from the saved routes, and the demo route',
+        () async {
+      final first = app();
+      await followFile(first, 'a');
+      await followFile(first, 'b');
+      final a = (await db.allSavedRoutesIncludingDeleted())
+          .firstWhere((r) => r.name == 'Loop');
+      await first.read(followRouteProvider.notifier).followSaved(a.id);
+
+      final second = app();
+      await second.read(followRouteProvider.notifier).restore();
+      expect(second.read(followRouteProvider)!.fingerprint, a.id);
+
+      await second.read(followRouteProvider.notifier).loadDemo();
+      final third = app();
+      await third.read(followRouteProvider.notifier).restore();
+      expect(third.read(followRouteProvider)!.name, 'Monaco loop');
+    });
+
+    test('nothing after "Stop following"', () async {
+      final before = app();
+      await followFile(before, 'a');
+      before.read(followRouteProvider.notifier).clear();
+      expect(await db.meta('followed_route'), isNull); // waits for the write
+
+      final after = app();
+      await after.read(followRouteProvider.notifier).restore();
+      expect(after.read(followRouteProvider), isNull);
+    });
+
+    test('not a route deleted meanwhile (here or synced from another phone)',
+        () async {
+      final before = app();
+      await followFile(before, 'a');
+      await db.deleteRoute(before.read(followRouteProvider)!.fingerprint);
+
+      final after = app();
+      await after.read(followRouteProvider.notifier).restore();
+      expect(after.read(followRouteProvider), isNull);
+      expect(await db.meta('followed_route'), isNull); // forgotten
+    });
+
+    test('a route picked while restoring wins (e.g. the GPX the app was '
+        'opened with)', () async {
+      final before = app();
+      await followFile(before, 'a');
+
+      final after = app();
+      final restoring = after.read(followRouteProvider.notifier).restore();
+      await followFile(after, 'b');
+      await restoring;
+      expect(after.read(followRouteProvider)!.name, 'Other');
+
+      final third = app();
+      await third.read(followRouteProvider.notifier).restore();
+      expect(third.read(followRouteProvider)!.name, 'Other');
+    });
   });
 }

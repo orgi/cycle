@@ -253,6 +253,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setMeta(String key, String value) => into(syncMeta)
       .insertOnConflictUpdate(SyncMetaCompanion.insert(key: key, value: value));
 
+  Future<void> clearMeta(String key) =>
+      (delete(syncMeta)..where((m) => m.key.equals(key))).go();
+
   Future<int> createTrack(DateTime startedAt,
       {String name = 'Ride',
       int? batteryStartPercent,

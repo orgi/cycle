@@ -115,7 +115,7 @@ void main() {
   });
 
   testWidgets('an imported route is kept: follow it again from Saved routes, '
-      'then delete it', (tester) async {
+      'it is followed again after a restart, then delete it', (tester) async {
     final location = FakeLocationService();
     addTearDown(location.dispose);
     final import = FakeRouteImportService(filesXml: {'harbour': _harbourGpx});
@@ -167,7 +167,33 @@ void main() {
     expect(find.byKey(const Key('routeBanner')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // Delete it from Saved routes (also leaves the emulator's DB clean).
+    // "Restart": a fresh app on the same database follows it again, the way
+    // main() restores it at launch.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          locationServiceProvider.overrideWithValue(location),
+          routeImportServiceProvider.overrideWithValue(import),
+        ],
+        child: const CycleApp(),
+      ),
+    );
+    appRouter.go('/');
+    await tester.pumpAndSettle();
+    final container =
+        ProviderScope.containerOf(tester.element(find.byType(CycleApp)));
+    expect(find.byKey(const Key('routeBanner')), findsNothing);
+    await container.read(followRouteProvider.notifier).restore();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const Key('routeBanner')), findsOneWidget);
+    expect(find.text('Harbour test route'), findsOneWidget);
+
+    // Stop following and delete it (also leaves the emulator's DB clean).
+    await menu('followClearItem');
     await menu('followSavedItem');
     await tester.tap(find.byKey(Key('savedRouteMenu_$id')));
     await tester.pumpAndSettle();

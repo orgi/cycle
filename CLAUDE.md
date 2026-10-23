@@ -459,8 +459,13 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     phones is one route; re-importing keeps the stored name (it may have been renamed).
     Delete keeps a GPX-less marker row (like a purged ride) so sync can spread it.
     **`saveRoute` stamps `deletedClock` on every import**, not just on delete: the newest of
-    "deleted" and "imported again" wins across phones. The *followed* route itself is still
-    in memory only (not restored after a restart); pick it again from Saved routes.
+    "deleted" and "imported again" wins across phones.
+  * **The followed route survives a restart** (0.7.0): every change goes through
+    `FollowRouteController._set` and is remembered in `SyncMeta` (`followed_route` = saved
+    route id or `demo`; local, not synced; cleared by "Stop following"); `main()` calls
+    `restore()` once after `runApp`. Restore applies only if nothing was followed meanwhile
+    (`_changes` counter) — on a cold start from Komoot the opened GPX must win over the
+    restored one. A route deleted since (here or via sync) isn't restored and is forgotten.
 * **Keep-awake:** `wakelock_plus` — note this is `FLAG_KEEP_SCREEN_ON` on the activity
   window, NOT a `PowerManager` wakelock, so it is inert while the app is backgrounded and
   dies with the process; there is nothing to "leak" and no battery to save by releasing it
