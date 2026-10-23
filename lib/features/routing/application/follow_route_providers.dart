@@ -82,7 +82,10 @@ class FollowRouteController extends Notifier<FollowRoute?> {
       final route =
           memo == _demoMemo ? await _demoRoute() : await _savedRoute(memo);
       if (_changes != changes) return;
-      if (route == null) return _remember(null);
+      if (route == null) {
+        await _remember(null);
+        return;
+      }
       _set(route);
     } on Object catch (e) {
       debugPrint('Could not restore the followed route: $e');

@@ -8,6 +8,12 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-23
+
+### Fixed
+- No change you'd notice: fixes a code-check failure that stopped the 0.7.0 build, so 0.7.0
+  was never installed. 0.7.1 is 0.7.0's route restore with that fix.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
@@ -604,7 +610,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/orgi/cycle/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/orgi/cycle/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/orgi/cycle/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/orgi/cycle/compare/v0.5.4...v0.5.5
