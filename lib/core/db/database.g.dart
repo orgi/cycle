@@ -2123,6 +2123,536 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaData> {
   }
 }
 
+class $SavedRoutesTable extends SavedRoutes
+    with TableInfo<$SavedRoutesTable, SavedRoute> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SavedRoutesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameClockMeta = const VerificationMeta(
+    'nameClock',
+  );
+  @override
+  late final GeneratedColumn<String> nameClock = GeneratedColumn<String>(
+    'name_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gpxMeta = const VerificationMeta('gpx');
+  @override
+  late final GeneratedColumn<String> gpx = GeneratedColumn<String>(
+    'gpx',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _distanceMetersMeta = const VerificationMeta(
+    'distanceMeters',
+  );
+  @override
+  late final GeneratedColumn<double> distanceMeters = GeneratedColumn<double>(
+    'distance_meters',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _importedAtMeta = const VerificationMeta(
+    'importedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> importedAt = GeneratedColumn<DateTime>(
+    'imported_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _deletedClockMeta = const VerificationMeta(
+    'deletedClock',
+  );
+  @override
+  late final GeneratedColumn<String> deletedClock = GeneratedColumn<String>(
+    'deleted_clock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    nameClock,
+    gpx,
+    distanceMeters,
+    importedAt,
+    deletedAt,
+    deletedClock,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'saved_routes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SavedRoute> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('name_clock')) {
+      context.handle(
+        _nameClockMeta,
+        nameClock.isAcceptableOrUnknown(data['name_clock']!, _nameClockMeta),
+      );
+    }
+    if (data.containsKey('gpx')) {
+      context.handle(
+        _gpxMeta,
+        gpx.isAcceptableOrUnknown(data['gpx']!, _gpxMeta),
+      );
+    }
+    if (data.containsKey('distance_meters')) {
+      context.handle(
+        _distanceMetersMeta,
+        distanceMeters.isAcceptableOrUnknown(
+          data['distance_meters']!,
+          _distanceMetersMeta,
+        ),
+      );
+    }
+    if (data.containsKey('imported_at')) {
+      context.handle(
+        _importedAtMeta,
+        importedAt.isAcceptableOrUnknown(data['imported_at']!, _importedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_importedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('deleted_clock')) {
+      context.handle(
+        _deletedClockMeta,
+        deletedClock.isAcceptableOrUnknown(
+          data['deleted_clock']!,
+          _deletedClockMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SavedRoute map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SavedRoute(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      nameClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name_clock'],
+      ),
+      gpx: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gpx'],
+      ),
+      distanceMeters: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}distance_meters'],
+      )!,
+      importedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}imported_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      deletedClock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deleted_clock'],
+      ),
+    );
+  }
+
+  @override
+  $SavedRoutesTable createAlias(String alias) {
+    return $SavedRoutesTable(attachedDatabase, alias);
+  }
+}
+
+class SavedRoute extends DataClass implements Insertable<SavedRoute> {
+  /// `FollowRoute.fingerprint` — a hash of the route's geometry, so the same
+  /// route imported twice, or on two phones, is one route.
+  final String id;
+  final String name;
+  final String? nameClock;
+
+  /// The GPX as imported; null once the route is deleted (the row stays as a
+  /// marker so sync knows, like a purged ride).
+  final String? gpx;
+  final double distanceMeters;
+
+  /// First import on any phone (sync keeps the earliest).
+  final DateTime importedAt;
+  final DateTime? deletedAt;
+
+  /// Stamped on delete *and* on every import, so a newer import brings back a
+  /// route another phone deleted earlier.
+  final String? deletedClock;
+  const SavedRoute({
+    required this.id,
+    required this.name,
+    this.nameClock,
+    this.gpx,
+    required this.distanceMeters,
+    required this.importedAt,
+    this.deletedAt,
+    this.deletedClock,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || nameClock != null) {
+      map['name_clock'] = Variable<String>(nameClock);
+    }
+    if (!nullToAbsent || gpx != null) {
+      map['gpx'] = Variable<String>(gpx);
+    }
+    map['distance_meters'] = Variable<double>(distanceMeters);
+    map['imported_at'] = Variable<DateTime>(importedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    if (!nullToAbsent || deletedClock != null) {
+      map['deleted_clock'] = Variable<String>(deletedClock);
+    }
+    return map;
+  }
+
+  SavedRoutesCompanion toCompanion(bool nullToAbsent) {
+    return SavedRoutesCompanion(
+      id: Value(id),
+      name: Value(name),
+      nameClock: nameClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nameClock),
+      gpx: gpx == null && nullToAbsent ? const Value.absent() : Value(gpx),
+      distanceMeters: Value(distanceMeters),
+      importedAt: Value(importedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      deletedClock: deletedClock == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedClock),
+    );
+  }
+
+  factory SavedRoute.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SavedRoute(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      nameClock: serializer.fromJson<String?>(json['nameClock']),
+      gpx: serializer.fromJson<String?>(json['gpx']),
+      distanceMeters: serializer.fromJson<double>(json['distanceMeters']),
+      importedAt: serializer.fromJson<DateTime>(json['importedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      deletedClock: serializer.fromJson<String?>(json['deletedClock']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'nameClock': serializer.toJson<String?>(nameClock),
+      'gpx': serializer.toJson<String?>(gpx),
+      'distanceMeters': serializer.toJson<double>(distanceMeters),
+      'importedAt': serializer.toJson<DateTime>(importedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'deletedClock': serializer.toJson<String?>(deletedClock),
+    };
+  }
+
+  SavedRoute copyWith({
+    String? id,
+    String? name,
+    Value<String?> nameClock = const Value.absent(),
+    Value<String?> gpx = const Value.absent(),
+    double? distanceMeters,
+    DateTime? importedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    Value<String?> deletedClock = const Value.absent(),
+  }) => SavedRoute(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    nameClock: nameClock.present ? nameClock.value : this.nameClock,
+    gpx: gpx.present ? gpx.value : this.gpx,
+    distanceMeters: distanceMeters ?? this.distanceMeters,
+    importedAt: importedAt ?? this.importedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    deletedClock: deletedClock.present ? deletedClock.value : this.deletedClock,
+  );
+  SavedRoute copyWithCompanion(SavedRoutesCompanion data) {
+    return SavedRoute(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      nameClock: data.nameClock.present ? data.nameClock.value : this.nameClock,
+      gpx: data.gpx.present ? data.gpx.value : this.gpx,
+      distanceMeters: data.distanceMeters.present
+          ? data.distanceMeters.value
+          : this.distanceMeters,
+      importedAt: data.importedAt.present
+          ? data.importedAt.value
+          : this.importedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      deletedClock: data.deletedClock.present
+          ? data.deletedClock.value
+          : this.deletedClock,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SavedRoute(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameClock: $nameClock, ')
+          ..write('gpx: $gpx, ')
+          ..write('distanceMeters: $distanceMeters, ')
+          ..write('importedAt: $importedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('deletedClock: $deletedClock')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    nameClock,
+    gpx,
+    distanceMeters,
+    importedAt,
+    deletedAt,
+    deletedClock,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SavedRoute &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.nameClock == this.nameClock &&
+          other.gpx == this.gpx &&
+          other.distanceMeters == this.distanceMeters &&
+          other.importedAt == this.importedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.deletedClock == this.deletedClock);
+}
+
+class SavedRoutesCompanion extends UpdateCompanion<SavedRoute> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String?> nameClock;
+  final Value<String?> gpx;
+  final Value<double> distanceMeters;
+  final Value<DateTime> importedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<String?> deletedClock;
+  final Value<int> rowid;
+  const SavedRoutesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.nameClock = const Value.absent(),
+    this.gpx = const Value.absent(),
+    this.distanceMeters = const Value.absent(),
+    this.importedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.deletedClock = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SavedRoutesCompanion.insert({
+    required String id,
+    required String name,
+    this.nameClock = const Value.absent(),
+    this.gpx = const Value.absent(),
+    this.distanceMeters = const Value.absent(),
+    required DateTime importedAt,
+    this.deletedAt = const Value.absent(),
+    this.deletedClock = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       importedAt = Value(importedAt);
+  static Insertable<SavedRoute> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? nameClock,
+    Expression<String>? gpx,
+    Expression<double>? distanceMeters,
+    Expression<DateTime>? importedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<String>? deletedClock,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (nameClock != null) 'name_clock': nameClock,
+      if (gpx != null) 'gpx': gpx,
+      if (distanceMeters != null) 'distance_meters': distanceMeters,
+      if (importedAt != null) 'imported_at': importedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (deletedClock != null) 'deleted_clock': deletedClock,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SavedRoutesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String?>? nameClock,
+    Value<String?>? gpx,
+    Value<double>? distanceMeters,
+    Value<DateTime>? importedAt,
+    Value<DateTime?>? deletedAt,
+    Value<String?>? deletedClock,
+    Value<int>? rowid,
+  }) {
+    return SavedRoutesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      nameClock: nameClock ?? this.nameClock,
+      gpx: gpx ?? this.gpx,
+      distanceMeters: distanceMeters ?? this.distanceMeters,
+      importedAt: importedAt ?? this.importedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      deletedClock: deletedClock ?? this.deletedClock,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (nameClock.present) {
+      map['name_clock'] = Variable<String>(nameClock.value);
+    }
+    if (gpx.present) {
+      map['gpx'] = Variable<String>(gpx.value);
+    }
+    if (distanceMeters.present) {
+      map['distance_meters'] = Variable<double>(distanceMeters.value);
+    }
+    if (importedAt.present) {
+      map['imported_at'] = Variable<DateTime>(importedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (deletedClock.present) {
+      map['deleted_clock'] = Variable<String>(deletedClock.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SavedRoutesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('nameClock: $nameClock, ')
+          ..write('gpx: $gpx, ')
+          ..write('distanceMeters: $distanceMeters, ')
+          ..write('importedAt: $importedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('deletedClock: $deletedClock, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2132,6 +2662,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
+  late final $SavedRoutesTable savedRoutes = $SavedRoutesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2141,6 +2672,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     trackPoints,
     syncRemoteFiles,
     syncMeta,
+    savedRoutes,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3427,6 +3959,269 @@ typedef $$SyncMetaTableProcessedTableManager =
       SyncMetaData,
       PrefetchHooks Function()
     >;
+typedef $$SavedRoutesTableCreateCompanionBuilder =
+    SavedRoutesCompanion Function({
+      required String id,
+      required String name,
+      Value<String?> nameClock,
+      Value<String?> gpx,
+      Value<double> distanceMeters,
+      required DateTime importedAt,
+      Value<DateTime?> deletedAt,
+      Value<String?> deletedClock,
+      Value<int> rowid,
+    });
+typedef $$SavedRoutesTableUpdateCompanionBuilder =
+    SavedRoutesCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String?> nameClock,
+      Value<String?> gpx,
+      Value<double> distanceMeters,
+      Value<DateTime> importedAt,
+      Value<DateTime?> deletedAt,
+      Value<String?> deletedClock,
+      Value<int> rowid,
+    });
+
+class $$SavedRoutesTableFilterComposer
+    extends Composer<_$AppDatabase, $SavedRoutesTable> {
+  $$SavedRoutesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nameClock => $composableBuilder(
+    column: $table.nameClock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gpx => $composableBuilder(
+    column: $table.gpx,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get distanceMeters => $composableBuilder(
+    column: $table.distanceMeters,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SavedRoutesTableOrderingComposer
+    extends Composer<_$AppDatabase, $SavedRoutesTable> {
+  $$SavedRoutesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nameClock => $composableBuilder(
+    column: $table.nameClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get gpx => $composableBuilder(
+    column: $table.gpx,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get distanceMeters => $composableBuilder(
+    column: $table.distanceMeters,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SavedRoutesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SavedRoutesTable> {
+  $$SavedRoutesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get nameClock =>
+      $composableBuilder(column: $table.nameClock, builder: (column) => column);
+
+  GeneratedColumn<String> get gpx =>
+      $composableBuilder(column: $table.gpx, builder: (column) => column);
+
+  GeneratedColumn<double> get distanceMeters => $composableBuilder(
+    column: $table.distanceMeters,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get importedAt => $composableBuilder(
+    column: $table.importedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get deletedClock => $composableBuilder(
+    column: $table.deletedClock,
+    builder: (column) => column,
+  );
+}
+
+class $$SavedRoutesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SavedRoutesTable,
+          SavedRoute,
+          $$SavedRoutesTableFilterComposer,
+          $$SavedRoutesTableOrderingComposer,
+          $$SavedRoutesTableAnnotationComposer,
+          $$SavedRoutesTableCreateCompanionBuilder,
+          $$SavedRoutesTableUpdateCompanionBuilder,
+          (
+            SavedRoute,
+            BaseReferences<_$AppDatabase, $SavedRoutesTable, SavedRoute>,
+          ),
+          SavedRoute,
+          PrefetchHooks Function()
+        > {
+  $$SavedRoutesTableTableManager(_$AppDatabase db, $SavedRoutesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SavedRoutesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SavedRoutesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SavedRoutesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> nameClock = const Value.absent(),
+                Value<String?> gpx = const Value.absent(),
+                Value<double> distanceMeters = const Value.absent(),
+                Value<DateTime> importedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> deletedClock = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SavedRoutesCompanion(
+                id: id,
+                name: name,
+                nameClock: nameClock,
+                gpx: gpx,
+                distanceMeters: distanceMeters,
+                importedAt: importedAt,
+                deletedAt: deletedAt,
+                deletedClock: deletedClock,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                Value<String?> nameClock = const Value.absent(),
+                Value<String?> gpx = const Value.absent(),
+                Value<double> distanceMeters = const Value.absent(),
+                required DateTime importedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<String?> deletedClock = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SavedRoutesCompanion.insert(
+                id: id,
+                name: name,
+                nameClock: nameClock,
+                gpx: gpx,
+                distanceMeters: distanceMeters,
+                importedAt: importedAt,
+                deletedAt: deletedAt,
+                deletedClock: deletedClock,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SavedRoutesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SavedRoutesTable,
+      SavedRoute,
+      $$SavedRoutesTableFilterComposer,
+      $$SavedRoutesTableOrderingComposer,
+      $$SavedRoutesTableAnnotationComposer,
+      $$SavedRoutesTableCreateCompanionBuilder,
+      $$SavedRoutesTableUpdateCompanionBuilder,
+      (
+        SavedRoute,
+        BaseReferences<_$AppDatabase, $SavedRoutesTable, SavedRoute>,
+      ),
+      SavedRoute,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3439,4 +4234,6 @@ class $AppDatabaseManager {
       $$SyncRemoteFilesTableTableManager(_db, _db.syncRemoteFiles);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
+  $$SavedRoutesTableTableManager get savedRoutes =>
+      $$SavedRoutesTableTableManager(_db, _db.savedRoutes);
 }

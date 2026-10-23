@@ -8,6 +8,18 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-23
+
+### Added
+- Saved routes: every route you follow from a GPX file — opened from Komoot or another
+  app, or imported from the routes folder — is kept, so you can follow it again later, also
+  after closing the app or restarting the phone. "Saved routes…" in the follow-route menu
+  lists them: tap one to follow it, rename or delete it (with undo), or delete them all.
+  The same route imported twice is kept once.
+- Saved routes sync with your other phones: new routes, renames and deletions. Importing a
+  route again brings it back after it was deleted on another phone.
+- Backups include the saved routes; importing a backup adds the ones the phone doesn't have.
+
 ## [0.5.5] - 2026-10-23
 
 ### Fixed
@@ -585,7 +597,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/orgi/cycle/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/orgi/cycle/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/orgi/cycle/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/orgi/cycle/compare/v0.5.2...v0.5.3

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/db/database.dart';
 import '../../../core/services/incoming_gpx_service.dart';
 import '../../../core/services/route_import_service.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -22,8 +23,13 @@ final incomingGpxServiceProvider = Provider<IncomingGpxService>(
   (ref) => IncomingGpxService(),
 );
 
-/// The route currently being followed, or null. Set by importing a GPX file or
-/// loading the bundled demo route.
+/// Routes kept from earlier imports (live ones, newest first), to follow again.
+final savedRoutesProvider = StreamProvider<List<SavedRouteInfo>>(
+  (ref) => ref.watch(appDatabaseProvider).watchSavedRoutes(),
+);
+
+/// The route currently being followed, or null. Set by importing a GPX file,
+/// picking a saved route or loading the bundled demo route.
 final followRouteProvider =
     NotifierProvider<FollowRouteController, FollowRoute?>(
       FollowRouteController.new,
@@ -41,11 +47,45 @@ class FollowRouteController extends Notifier<FollowRoute?> {
   Future<String> routesFolderPath() =>
       ref.read(routeImportServiceProvider).routesFolderPath();
 
-  /// Follows a `.gpx` file from the routes folder. Throws [FormatException] when
-  /// the file is not a usable GPX route.
+  /// Follows a `.gpx` file from the routes folder and saves it. Throws
+  /// [FormatException] when the file is not a usable GPX route.
   Future<void> followFile(RouteFile file) async {
     final imported = await ref.read(routeImportServiceProvider).readRoute(file);
-    state = parseGpxRoute(imported.xml, fallbackName: imported.name);
+    await followAndSave(
+        parseGpxRoute(imported.xml, fallbackName: imported.name), imported.xml);
+  }
+
+  /// Follows [route] (parsed from [xml]) and keeps it in the saved routes, so
+  /// it can be followed again later — after a restart too, and on the other
+  /// phones once synced.
+  Future<void> followAndSave(FollowRoute route, String xml) async {
+    state = route;
+    await ref.read(appDatabaseProvider).saveRoute(
+          id: route.fingerprint,
+          name: route.name,
+          gpx: xml,
+          distanceMeters: route.totalMeters,
+        );
+  }
+
+  /// Follows a saved route, under its saved (possibly renamed) name. Throws
+  /// [FormatException] if it's gone or its GPX doesn't parse.
+  Future<void> followSaved(String id) async {
+    final saved = await ref.read(appDatabaseProvider).savedRoute(id);
+    final gpx = saved?.gpx;
+    if (saved == null || gpx == null) {
+      throw const FormatException('the route was deleted');
+    }
+    final parsed = parseGpxRoute(gpx, fallbackName: saved.name);
+    state = FollowRoute(name: saved.name, points: parsed.points);
+  }
+
+  /// A saved route was renamed: show the new name if it's the one followed.
+  void renamed(String id, String name) {
+    final current = state;
+    if (current != null && current.fingerprint == id) {
+      state = FollowRoute(name: name, points: current.points);
+    }
   }
 
   /// Follows the bundled demo route.
@@ -56,21 +96,18 @@ class FollowRouteController extends Notifier<FollowRoute?> {
     state = parseGpxRoute(imported.xml, fallbackName: imported.name);
   }
 
-  /// Follows a GPX delivered via "Open with" / "Share to" Cycle, if any. Returns
-  /// the route name when one was loaded, else null. Throws [FormatException] on
-  /// an invalid file.
+  /// Follows (and saves) a GPX delivered via "Open with" / "Share to" Cycle,
+  /// if any. Returns the route name when one was loaded, else null. Throws
+  /// [FormatException] on an invalid file.
   Future<String?> followIncomingIfAny() async {
     final imported = await ref
         .read(incomingGpxServiceProvider)
         .consumePending();
     if (imported == null) return null;
-    state = parseGpxRoute(imported.xml, fallbackName: imported.name);
+    await followAndSave(
+        parseGpxRoute(imported.xml, fallbackName: imported.name), imported.xml);
     return state?.name;
   }
-
-  /// Follows an already-parsed route directly (e.g. one the caller parsed
-  /// itself to decide between following vs. importing as a ride).
-  void follow(FollowRoute route) => state = route;
 
   /// Stops following.
   void clear() => state = null;

@@ -90,14 +90,66 @@ class SyncMeta extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(tables: [Tracks, TrackPoints, SyncRemoteFiles, SyncMeta])
+/// A route the rider followed (schema v6), kept so it can be followed again
+/// after a restart and synced to the other phones. See
+/// `lib/core/sync/route_sync.dart`.
+class SavedRoutes extends Table {
+  /// `FollowRoute.fingerprint` — a hash of the route's geometry, so the same
+  /// route imported twice, or on two phones, is one route.
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get nameClock => text().nullable()();
+
+  /// The GPX as imported; null once the route is deleted (the row stays as a
+  /// marker so sync knows, like a purged ride).
+  TextColumn get gpx => text().nullable()();
+  RealColumn get distanceMeters => real().withDefault(const Constant(0))();
+
+  /// First import on any phone (sync keeps the earliest).
+  DateTimeColumn get importedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  /// Stamped on delete *and* on every import, so a newer import brings back a
+  /// route another phone deleted earlier.
+  TextColumn get deletedClock => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// A saved route without its GPX: what the list and sync need, without
+/// loading every route's GPX (often several hundred KB each).
+class SavedRouteInfo {
+  const SavedRouteInfo({
+    required this.id,
+    required this.name,
+    required this.nameClock,
+    required this.distanceMeters,
+    required this.importedAt,
+    required this.deletedAt,
+    required this.deletedClock,
+    required this.hasGpx,
+  });
+
+  final String id;
+  final String name;
+  final String? nameClock;
+  final double distanceMeters;
+  final DateTime importedAt;
+  final DateTime? deletedAt;
+  final String? deletedClock;
+  final bool hasGpx;
+}
+
+@DriftDatabase(
+    tables: [Tracks, TrackPoints, SyncRemoteFiles, SyncMeta, SavedRoutes])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
   @override
   int get schemaVersion => kSchemaVersion;
 
-  static const kSchemaVersion = 5;
+  static const kSchemaVersion = 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -128,6 +180,9 @@ class AppDatabase extends _$AppDatabase {
             await _addColumnIfMissing(m, tracks, tracks.pointsPurged);
             await _createTableIfMissing(m, syncRemoteFiles);
             await _createTableIfMissing(m, syncMeta);
+          }
+          if (from < 6) {
+            await _createTableIfMissing(m, savedRoutes);
           }
         },
         beforeOpen: (_) async {
@@ -519,4 +574,123 @@ class AppDatabase extends _$AppDatabase {
     if (list.isEmpty) return;
     await (delete(syncRemoteFiles)..where((f) => f.path.isIn(list))).go();
   }
+
+  // --- Saved routes ------------------------------------------------------------
+
+  Selectable<SavedRouteInfo> _routeInfos([Expression<bool>? where]) {
+    final r = savedRoutes;
+    final hasGpx = r.gpx.isNotNull();
+    final q = selectOnly(r)
+      ..addColumns([
+        r.id, r.name, r.nameClock, r.distanceMeters, r.importedAt, //
+        r.deletedAt, r.deletedClock, hasGpx,
+      ])
+      ..orderBy([OrderingTerm.desc(r.importedAt)]);
+    if (where != null) q.where(where);
+    return q.map((row) => SavedRouteInfo(
+          id: row.read(r.id)!,
+          name: row.read(r.name)!,
+          nameClock: row.read(r.nameClock),
+          distanceMeters: row.read(r.distanceMeters)!,
+          importedAt: row.read(r.importedAt)!,
+          deletedAt: row.read(r.deletedAt),
+          deletedClock: row.read(r.deletedClock),
+          hasGpx: row.read(hasGpx)!,
+        ));
+  }
+
+  /// Saved routes not deleted, most recently imported first.
+  Stream<List<SavedRouteInfo>> watchSavedRoutes() =>
+      _routeInfos(savedRoutes.deletedAt.isNull()).watch();
+
+  /// Every saved route including deletion markers, without GPX — for sync.
+  Future<List<SavedRouteInfo>> savedRouteInfos() => _routeInfos().get();
+
+  Future<SavedRoute?> savedRoute(String id) =>
+      (select(savedRoutes)..where((r) => r.id.equals(id))).getSingleOrNull();
+
+  Future<String?> savedRouteGpx(String id) async {
+    final q = selectOnly(savedRoutes)
+      ..addColumns([savedRoutes.gpx])
+      ..where(savedRoutes.id.equals(id));
+    return (await q.getSingleOrNull())?.read(savedRoutes.gpx);
+  }
+
+  /// Every row with its GPX, including deletion markers — for backup import.
+  Future<List<SavedRoute>> allSavedRoutesIncludingDeleted() =>
+      select(savedRoutes).get();
+
+  /// Keeps a route the rider is following. Saving it again (or a route
+  /// deleted earlier, here or on another phone) re-stamps its deletion clock
+  /// as live, so this newest import wins over an older deletion. The name of
+  /// a route already known is kept — it may have been renamed. Returns true
+  /// when the route wasn't in the list before.
+  Future<bool> saveRoute({
+    required String id,
+    required String name,
+    required String gpx,
+    required double distanceMeters,
+  }) =>
+      transaction(() async {
+        final existing = await savedRoute(id);
+        final clock = await stamp();
+        if (existing == null) {
+          await into(savedRoutes).insert(SavedRoutesCompanion.insert(
+            id: id,
+            name: name,
+            gpx: Value(gpx),
+            distanceMeters: Value(distanceMeters),
+            importedAt: now(),
+            deletedClock: Value(clock),
+          ));
+          return true;
+        }
+        await (update(savedRoutes)..where((r) => r.id.equals(id))).write(
+          SavedRoutesCompanion(
+            gpx: Value(gpx),
+            distanceMeters: Value(distanceMeters),
+            deletedAt: const Value(null),
+            deletedClock: Value(clock),
+          ),
+        );
+        return existing.deletedAt != null;
+      });
+
+  Future<void> renameRoute(String id, String name) async {
+    final clock = await stamp();
+    await (update(savedRoutes)..where((r) => r.id.equals(id))).write(
+        SavedRoutesCompanion(name: Value(name), nameClock: Value(clock)));
+  }
+
+  /// Deletes a saved route, keeping a GPX-less marker row for sync. Returns
+  /// the route as it was (for an undo through [saveRoute]), or null.
+  Future<SavedRoute?> deleteRoute(String id) => transaction(() async {
+        final existing = await savedRoute(id);
+        if (existing == null || existing.deletedAt != null) return null;
+        final clock = await stamp();
+        await (update(savedRoutes)..where((r) => r.id.equals(id))).write(
+          SavedRoutesCompanion(
+            gpx: const Value(null),
+            deletedAt: Value(now()),
+            deletedClock: Value(clock),
+          ),
+        );
+        return existing;
+      });
+
+  /// Deletes every saved route; returns how many.
+  Future<int> deleteAllRoutes() => transaction(() async {
+        final clock = await stamp();
+        return (update(savedRoutes)..where((r) => r.deletedAt.isNull())).write(
+          SavedRoutesCompanion(
+            gpx: const Value(null),
+            deletedAt: Value(now()),
+            deletedClock: Value(clock),
+          ),
+        );
+      });
+
+  /// Writes a route exactly as sync merged it (no clocks stamped).
+  Future<void> putSyncedRoute(SavedRoutesCompanion route) =>
+      into(savedRoutes).insertOnConflictUpdate(route);
 }

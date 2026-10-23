@@ -24,6 +24,9 @@ String formatSpeed(double kmh, UnitSystem units) =>
 String formatDistance(double km, UnitSystem units) =>
     distanceInUnits(km, units).toStringAsFixed(2);
 
+/// `YYYY-MM-DD` in local time.
+String formatDate(DateTime t) => formatDateTime(t).substring(0, 10);
+
 /// `YYYY-MM-DD HH:MM` in local time.
 String formatDateTime(DateTime t) {
   final l = t.toLocal();

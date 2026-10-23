@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import '../../../core/utils/geo.dart';
 
 /// One point along a followed route, tagged with the cumulative distance from
@@ -33,6 +37,24 @@ class FollowRoute {
 
   /// Ordered route points with cumulative distances.
   final List<RoutePoint> points;
+
+  /// Identity of the route's geometry, the saved route's id: the same route
+  /// imported twice, or on two phones, gets the same one, whatever its name or
+  /// timestamps. Points are rounded to microdegrees (~0.1 m) so it comes out
+  /// the same on every platform.
+  late final String fingerprint = _fingerprint(points);
+
+  static String _fingerprint(List<RoutePoint> points) {
+    final b = StringBuffer();
+    for (final p in points) {
+      b
+        ..write((p.latitude * 1e6).round())
+        ..write(',')
+        ..write((p.longitude * 1e6).round())
+        ..write(';');
+    }
+    return sha256.convert(utf8.encode(b.toString())).toString().substring(0, 32);
+  }
 
   /// Total route length in metres.
   double get totalMeters =>

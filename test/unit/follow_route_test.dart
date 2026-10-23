@@ -37,4 +37,28 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('fingerprint: same geometry = same id, whatever the name or times', () {
+    final a = FollowRoute.fromCoordinates('A', const [
+      (43.7384, 7.4246),
+      (43.7394, 7.4246),
+    ]);
+    final b = FollowRoute.fromGpxPoints('B', [
+      (lat: 43.7384, lon: 7.4246, time: DateTime.utc(2026)),
+      (lat: 43.7384, lon: 7.4246, time: DateTime.utc(2026, 1, 1, 0, 0, 1)),
+      (lat: 43.7394, lon: 7.4246, time: DateTime.utc(2026, 1, 1, 0, 1)),
+    ]);
+    final moved = FollowRoute.fromCoordinates('A', const [
+      (43.7384, 7.4246),
+      (43.7395, 7.4246),
+    ]);
+    final reversed = FollowRoute.fromCoordinates('A', const [
+      (43.7394, 7.4246),
+      (43.7384, 7.4246),
+    ]);
+    expect(a.fingerprint, hasLength(32));
+    expect(b.fingerprint, a.fingerprint);
+    expect(moved.fingerprint, isNot(a.fingerprint));
+    expect(reversed.fingerprint, isNot(a.fingerprint));
+  });
 }
