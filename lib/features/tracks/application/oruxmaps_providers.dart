@@ -4,7 +4,7 @@ import '../../../core/services/document_picker_service.dart';
 import '../../../core/services/file_access_service.dart';
 import '../../../core/services/incoming_oruxmaps_service.dart';
 import '../../dashboard/application/ride_providers.dart';
-import '../../settings/application/settings_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import 'gpx_ride_import_service.dart';
 import 'oruxmaps_import_service.dart';
 
@@ -24,7 +24,7 @@ final documentPickerServiceProvider = Provider<DocumentPickerService>(
 final oruxMapsImportServiceProvider = Provider<OruxMapsImportService>(
   (ref) => OruxMapsImportService(
     ref.watch(appDatabaseProvider),
-    ref.watch(settingsProvider),
+    ref.watch(activeBikeSettingsProvider),
   ),
 );
 
@@ -33,7 +33,7 @@ final oruxMapsImportServiceProvider = Provider<OruxMapsImportService>(
 final gpxRideImportServiceProvider = Provider<GpxRideImportService>(
   (ref) => GpxRideImportService(
     ref.watch(appDatabaseProvider),
-    ref.watch(settingsProvider),
+    ref.watch(activeBikeSettingsProvider),
   ),
 );
 

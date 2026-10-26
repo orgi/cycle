@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/database.dart';
 import '../../../core/metrics/ride_metrics_accumulator.dart';
+import '../../../core/models/bike_settings.dart';
 import '../../../core/models/geo_sample.dart';
 import '../../../core/models/ride_metrics.dart';
 import '../../../core/sensors/gatt.dart';
@@ -22,7 +23,6 @@ import '../../../core/services/haptics_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
-import '../../../core/services/settings/app_settings.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
@@ -201,8 +201,12 @@ class RecordingController extends Notifier<bool> {
     // See start(): the gate is told before anything that can pause the activity.
     await ref.read(locationPowerControlProvider).setRecordingActive(true);
     await ref.read(screenWakeServiceProvider).enable(ScreenWakeService.ownerRecording);
-    final points = await ref.read(appDatabaseProvider).pointsFor(trackId);
-    ref.read(rideControllerProvider.notifier).resumeFrom(points);
+    final db = ref.read(appDatabaseProvider);
+    final points = await db.pointsFor(trackId);
+    final bike = (await db.track(trackId))?.bikeProfileId;
+    ref
+        .read(rideControllerProvider.notifier)
+        .resumeFrom(points, ref.read(bikeSettingsLookupProvider)(bike));
     _trackId = trackId;
     await ref.read(recordingForegroundServiceProvider).start();
     // Ride starting/resuming: re-arm the bounded direct-connect retry window so
@@ -282,9 +286,6 @@ class RideController extends Notifier<RideMetrics> {
 
   @override
   RideMetrics build() {
-    // Auto-pause config from settings, kept in sync as the user changes it.
-    _applyAutoPause(ref.read(settingsProvider));
-    ref.listen(settingsProvider, (_, next) => _applyAutoPause(next));
     final service = ref.watch(locationServiceProvider);
     // Request location permission (no-op on the emulator where it's pre-granted;
     // shows the system dialog on a real device).
@@ -344,6 +345,11 @@ class RideController extends Notifier<RideMetrics> {
           speedFromSensor: _fusion.isUsingBle(now));
       return;
     }
+    // The active bike's auto-pause, read per fix so an edit or a bike switch
+    // (also mid-ride: the ride's bike changed) applies from the next one. Not
+    // a ref.listen: that is paused while another screen covers the home
+    // screen, the only thing keeping this provider listened to.
+    _applyAutoPause(ref.read(activeBikeSettingsProvider));
     final metrics = _accumulator.add(sample);
     _fusion.updateGps(metrics.currentSpeedMps);
     final now = DateTime.now();
@@ -388,8 +394,9 @@ class RideController extends Notifier<RideMetrics> {
 
   /// Preloads the metrics from an interrupted ride's [points] so a resumed ride
   /// continues from where it left off (the dead-time gap is not counted).
-  void resumeFrom(List<TrackPoint> points) {
-    final m = computeStatsFromPoints(points, ref.read(settingsProvider));
+  /// [bike] is the settings of the bike the ride was recorded on.
+  void resumeFrom(List<TrackPoint> points, BikeSettings bike) {
+    final m = computeStatsFromPoints(points, bike);
     _maxSpeedMps = m.maxSpeedMps;
     _accumulator.resumeWith(
       distanceMeters: m.distanceMeters,
@@ -399,9 +406,9 @@ class RideController extends Notifier<RideMetrics> {
     state = m.copyWith(currentSpeedMps: 0, speedFromSensor: false);
   }
 
-  void _applyAutoPause(AppSettings s) {
+  void _applyAutoPause(BikeSettings s) {
     _accumulator.autoPauseEnabled = s.autoPauseEnabled;
-    _accumulator.autoPauseThresholdMps = s.autoPauseSpeedKmh / 3.6;
+    _accumulator.autoPauseThresholdMps = s.autoPauseThresholdMps;
   }
 
   /// Fused (BLE-preferred) speed, also tracking the running max.

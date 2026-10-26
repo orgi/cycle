@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/controls/auto_start_detector.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
-import '../../settings/application/settings_providers.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import 'ride_providers.dart';
 
 /// Starts a ride by itself once the rider is riding (opt-in setting), so a
@@ -16,7 +16,9 @@ import 'ride_providers.dart';
 /// no extra battery. Like the GPS itself it only sees fixes while the app is in
 /// the foreground (or a ride records), which matches the screen-on use case.
 ///
-/// Watched by the home screen to keep it alive. The bool mirrors the setting.
+/// Watched by the home screen to keep it alive. The bool mirrors the active
+/// bike's setting (a per-bike choice: switching bikes switches it), and so
+/// does the start speed.
 final autoStartControllerProvider =
     NotifierProvider<AutoStartController, bool>(AutoStartController.new);
 
@@ -24,13 +26,18 @@ class AutoStartController extends Notifier<bool> {
   @override
   bool build() {
     final enabled =
-        ref.watch(settingsProvider.select((s) => s.autoStartEnabled));
+        ref.watch(activeBikeSettingsProvider.select((s) => s.autoStartEnabled));
     if (!enabled) return false;
 
     final detector = AutoStartDetector();
     final sub = ref.watch(locationServiceProvider).positions().listen((sample) {
       // A poor fix's speed isn't trusted to start a ride (see RideController).
       if (!isAccurateEnough(sample)) return;
+      // Read per fix, not watched: while Settings covers the home screen this
+      // provider is paused, and a watch would only catch up back on the map.
+      final bike = ref.read(activeBikeSettingsProvider);
+      if (!bike.autoStartEnabled) return;
+      detector.startSpeedKmh = bike.autoStartSpeedKmh;
       final recording = ref.read(recordingProvider);
       if (detector.update(sample, recording: recording)) {
         unawaited(ref.read(recordingProvider.notifier).start());

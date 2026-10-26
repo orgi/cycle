@@ -6,6 +6,7 @@ import '../../../core/controls/proximity_hold_detector.dart';
 import '../../../core/services/hardware_button_service.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
+import 'bike_profile_providers.dart';
 import 'settings_providers.dart';
 
 /// Physical-button source. Overridable in tests.
@@ -96,10 +97,13 @@ class HardwareButtonController extends Notifier<bool> {
   }
 }
 
-/// Pushes the wheel-circumference setting to the sensor service (used to derive
-/// speed from a CSC sensor). Watched by the home screen to stay alive.
+/// Pushes the active bike's wheel circumference to the sensor service (used to
+/// derive speed from a CSC sensor) — again whenever the bike or its setting
+/// changes. Listened from `main()` for the app's lifetime: a widget's watch
+/// (the home screen also has one) is paused while another screen covers it,
+/// so a bike switched in Settings would only reach the sensor back on the map.
 final sensorSettingsSyncProvider = Provider<void>((ref) {
-  final circumference =
-      ref.watch(settingsProvider.select((s) => s.wheelCircumferenceMeters));
+  final circumference = ref.watch(
+      activeBikeSettingsProvider.select((s) => s.wheelCircumferenceMeters));
   ref.read(sensorServiceProvider).setWheelCircumference(circumference);
 });

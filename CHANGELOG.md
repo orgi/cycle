@@ -8,6 +8,28 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-26
+
+### Added
+- Each bike profile now has its own settings: wheel circumference, auto-pause (on/off and
+  the speed it pauses below) and auto-start (on/off and the speed it starts above — no
+  longer fixed at 8 km/h, and it can be a walking speed, e.g. for a hiking profile). They
+  switch with the bike, also when you change bikes during a ride, and sync with the bike
+  between phones. Open them from Settings → Bikes → "Settings for …" (the active bike),
+  or "Bike settings" in a bike's menu under Bike profiles, which also has the bike's
+  sensor choice.
+
+### Changed
+- Wheel circumference, auto-pause and auto-start moved from Settings into the bike
+  profiles. Your bikes keep the values you had until you change them for a bike; a new
+  bike starts with a copy of the active bike's.
+- "Recalculate ride distances" and "Clean spikes" use the auto-pause of the bike each
+  ride was recorded on.
+
+### Fixed
+- A new wheel circumference now applies to a speed sensor that is already connected,
+  not only after it reconnects.
+
 ## [0.7.1] - 2026-10-23
 
 ### Fixed
@@ -610,7 +632,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/orgi/cycle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/orgi/cycle/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/orgi/cycle/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/orgi/cycle/compare/v0.5.5...v0.6.0

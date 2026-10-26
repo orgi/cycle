@@ -27,6 +27,13 @@ void main() {
     expect(ride(d, 0, 20, 20), [5]);
   });
 
+  test('the start speed can change between fixes', () {
+    final d = AutoStartDetector()..startSpeedKmh = 15;
+    expect(ride(d, 0, 20, 12), isEmpty);
+    d.startSpeedKmh = 10;
+    expect(ride(d, 21, 40, 12), [26]);
+  });
+
   test('walking / pushing the bike never starts a ride', () {
     final d = AutoStartDetector();
     expect(ride(d, 0, 120, 5), isEmpty);
@@ -50,6 +57,25 @@ void main() {
   test('never starts while a ride is already recording', () {
     final d = AutoStartDetector();
     expect(ride(d, 0, 30, 25, recording: true), isEmpty);
+  });
+
+  group('a hiking profile (starts at 3 km/h)', () {
+    late AutoStartDetector d;
+    setUp(() => d = AutoStartDetector()..startSpeedKmh = 3);
+
+    test('walking off starts it, standing about does not', () {
+      expect(ride(d, 0, 60, 1), isEmpty); // shuffling about at the car
+      expect(ride(d, 61, 70, 4.5), [66]);
+    });
+
+    test('after a stop, re-arms only below half the start speed', () {
+      ride(d, 0, 10, 4.5, recording: true); // a hike was running
+      expect(ride(d, 11, 100, 2), isEmpty); // still walking slowly
+      expect(d.isArmed, isFalse);
+      expect(ride(d, 101, 161, 0), isEmpty); // 60 s standing
+      expect(d.isArmed, isTrue);
+      expect(ride(d, 162, 170, 4), [167]);
+    });
   });
 
   group('after a ride stops', () {

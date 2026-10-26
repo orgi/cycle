@@ -3,7 +3,7 @@ import 'package:gpx/gpx.dart';
 
 import '../../../core/db/database.dart';
 import '../../../core/models/geo_sample.dart';
-import '../../../core/services/settings/app_settings.dart';
+import '../../../core/models/bike_settings.dart';
 import 'track_repair.dart';
 
 /// Raised when a GPX has no usable timestamped points to import as a ride.
@@ -33,7 +33,10 @@ class GpxRideImportService {
   GpxRideImportService(this._db, this._settings);
 
   final AppDatabase _db;
-  final AppSettings _settings;
+
+  /// The active bike's: imported rides have no bike, so its auto-pause
+  /// applies to their stats (see `bikeSettingsFor`).
+  final BikeSettings _settings;
 
   /// Imports [xml] as a ride, named from the GPX's own `<name>` or
   /// [fallbackName]. Points without a timestamp are dropped; throws

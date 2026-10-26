@@ -2,7 +2,7 @@ import '../../../core/db/database.dart';
 import '../../../core/metrics/ride_metrics_accumulator.dart';
 import '../../../core/models/geo_sample.dart';
 import '../../../core/models/ride_metrics.dart';
-import '../../../core/services/settings/app_settings.dart';
+import '../../../core/models/bike_settings.dart';
 import '../../../core/utils/gps_outlier_filter.dart';
 
 /// Outcome of cleaning a recorded track.
@@ -24,15 +24,15 @@ GeoSample _toSample(TrackPoint p) => GeoSample(
 );
 
 /// Recomputes ride stats from recorded [points] (outliers skipped), the way a
-/// live ride would.
+/// live ride would — with the auto-pause of [bike], the bike it was ridden on.
 RideMetrics computeStatsFromPoints(
   List<TrackPoint> points,
-  AppSettings settings,
+  BikeSettings bike,
 ) {
   final filter = GpsOutlierFilter();
   final acc = RideMetricsAccumulator(
-    autoPauseEnabled: settings.autoPauseEnabled,
-    autoPauseThresholdMps: settings.autoPauseSpeedKmh / 3.6,
+    autoPauseEnabled: bike.autoPauseEnabled,
+    autoPauseThresholdMps: bike.autoPauseThresholdMps,
   );
   var m = const RideMetrics.zero();
   for (final p in points) {
@@ -52,7 +52,7 @@ RideMetrics computeStatsFromPoints(
 /// `null`.
 Future<int?> recoverInterruptedTracks(
   AppDatabase db,
-  AppSettings settings, {
+  BikeSettingsLookup settingsFor, {
   Duration resumableWithin = const Duration(hours: 6),
 }) async {
   final tracks = await db.allTracks(); // newest first
@@ -70,7 +70,7 @@ Future<int?> recoverInterruptedTracks(
     if (i == 0 && now.difference(points.last.time) <= resumableWithin) {
       resumable = t.id;
     }
-    final m = computeStatsFromPoints(points, settings);
+    final m = computeStatsFromPoints(points, settingsFor(t.bikeProfileId));
     await db.finalizeTrack(
       t.id,
       endedAt: points.last.time,
@@ -87,16 +87,17 @@ Future<int?> recoverInterruptedTracks(
 /// already-recorded points, without touching the points themselves — for
 /// rides recorded before a change to [RideMetricsAccumulator]'s maths (e.g.
 /// the GPS-jitter noise gate) so old rides read consistently with new ones.
+/// [bike] is the bike it was ridden on (its auto-pause applies).
 /// Returns the recomputed distance in metres, or null if the track has no
 /// points (nothing to recompute).
 Future<double?> recalculateTrackStats(
   AppDatabase db,
-  AppSettings settings,
+  BikeSettings bike,
   int trackId,
 ) async {
   final points = await db.pointsFor(trackId);
   if (points.isEmpty) return null;
-  final m = computeStatsFromPoints(points, settings);
+  final m = computeStatsFromPoints(points, bike);
   await db.updateTrackStats(
     trackId,
     distanceMeters: m.distanceMeters,
@@ -109,17 +110,19 @@ Future<double?> recalculateTrackStats(
 
 /// Runs [recalculateTrackStats] over every finalised ride — a one-off "fix my
 /// old rides" maintenance action (Settings → Data) after a distance-maths
-/// change, so the user doesn't need adb/PC access to correct history.
+/// change, so the user doesn't need adb/PC access to correct history. Each
+/// ride uses its own bike's auto-pause ([settingsFor]).
 /// Returns the number of tracks updated.
 Future<int> recalculateAllTrackStats(
   AppDatabase db,
-  AppSettings settings,
+  BikeSettingsLookup settingsFor,
 ) async {
   final tracks = await db.allTracks();
   var updated = 0;
   for (final t in tracks) {
     if (t.endedAt == null) continue; // interrupted; recovered separately
-    if (await recalculateTrackStats(db, settings, t.id) != null) updated++;
+    final bike = settingsFor(t.bikeProfileId);
+    if (await recalculateTrackStats(db, bike, t.id) != null) updated++;
   }
   return updated;
 }
@@ -156,12 +159,14 @@ Future<int> removeDuplicateTracks(AppDatabase db) async {
 /// Removes GPS "spike" outliers from an already-recorded track and recomputes
 /// its distance / duration / average / max from the cleaned points — the same
 /// [GpsOutlierFilter] we now apply live, but run after the fact on a ride that
-/// was recorded before the fix.
+/// was recorded before the fix. Stats use the auto-pause of the ride's bike
+/// ([settingsFor]).
 Future<TrackRepairResult> repairTrackSpikes(
   AppDatabase db,
-  AppSettings settings,
+  BikeSettingsLookup settingsFor,
   int trackId,
 ) async {
+  final bike = settingsFor((await db.track(trackId))?.bikeProfileId);
   final points = await db.pointsFor(trackId);
   final filter = GpsOutlierFilter();
   final kept = <TrackPoint>[];
@@ -181,8 +186,8 @@ Future<TrackRepairResult> repairTrackSpikes(
 
   // Recompute stats over the cleaned points, the way a fresh ride would.
   final acc = RideMetricsAccumulator(
-    autoPauseEnabled: settings.autoPauseEnabled,
-    autoPauseThresholdMps: settings.autoPauseSpeedKmh / 3.6,
+    autoPauseEnabled: bike.autoPauseEnabled,
+    autoPauseThresholdMps: bike.autoPauseThresholdMps,
   );
   RideMetrics? m;
   for (final p in kept) {

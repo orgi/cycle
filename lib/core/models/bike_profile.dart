@@ -1,3 +1,5 @@
+import 'bike_settings.dart';
+
 /// A named, colour-coded bicycle a ride can be recorded against (road bike,
 /// gravel bike, MTB, …), so stats can be split per bike or viewed in total.
 class BikeProfile {
@@ -9,6 +11,8 @@ class BikeProfile {
     this.clock,
     this.sensorKeys,
     this.sensorsClock,
+    this.settings,
+    this.settingsClock,
   });
 
   /// Stable id (not the display name, so renaming doesn't orphan past rides).
@@ -35,6 +39,14 @@ class BikeProfile {
   final Set<String>? sensorKeys;
   final String? sensorsClock;
 
+  /// This bike's wheel size, auto-pause and auto-start, synced as their own
+  /// part with [settingsClock]. `null` = never set for this bike (a profile
+  /// from before these were per bike, or from a phone that doesn't know them
+  /// yet): it then uses the phone's former app-wide values, see
+  /// `bikeSettingsFor`.
+  final BikeSettings? settings;
+  final String? settingsClock;
+
   /// [clearSensorIds] explicitly resets [sensorIds] to `null` ("all paired
   /// sensors") — needed because `copyWith(sensorIds: null)` alone can't be
   /// told apart from "leave unchanged".
@@ -47,6 +59,8 @@ class BikeProfile {
     Set<String>? sensorKeys,
     bool clearSensorKeys = false,
     String? sensorsClock,
+    BikeSettings? settings,
+    String? settingsClock,
   }) =>
       BikeProfile(
         id: id,
@@ -56,6 +70,8 @@ class BikeProfile {
         clock: clock ?? this.clock,
         sensorKeys: clearSensorKeys ? null : (sensorKeys ?? this.sensorKeys),
         sensorsClock: sensorsClock ?? this.sensorsClock,
+        settings: settings ?? this.settings,
+        settingsClock: settingsClock ?? this.settingsClock,
       );
 
   Map<String, dynamic> toJson() => {
@@ -66,6 +82,8 @@ class BikeProfile {
         if (clock != null) 'clock': clock,
         if (sensorKeys != null) 'sensor_keys': sensorKeys!.toList(),
         if (sensorsClock != null) 'sensors_clock': sensorsClock,
+        if (settings != null) 'settings': settings!.toJson(),
+        if (settingsClock != null) 'settings_clock': settingsClock,
       };
 
   factory BikeProfile.fromJson(Map<String, dynamic> json) => BikeProfile(
@@ -79,6 +97,11 @@ class BikeProfile {
         sensorKeys:
             (json['sensor_keys'] as List?)?.map((e) => e as String).toSet(),
         sensorsClock: json['sensors_clock'] as String?,
+        settings: json['settings'] is Map
+            ? BikeSettings.fromJson(
+                (json['settings'] as Map).cast<String, dynamic>())
+            : null,
+        settingsClock: json['settings_clock'] as String?,
       );
 
   @override
@@ -90,7 +113,9 @@ class BikeProfile {
       other.clock == clock &&
       _sensorIdsEqual(other.sensorIds, sensorIds) &&
       _sensorIdsEqual(other.sensorKeys, sensorKeys) &&
-      other.sensorsClock == sensorsClock;
+      other.sensorsClock == sensorsClock &&
+      other.settings == settings &&
+      other.settingsClock == settingsClock;
 
   @override
   int get hashCode => Object.hash(
@@ -101,6 +126,8 @@ class BikeProfile {
         sensorIds == null ? null : Object.hashAllUnordered(sensorIds!),
         sensorKeys == null ? null : Object.hashAllUnordered(sensorKeys!),
         sensorsClock,
+        settings,
+        settingsClock,
       );
 }
 

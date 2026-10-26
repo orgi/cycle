@@ -1,5 +1,6 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/apple_health_service.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
@@ -144,7 +145,7 @@ void main() {
     await pumpSettings(tester, store);
 
     await tester.scrollUntilVisible(
-      find.byKey(const Key('autoStartSwitch')),
+      find.byKey(const Key('vibrateStartStopSwitch')),
       200,
     );
     expect(find.byKey(const Key('hardwareButtonsSwitch')), findsNothing);
@@ -156,50 +157,82 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('Android has no hand-over-screen switch; auto-start toggles',
-      (tester) async {
-    final store = FakeSettingsStore();
-    await pumpSettings(tester, store);
+  testWidgets('Android has no hand-over-screen switch', (tester) async {
+    await pumpSettings(tester, FakeSettingsStore());
 
     await tester.scrollUntilVisible(
-      find.byKey(const Key('autoStartSwitch')),
+      find.byKey(const Key('vibrateStartStopSwitch')),
       200,
     );
     expect(find.byKey(const Key('proximityHoldSwitch')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('autoStartSwitch')));
-    await tester.pumpAndSettle();
-    expect((await store.load()).autoStartEnabled, isTrue);
   });
 
-  testWidgets('edits the wheel circumference via the dialog', (tester) async {
-    // Tall viewport so the whole settings list (incl. all colour-scheme radios)
-    // fits without anything sitting off-screen.
-    tester.view.physicalSize = const Size(1200, 3000);
+  testWidgets(
+      'wheel size, auto-pause and auto-start are per bike, not app-wide',
+      (tester) async {
+    // Tall viewport so the whole settings list fits on screen.
+    tester.view.physicalSize = const Size(1200, 4000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    final store = FakeSettingsStore();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          settingsStoreProvider.overrideWithValue(store),
-          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
-        ],
-        child: const MaterialApp(home: SettingsScreen()),
-      ),
-    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+        bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore(
+            oneBike(const BikeSettings(
+                wheelCircumferenceMeters: 2.2,
+                autoPauseSpeedKmh: 3.5,
+                autoStartEnabled: true,
+                autoStartSpeedKmh: 12)))),
+      ],
+      child: const MaterialApp(home: SettingsScreen()),
+    ));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Wheel circumference'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('wheelCircumferenceField')),
-      '2200',
-    );
-    await tester.tap(find.byKey(const Key('wheelCircumferenceSave')));
+    for (final key in [
+      'wheelCircumferenceTile',
+      'autoPauseSwitch',
+      'autoPauseSpeedTile',
+      'autoStartSwitch',
+      'autoStartSpeedTile',
+    ]) {
+      expect(find.byKey(Key(key)), findsNothing, reason: key);
+    }
+    final tile = find.byKey(const Key('activeBikeSettingsTile'));
+    expect(find.descendant(of: tile, matching: find.text('Settings for Bike')),
+        findsOneWidget);
+    expect(
+        find.descendant(
+            of: tile,
+            matching: find.text(
+                'Wheel 2200 mm · auto-pause below 3.5 km/h · '
+                'auto-start above 12 km/h')),
+        findsOneWidget);
+  });
+
+  testWidgets('an upgraded bike shows the app-wide values it had before',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        settingsStoreProvider.overrideWithValue(FakeSettingsStore(
+            AppSettings.fromJson(const {
+          'wheel_circumference_m': 2.3,
+          'auto_pause': false,
+          'auto_pause_kmh': 5.0,
+          'auto_start': false,
+        }))),
+        bikeProfilesStoreProvider
+            .overrideWithValue(FakeBikeProfilesStore(oneBike())),
+      ],
+      child: const MaterialApp(home: SettingsScreen()),
+    ));
     await tester.pumpAndSettle();
 
-    expect((await store.load()).wheelCircumferenceMeters, closeTo(2.2, 1e-9));
+    expect(
+        find.text('Wheel 2300 mm · auto-pause off · auto-start off'),
+        findsOneWidget);
   });
 
   testWidgets('recalculates ride distances after confirmation', (tester) async {
@@ -320,8 +353,9 @@ void main() {
       find.byKey(const Key('bikeProfilesTile')),
       200,
     );
-    expect(find.textContaining('1 bike'), findsOneWidget);
-    expect(find.textContaining('Gravel bike'), findsOneWidget);
+    final tile = find.byKey(const Key('bikeProfilesTile'));
+    expect(find.descendant(of: tile, matching: find.text('1 bike • active: Gravel bike')),
+        findsOneWidget);
   });
 }
 

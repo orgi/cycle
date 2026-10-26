@@ -13,8 +13,11 @@ import '../../tracks/application/track_providers.dart';
 import '../../tracks/application/track_repair.dart';
 import '../application/bike_profile_providers.dart';
 import '../application/settings_providers.dart';
+import 'bike_settings_screen.dart';
+import 'widgets/settings_header.dart';
 
-/// App preferences: units, wheel size and physical-button control.
+/// App preferences: appearance, units, controls, data. What belongs to a bike
+/// (wheel size, auto-pause, auto-start, sensors) is on its bike profile.
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -27,7 +30,7 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          const _Header('Appearance'),
+          const SettingsHeader('Appearance'),
           RadioGroup<AppColorScheme>(
             groupValue: settings.colorScheme,
             onChanged: (s) {
@@ -45,7 +48,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(),
-          const _Header('Units'),
+          const SettingsHeader('Units'),
           RadioGroup<UnitSystem>(
             groupValue: settings.units,
             onChanged: (u) {
@@ -67,18 +70,40 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const Divider(),
-          const _Header('Sensors'),
-          ListTile(
-            title: const Text('Wheel circumference'),
-            subtitle: Text(
-              '${(settings.wheelCircumferenceMeters * 1000).round()} mm '
-              '— used for BLE speed sensors',
-            ),
-            trailing: const Icon(Icons.edit_outlined),
-            onTap: () => _editWheel(context, ref, settings),
-          ),
+          const SettingsHeader('Bikes'),
+          // Wheel size, auto-pause and auto-start are per bike: the active
+          // bike's apply. Its tile is the way in from here.
+          Consumer(builder: (context, ref, _) {
+            final profiles = ref.watch(bikeProfilesProvider).profiles;
+            final active = ref.watch(bikeProfilesProvider).active;
+            return Column(
+              children: [
+                ListTile(
+                  key: const Key('bikeProfilesTile'),
+                  leading: const Icon(Icons.pedal_bike),
+                  title: const Text('Bike profiles'),
+                  subtitle: Text(active != null
+                      ? '${profiles.length} bike${profiles.length == 1 ? '' : 's'}'
+                          ' • active: ${active.name}'
+                      : 'No bikes yet'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/bike-profiles'),
+                ),
+                if (active != null)
+                  ListTile(
+                    key: const Key('activeBikeSettingsTile'),
+                    leading: const Icon(Icons.tune),
+                    title: Text('Settings for ${active.name}'),
+                    subtitle: Text(bikeSettingsSummary(
+                        ref.watch(activeBikeSettingsProvider))),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/bike-profiles/${active.id}'),
+                  ),
+              ],
+            );
+          }),
           const Divider(),
-          const _Header('Controls'),
+          const SettingsHeader('Controls'),
           // Volume-key start/stop where the platform can capture the keys
           // (Android); the hand-over-screen hold where it's wired (iOS).
           if (volumeKeysSupported)
@@ -117,16 +142,6 @@ class SettingsScreen extends ConsumerWidget {
               onChanged: controller.setShowStartStopButton,
             ),
           SwitchListTile(
-            key: const Key('autoStartSwitch'),
-            title: const Text('Auto-start ride'),
-            subtitle: const Text(
-              'Start recording by itself once you ride faster than 8 km/h for '
-              'a few seconds. Stop manually.',
-            ),
-            value: settings.autoStartEnabled,
-            onChanged: controller.setAutoStartEnabled,
-          ),
-          SwitchListTile(
             key: const Key('vibrateStartStopSwitch'),
             title: const Text('Vibrate on start/stop'),
             subtitle: const Text(
@@ -136,50 +151,13 @@ class SettingsScreen extends ConsumerWidget {
             value: settings.vibrateOnStartStop,
             onChanged: controller.setVibrateOnStartStop,
           ),
-          SwitchListTile(
-            key: const Key('autoPauseSwitch'),
-            title: const Text('Auto-pause'),
-            subtitle: const Text(
-              'Pause the timer, distance and average when you stop or slow '
-              'below the threshold (e.g. at traffic lights).',
-            ),
-            value: settings.autoPauseEnabled,
-            onChanged: controller.setAutoPauseEnabled,
-          ),
-          ListTile(
-            key: const Key('autoPauseSpeedTile'),
-            enabled: settings.autoPauseEnabled,
-            title: const Text('Pause below'),
-            subtitle: Text('${_fmtKmh(settings.autoPauseSpeedKmh)} km/h'),
-            trailing: const Icon(Icons.edit_outlined),
-            onTap: settings.autoPauseEnabled
-                ? () => _editAutoPauseSpeed(context, ref, settings)
-                : null,
-          ),
-          const Divider(),
-          const _Header('Bikes'),
-          Consumer(builder: (context, ref, _) {
-            final profiles = ref.watch(bikeProfilesProvider).profiles;
-            final active = ref.watch(bikeProfilesProvider).active;
-            return ListTile(
-              key: const Key('bikeProfilesTile'),
-              leading: const Icon(Icons.pedal_bike),
-              title: const Text('Bike profiles'),
-              subtitle: Text(active != null
-                  ? '${profiles.length} bike${profiles.length == 1 ? '' : 's'}'
-                      ' • active: ${active.name}'
-                  : 'No bikes yet'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/bike-profiles'),
-            );
-          }),
           if (appleHealthSupported) ...[
             const Divider(),
-            const _Header('Apple Health'),
+            const SettingsHeader('Apple Health'),
             const _AppleHealthSwitch(),
           ],
           const Divider(),
-          const _Header('Data'),
+          const SettingsHeader('Data'),
           ListTile(
             key: const Key('syncTile'),
             leading: const Icon(Icons.sync),
@@ -248,7 +226,7 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _removeDuplicates(context, ref),
           ),
           const Divider(),
-          const _Header('About'),
+          const SettingsHeader('About'),
           const ListTile(
             key: Key('appVersionTile'),
             leading: Icon(Icons.info_outline),
@@ -300,7 +278,7 @@ class SettingsScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final n = await recalculateAllTrackStats(
       ref.read(appDatabaseProvider),
-      ref.read(settingsProvider),
+      ref.read(bikeSettingsLookupProvider),
     );
     ref.invalidate(tracksProvider);
     messenger.showSnackBar(
@@ -387,110 +365,6 @@ class SettingsScreen extends ConsumerWidget {
     if (days != null && days >= 1 && days <= 365) {
       await ref.read(settingsProvider.notifier).setRetentionDays(days);
     }
-  }
-
-  Future<void> _editWheel(
-    BuildContext context,
-    WidgetRef ref,
-    AppSettings settings,
-  ) async {
-    final controllerText = TextEditingController(
-      text: (settings.wheelCircumferenceMeters * 1000).round().toString(),
-    );
-    final mm = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Wheel circumference (mm)'),
-        content: TextField(
-          key: const Key('wheelCircumferenceField'),
-          controller: controllerText,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: const InputDecoration(
-            helperText: 'e.g. 2105 for 700×25c, 2200 for 29″',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('wheelCircumferenceSave'),
-            onPressed: () =>
-                Navigator.pop(ctx, int.tryParse(controllerText.text.trim())),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (mm != null && mm > 500 && mm < 4000) {
-      await ref
-          .read(settingsProvider.notifier)
-          .setWheelCircumference(mm / 1000.0);
-    }
-  }
-
-  Future<void> _editAutoPauseSpeed(
-    BuildContext context,
-    WidgetRef ref,
-    AppSettings settings,
-  ) async {
-    final controllerText = TextEditingController(
-      text: _fmtKmh(settings.autoPauseSpeedKmh),
-    );
-    final kmh = await showDialog<double>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Auto-pause below (km/h)'),
-        content: TextField(
-          key: const Key('autoPauseSpeedField'),
-          controller: controllerText,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          autofocus: true,
-          decoration: const InputDecoration(
-            helperText: 'Ride pauses when your speed drops below this',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: const Key('autoPauseSpeedSave'),
-            onPressed: () =>
-                Navigator.pop(ctx, double.tryParse(controllerText.text.trim())),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (kmh != null && kmh >= 0 && kmh < 30) {
-      await ref.read(settingsProvider.notifier).setAutoPauseSpeedKmh(kmh);
-    }
-  }
-}
-
-/// Formats a km/h threshold without a trailing ".0" (5.0 → "5", 3.5 → "3.5").
-String _fmtKmh(double kmh) =>
-    kmh == kmh.roundToDouble() ? kmh.round().toString() : kmh.toString();
-
-class _Header extends StatelessWidget {
-  const _Header(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-      child: Text(
-        text.toUpperCase(),
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
   }
 }
 

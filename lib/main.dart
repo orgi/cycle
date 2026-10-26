@@ -10,6 +10,7 @@ import 'features/dashboard/application/ride_providers.dart';
 import 'features/map/application/map_providers.dart';
 import 'features/routing/application/follow_route_providers.dart';
 import 'features/sensors/application/sensor_power_gate.dart';
+import 'features/settings/application/hardware_button_providers.dart';
 import 'features/sync/application/sync_providers.dart';
 
 void main() {
@@ -31,6 +32,10 @@ void main() {
   // counterpart of the GPS lifecycle gate). Owned here so it covers the whole
   // app lifetime, not one screen's.
   container.read(sensorPowerGateProvider);
+  // The active bike's wheel size goes to the speed sensor the moment the bike
+  // or its setting changes, whichever screen is open: a watch from the home
+  // screen alone is paused by Riverpod while another screen covers it.
+  container.listen(sensorSettingsSyncProvider, (_, _) {});
 
   runApp(
     UncontrolledProviderScope(

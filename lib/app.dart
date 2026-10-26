@@ -11,6 +11,7 @@ import 'features/map/presentation/map_screen.dart';
 import 'features/routing/presentation/saved_routes_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
 import 'features/settings/presentation/bike_profiles_screen.dart';
+import 'features/settings/presentation/bike_settings_screen.dart';
 import 'features/tracks/presentation/oruxmaps_import_screen.dart';
 import 'features/tracks/presentation/ride_classifier_screen.dart';
 import 'features/tracks/presentation/track_detail_screen.dart';
@@ -49,6 +50,11 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/bike-profiles',
       builder: (context, state) => const BikeProfilesScreen(),
+    ),
+    GoRoute(
+      path: '/bike-profiles/:id',
+      builder: (context, state) =>
+          BikeSettingsScreen(bikeId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/classify-rides',

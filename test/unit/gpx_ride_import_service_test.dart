@@ -1,5 +1,5 @@
 import 'package:cycle/core/db/database.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/features/tracks/application/gpx_ride_import_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +28,7 @@ void main() {
   tearDown(() => db.close());
 
   test('imports a timestamped GPX as a ride', () async {
-    final service = GpxRideImportService(db, const AppSettings());
+    final service = GpxRideImportService(db, const BikeSettings());
     final imported = await service.importRide(_timedGpx);
 
     expect(imported, isTrue);
@@ -42,7 +42,7 @@ void main() {
   });
 
   test('is safe to run twice (dedups by start time)', () async {
-    final service = GpxRideImportService(db, const AppSettings());
+    final service = GpxRideImportService(db, const BikeSettings());
     final first = await service.importRide(_timedGpx);
     final second = await service.importRide(_timedGpx);
 
@@ -52,7 +52,7 @@ void main() {
   });
 
   test('throws for a GPX with no timestamps (a route, not a ride)', () async {
-    final service = GpxRideImportService(db, const AppSettings());
+    final service = GpxRideImportService(db, const BikeSettings());
     expect(
       () => service.importRide(_untimedGpx),
       throwsA(isA<GpxRideImportException>()),
@@ -60,7 +60,7 @@ void main() {
   });
 
   test('throws a clear error for invalid XML', () async {
-    final service = GpxRideImportService(db, const AppSettings());
+    final service = GpxRideImportService(db, const BikeSettings());
     expect(
       () => service.importRide('not xml'),
       throwsA(isA<GpxRideImportException>()),

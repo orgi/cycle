@@ -20,6 +20,17 @@ void main() {
     expect(r.speedMetersPerSecond, closeTo(2.105, 0.001));
   });
 
+  test('a new wheel circumference applies from the next revolution', () {
+    // The active bike can change mid-ride with the same sensor linked.
+    final calc = CscCalculator(wheelCircumferenceMeters: 2.105);
+    calc.update(const CscMeasurement(
+        cumulativeWheelRevs: 100, lastWheelEventTime: 1024));
+    calc.wheelCircumferenceMeters = 2.3;
+    final r = calc.update(const CscMeasurement(
+        cumulativeWheelRevs: 101, lastWheelEventTime: 2048));
+    expect(r.speedMetersPerSecond, closeTo(2.3, 0.001));
+  });
+
   test('crank cadence of 60 rpm', () {
     final calc = CscCalculator();
     calc.update(const CscMeasurement(

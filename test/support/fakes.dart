@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/sensors/sensor_snapshot_merger.dart';
@@ -271,6 +273,15 @@ class FakeSettingsStore implements SettingsStore {
 }
 
 /// An in-memory [BikeProfilesStore] seeded with [initial].
+/// One bike, active, with [settings] (null = never set: the legacy/default
+/// values apply) — for tests of a per-bike setting.
+BikeProfilesState oneBike([BikeSettings? settings]) => BikeProfilesState(
+      profiles: [
+        BikeProfile(id: 'bike', name: 'Bike', colorArgb: 1, settings: settings),
+      ],
+      activeId: 'bike',
+    );
+
 class FakeBikeProfilesStore implements BikeProfilesStore {
   FakeBikeProfilesStore([this._state = BikeProfilesState.empty]);
   BikeProfilesState _state;

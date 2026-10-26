@@ -28,23 +28,11 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setUnits(UnitSystem units) =>
       update(state.copyWith(units: units));
 
-  Future<void> setWheelCircumference(double meters) =>
-      update(state.copyWith(wheelCircumferenceMeters: meters));
-
   Future<void> setHardwareButtons(bool enabled) =>
       update(state.copyWith(hardwareButtonsEnabled: enabled));
 
   Future<void> setShowStartStopButton(bool show) =>
       update(state.copyWith(showStartStopButton: show));
-
-  Future<void> setAutoPauseEnabled(bool enabled) =>
-      update(state.copyWith(autoPauseEnabled: enabled));
-
-  Future<void> setAutoPauseSpeedKmh(double kmh) =>
-      update(state.copyWith(autoPauseSpeedKmh: kmh));
-
-  Future<void> setAutoStartEnabled(bool enabled) =>
-      update(state.copyWith(autoStartEnabled: enabled));
 
   Future<void> setProximityHoldEnabled(bool enabled) =>
       update(state.copyWith(proximityHoldEnabled: enabled));
