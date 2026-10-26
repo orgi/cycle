@@ -11,7 +11,6 @@ import '../../dashboard/application/ride_providers.dart';
 import '../../dashboard/presentation/widgets/metric_tile.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
-import '../../settings/application/settings_providers.dart';
 import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../application/track_providers.dart';
 import '../application/track_repair.dart';
@@ -104,7 +103,7 @@ class TrackDetailScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final result = await repairTrackSpikes(
       ref.read(appDatabaseProvider),
-      ref.read(settingsProvider),
+      ref.read(bikeSettingsLookupProvider),
       trackId,
     );
     // Reload the header stats + points so the map/chart redraw without spikes.

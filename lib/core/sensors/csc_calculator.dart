@@ -17,8 +17,10 @@ import 'sensor_data.dart';
 class CscCalculator {
   CscCalculator({this.wheelCircumferenceMeters = 2.105});
 
-  /// Wheel circumference in metres (default ≈ 700x25c). A rider setting.
-  final double wheelCircumferenceMeters;
+  /// Wheel circumference in metres (default ≈ 700x25c). A bike setting;
+  /// changeable on a live calculator, so switching bikes mid-ride applies to
+  /// the next revolution without relinking the sensor.
+  double wheelCircumferenceMeters;
 
   static const int _uint16 = 0x10000;
   static const int _uint32 = 0x100000000;

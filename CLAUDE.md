@@ -419,8 +419,8 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     removal. Pre-sync sensors/choices are adopted with an epoch-0 clock (`_adoptLegacy`), so
     any real choice wins. The UI path for a bike's sensors is `setBikeSensors` (stamps a clock,
     keeps names of sensors only another phone has linked); `setSensorIds` is local-only.
-  * **Bike profiles** sync name/colour/deletion (`ProfilesDoc`, per-profile clock) but not
-    `sensorIds` (sensor ids differ per phone — see sensor sync above) or the active profile. A
+  * **Bike profiles** sync name/colour/deletion (`ProfilesDoc`, per-profile clock) and the
+    per-bike settings (own part, `settingsClock`) but not `sensorIds` (sensor ids differ per phone — see sensor sync above) or the active profile. A
     fresh install's untouched "Bike 1" is dropped on its first sync if the server already has
     profiles and no local ride uses it.
   * **Saved routes** (`lib/core/sync/route_sync.dart`, `SyncService._syncRoutes`, run *after*
@@ -740,8 +740,10 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   proximity_hold_detector.dart`), and `HardwareButtonController` toggles recording on a hold.
   (2) **auto-start** (`lib/core/controls/auto_start_detector.dart` + `AutoStartController` in
   `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
-  ≥8 km/h sustained 5s on the shared GPS stream (no extra GPS cost) starts a ride; after a
-  ride it stays disarmed until <3 km/h for 60s, so stopping while rolling doesn't instantly
+  ≥8 km/h (the active bike's start speed since 0.8.0) sustained 5s on the shared GPS
+  stream (no extra GPS cost) starts a ride; after a
+  ride it stays disarmed until <3 km/h (or half the start speed, if lower — a hiking
+  profile) for 60s, so stopping while rolling doesn't instantly
   restart. Stop stays manual.
   **Vibration confirmation** (`AppSettings.vibrateOnStartStop`, default on): `RecordingController`
   calls `_confirm(RideFeedback…)` — started = 1 pulse, stopped = 2, bike switched via
@@ -755,9 +757,10 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   handlebar mount). Front-camera gestures and accelerometer "knock" detection were
   considered and rejected (camera battery/heat/indicator; handlebar vibration false triggers).
   **Settings screen** (`/settings`, gear in the map app bar):
-  units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats),
-  wheel circumference (pushed to the CSC calculator via `SensorService.setWheelCircumference`),
-  and the volume-key toggle. `AppSettings`/`SettingsStore` on `shared_preferences`. Verified:
+  units (metric/imperial — wired through `formatSpeed`/`formatDistance` into the live stats)
+  and the volume-key toggle. Wheel circumference (pushed to the CSC calculator via
+  `SensorService.setWheelCircumference`), auto-pause and auto-start are per-bike settings
+  since 0.8.0 (see bike profiles). `AppSettings`/`SettingsStore` on `shared_preferences`. Verified:
   unit/widget tests incl. the volume-key→recording wiring; on the emulator the injected
   `adb input keyevent KEYCODE_VOLUME_UP/DOWN` starts/stops a recording **and the media volume
   stays unchanged** (proving interception), with the native `volume key -> up/down` log firing.
@@ -971,6 +974,31 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     bottom sheet to explicitly pick a profile (works without hardware buttons too, e.g.
     iOS) or jump to **Settings → Bikes → Bike profiles** (`/bike-profiles`,
     `BikeProfilesScreen`) to add/rename/recolour/delete profiles and set the active one.
+  * **Per-bike settings** (`BikeSettings`, `lib/core/models/bike_settings.dart`): wheel
+    circumference, auto-pause on/off + speed, auto-start on/off + speed (fixed 8 km/h
+    until 0.8.0; the dialog takes 2-40 km/h — walking pace is deliberate, the rider uses a
+    profile for hiking too; below 2, GPS drift while standing could start a ride) — everything that belongs to a
+    bike rather than the rider/phone — live on `BikeProfile.settings` (+ `settingsClock`),
+    edited on `BikeSettingsScreen` (`/bike-profiles/:id`: also the bike's sensor choice,
+    `showBikeSensorPicker`), reached from Settings → Bikes → "Settings for <active bike>"
+    or the bike row's menu. They were app-wide `AppSettings` fields until 0.7.x.
+    **Resolve through `bikeSettingsFor`, never read `BikeProfile.settings` directly:**
+    `null` = never set for this bike (upgraded install, or synced from an older phone) →
+    the phone's former app-wide values (`AppSettings.legacyBikeSettings`, read from and
+    written back under the old prefs keys, never editable) → defaults. Deliberately *not*
+    migrated with an epoch-0 clock like `_adoptLegacy`: two phones' different legacy values
+    would then tie and one phone's would silently win; with the fallback each phone keeps
+    what it had until the rider edits the bike. A ride with no bike (imports) or a deleted
+    one gets the active bike's. Consumers: `activeBikeSettingsProvider` (wheel →
+    `sensorSettingsSyncProvider`, listened from `main()` → `SensorService.setWheelCircumference`,
+    which also updates already-linked `CscCalculator`s; auto-pause → `RideController`,
+    read **per fix**, so a mid-ride bike switch applies from the next one; auto-start →
+    `AutoStartController`, which subscribes only while the active bike has it on but reads
+    the speed and on/off per fix, so a bike switched in Settings can't start a ride its
+    own setting forbids) and
+    `bikeSettingsLookupProvider` (stats recompute per ride's bike: recover, resume,
+    recalculate, clean spikes). A new bike copies the active bike's settings. They sync as
+    their own part (`ProfilesDoc._settingsKey`), like the sensor choice.
   * **Per-bike sensor selection:** each profile's ⋮ menu has "Sensors for this bike" — a
     checklist (sourced from `sensorConnectionProvider`'s full paired-sensor list) that sets
     `BikeProfile.sensorIds` (`null` = all paired sensors, the default). Only sensors checked
@@ -1061,6 +1089,18 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   **runtime** is the reliable number and %/h is only shown from 10 min on.
 
 ## Known gotchas
+
+* **Riverpod 3 pauses what only a covered screen listens to.** A `ref.watch` from a widget
+  under another route (TickerMode off — e.g. the home map while Settings is open) is paused,
+  and so is every provider kept alive only by it, including its own `ref.listen`s: they
+  catch up when the screen shows again. Found when a bike switched in Settings didn't reach
+  the speed sensor until back on the map. Anything that must react while another screen is
+  open is either listened from `main()`'s container (`container.listen`, never paused —
+  `sensorSettingsSyncProvider`) or `ref.read` at the point of use (`RideController` reads
+  the active bike's auto-pause per fix, `AutoStartController` its auto-start). A plain
+  Dart stream subscription inside a paused provider keeps running; only its Riverpod
+  watches/listens wait. `test/widget/bike_switch_while_covered_test.dart`
+  covers it; tests using a bare `ProviderContainer` + `container.listen` can't see it.
 
 * **`MapModel.dispose()` disposes its registered marker datastores.** Swapping the active map
   (manual/auto map selection, or a download replacing it) disposes the old `MapModel`, which

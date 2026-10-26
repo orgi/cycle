@@ -1,4 +1,5 @@
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/sync/profile_sync.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -64,6 +65,106 @@ void main() {
     final doc = d([const BikeProfile(id: '1', name: 'Road', colorArgb: 7, clock: '005')],
         {'9': '004'});
     expect(ProfilesDoc.decode(doc.encode()).signature, doc.signature);
+  });
+
+  group('bike settings (wheel, auto-pause, auto-start)', () {
+    const wide = BikeSettings(wheelCircumferenceMeters: 2.3);
+    const slow = BikeSettings(autoPauseSpeedKmh: 3);
+
+    test('sync as their own part: the newer edit wins, independently of a '
+        'rename', () {
+      // Phone A renamed the bike; phone B later changed its wheel size.
+      final a = d([
+        const BikeProfile(
+            id: '1', name: 'Racer', colorArgb: 1, clock: '009',
+            settings: slow, settingsClock: '004'),
+      ]);
+      final b = d([
+        const BikeProfile(
+            id: '1', name: 'Road', colorArgb: 1, clock: '005',
+            settings: wide, settingsClock: '007'),
+      ]);
+      final m = ProfilesDoc.merge(a, b);
+      expect(m.profiles['1']!.name, 'Racer');
+      expect(m.profiles['1']!.settings, wide);
+      expect(m.profiles['1']!.settingsClock, '007');
+      expect(ProfilesDoc.merge(b, a).signature, m.signature);
+    });
+
+    test('a phone that has no settings for a bike never wipes them', () {
+      // e.g. a phone on an older version, whose file has none at all.
+      final withSettings = d([
+        const BikeProfile(
+            id: '1', name: 'Road', colorArgb: 1, clock: '005',
+            settings: wide, settingsClock: '001'),
+      ]);
+      final without = d([
+        const BikeProfile(id: '1', name: 'Road', colorArgb: 1, clock: '009'),
+      ]);
+      expect(ProfilesDoc.merge(without, withSettings).profiles['1']!.settings,
+          wide);
+      expect(ProfilesDoc.merge(withSettings, without).profiles['1']!.settings,
+          wide);
+    });
+
+    test('a same-clock tie is broken by content, the same on every phone', () {
+      final a = d([
+        const BikeProfile(
+            id: '1', name: 'R', colorArgb: 1, settings: wide, settingsClock: '5'),
+      ]);
+      final b = d([
+        const BikeProfile(
+            id: '1', name: 'R', colorArgb: 1, settings: slow, settingsClock: '5'),
+      ]);
+      expect(ProfilesDoc.merge(a, b).profiles['1']!.settings,
+          ProfilesDoc.merge(b, a).profiles['1']!.settings);
+    });
+
+    test('a settings edit changes the signature (so it gets uploaded)', () {
+      final before = d([const BikeProfile(id: '1', name: 'R', colorArgb: 1)]);
+      final after = d([
+        const BikeProfile(
+            id: '1', name: 'R', colorArgb: 1, settings: wide, settingsClock: '5'),
+      ]);
+      expect(after.signature, isNot(before.signature));
+    });
+
+    test('survive encode/decode and reach the local profiles', () {
+      final doc = d([
+        const BikeProfile(
+            id: '1', name: 'Road', colorArgb: 1, clock: '005',
+            settings: wide, settingsClock: '006'),
+        const BikeProfile(
+            id: '2', name: 'Gravel', colorArgb: 2, clock: '005',
+            settings: slow, settingsClock: '006'),
+      ]);
+      final back = ProfilesDoc.decode(doc.encode());
+      expect(back.signature, doc.signature);
+      const local = BikeProfilesState(
+        profiles: [BikeProfile(id: '1', name: 'Road', colorArgb: 1)],
+        activeId: '1',
+      );
+      final next = back.applyTo(local);
+      expect(next.profiles.map((p) => p.settings), [wide, slow]);
+      expect(next.profiles.map((p) => p.settingsClock), ['006', '006']);
+    });
+
+    test('same-named bikes merge into one with the newest settings', () {
+      final a = d([
+        const BikeProfile(
+            id: 'a1', name: 'Road', colorArgb: 1, settings: slow,
+            settingsClock: '003'),
+      ]);
+      final b = d([
+        const BikeProfile(
+            id: 'b1', name: 'road', colorArgb: 2, settings: wide,
+            settingsClock: '008'),
+      ]);
+      final m = ProfilesDoc.merge(a, b);
+      expect(m.profiles.keys, ['a1']);
+      expect(m.profiles['a1']!.settings, wide);
+      expect(ProfilesDoc.merge(b, a).signature, m.signature);
+    });
   });
 
   group('same name = same bike', () {

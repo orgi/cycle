@@ -1,5 +1,6 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
@@ -121,7 +122,8 @@ void main() {
   });
 
   test('auto-start is confirmed too', () async {
-    container = build(settings: const AppSettings(autoStartEnabled: true));
+    container =
+        build(bikes: oneBike(const BikeSettings(autoStartEnabled: true)));
     await settle();
     final t0 = DateTime.utc(2026, 10, 8, 9);
     for (var s = 0; s <= 6; s++) {

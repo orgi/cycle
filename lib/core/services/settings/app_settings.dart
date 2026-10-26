@@ -1,3 +1,5 @@
+import '../../models/bike_settings.dart';
+
 /// Distance/speed unit system the UI displays in.
 enum UnitSystem {
   metric('km', 'km/h'),
@@ -53,26 +55,20 @@ const Object _unset = Object();
 class AppSettings {
   const AppSettings({
     this.units = UnitSystem.metric,
-    this.wheelCircumferenceMeters = 2.105, // 700x25c default
     this.hardwareButtonsEnabled = true,
     this.showStartStopButton = false,
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
     this.mapZoom = 16,
-    this.autoPauseEnabled = true,
-    this.autoPauseSpeedKmh = 5.0,
-    this.autoStartEnabled = false,
     this.proximityHoldEnabled = false,
     this.vibrateOnStartStop = true,
     this.retentionDays = 30,
     this.saveToAppleHealth = false,
+    this.legacyBikeSettings,
   });
 
   /// Distance/speed units shown in the UI.
   final UnitSystem units;
-
-  /// Wheel circumference used to derive speed from a BLE CSC sensor.
-  final double wheelCircumferenceMeters;
 
   /// When true, the phone's volume keys start/stop recording (Android only).
   final bool hardwareButtonsEnabled;
@@ -92,17 +88,6 @@ class AppSettings {
   /// Last map zoom level, restored on the next launch.
   final int mapZoom;
 
-  /// When true, the ride timer/distance/average auto-pause below
-  /// [autoPauseSpeedKmh] (so stops at lights / breaks don't count).
-  final bool autoPauseEnabled;
-
-  /// Speed (km/h) below which the ride auto-pauses.
-  final double autoPauseSpeedKmh;
-
-  /// When true, a ride starts by itself once you're riding (see
-  /// `AutoStartDetector`). Stopping stays manual. Off by default.
-  final bool autoStartEnabled;
-
   /// When true, holding a hand over the top of the screen for ~2 s starts or
   /// stops a ride (proximity sensor; iOS). Off by default.
   final bool proximityHoldEnabled;
@@ -121,6 +106,14 @@ class AppSettings {
   /// default: turning it on asks iOS for write access.
   final bool saveToAppleHealth;
 
+  /// The wheel size / auto-pause / auto-start this phone used app-wide before
+  /// they became per-bike settings (0.7.x and older), or null on an install
+  /// that never had them. Read-only: a bike whose own [BikeSettings] were
+  /// never set uses these (`bikeSettingsFor`), so upgrading changes nothing
+  /// until the rider edits a bike. Kept under the old keys, so an older build
+  /// installed over this one still finds them.
+  final BikeSettings? legacyBikeSettings;
+
   /// Whether the home screen shows the Start/Stop button: on request, or
   /// whenever no hands-free control that can both start AND stop a ride is
   /// on — the volume keys (Android) or the hand-over-screen hold (iOS).
@@ -135,15 +128,11 @@ class AppSettings {
 
   AppSettings copyWith({
     UnitSystem? units,
-    double? wheelCircumferenceMeters,
     bool? hardwareButtonsEnabled,
     bool? showStartStopButton,
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
     int? mapZoom,
-    bool? autoPauseEnabled,
-    double? autoPauseSpeedKmh,
-    bool? autoStartEnabled,
     bool? proximityHoldEnabled,
     bool? vibrateOnStartStop,
     int? retentionDays,
@@ -151,8 +140,6 @@ class AppSettings {
   }) =>
       AppSettings(
         units: units ?? this.units,
-        wheelCircumferenceMeters:
-            wheelCircumferenceMeters ?? this.wheelCircumferenceMeters,
         hardwareButtonsEnabled:
             hardwareButtonsEnabled ?? this.hardwareButtonsEnabled,
         showStartStopButton: showStartStopButton ?? this.showStartStopButton,
@@ -161,30 +148,25 @@ class AppSettings {
             : selectedMapFileName as String?,
         colorScheme: colorScheme ?? this.colorScheme,
         mapZoom: mapZoom ?? this.mapZoom,
-        autoPauseEnabled: autoPauseEnabled ?? this.autoPauseEnabled,
-        autoPauseSpeedKmh: autoPauseSpeedKmh ?? this.autoPauseSpeedKmh,
-        autoStartEnabled: autoStartEnabled ?? this.autoStartEnabled,
         proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
         vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
         retentionDays: retentionDays ?? this.retentionDays,
         saveToAppleHealth: saveToAppleHealth ?? this.saveToAppleHealth,
+        legacyBikeSettings: legacyBikeSettings,
       );
 
   Map<String, dynamic> toJson() => {
         'units': units.name,
-        'wheel_circumference_m': wheelCircumferenceMeters,
         'hardware_buttons': hardwareButtonsEnabled,
         'show_start_stop_button': showStartStopButton,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
         'map_zoom': mapZoom,
-        'auto_pause': autoPauseEnabled,
-        'auto_pause_kmh': autoPauseSpeedKmh,
-        'auto_start': autoStartEnabled,
         'proximity_hold': proximityHoldEnabled,
         'vibrate_start_stop': vibrateOnStartStop,
         'retention_days': retentionDays,
         'apple_health': saveToAppleHealth,
+        ...?legacyBikeSettings?.toJson(),
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -192,55 +174,54 @@ class AppSettings {
           (u) => u.name == json['units'],
           orElse: () => UnitSystem.metric,
         ),
-        wheelCircumferenceMeters:
-            (json['wheel_circumference_m'] as num?)?.toDouble() ?? 2.105,
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
         showStartStopButton: json['show_start_stop_button'] as bool? ?? false,
         selectedMapFileName: json['selected_map'] as String?,
         colorScheme: _colorSchemeFromName(json['color_scheme']),
         mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
-        autoPauseEnabled: json['auto_pause'] as bool? ?? true,
-        autoPauseSpeedKmh:
-            (json['auto_pause_kmh'] as num?)?.toDouble() ?? 5.0,
-        autoStartEnabled: json['auto_start'] as bool? ?? false,
         proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
         vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
         retentionDays: (json['retention_days'] as num?)?.toInt() ?? 30,
         saveToAppleHealth: json['apple_health'] as bool? ?? false,
+        legacyBikeSettings: _legacyBikeKeys.any(json.containsKey)
+            ? BikeSettings.fromJson(json)
+            : null,
       );
+
+  /// The keys the per-bike settings were stored under while app-wide.
+  static const _legacyBikeKeys = [
+    'wheel_circumference_m',
+    'auto_pause',
+    'auto_pause_kmh',
+    'auto_start',
+  ];
 
   @override
   bool operator ==(Object other) =>
       other is AppSettings &&
       other.units == units &&
-      other.wheelCircumferenceMeters == wheelCircumferenceMeters &&
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
       other.showStartStopButton == showStartStopButton &&
       other.selectedMapFileName == selectedMapFileName &&
       other.colorScheme == colorScheme &&
       other.mapZoom == mapZoom &&
-      other.autoPauseEnabled == autoPauseEnabled &&
-      other.autoPauseSpeedKmh == autoPauseSpeedKmh &&
-      other.autoStartEnabled == autoStartEnabled &&
       other.proximityHoldEnabled == proximityHoldEnabled &&
       other.vibrateOnStartStop == vibrateOnStartStop &&
       other.retentionDays == retentionDays &&
-      other.saveToAppleHealth == saveToAppleHealth;
+      other.saveToAppleHealth == saveToAppleHealth &&
+      other.legacyBikeSettings == legacyBikeSettings;
 
   @override
   int get hashCode => Object.hash(
       units,
-      wheelCircumferenceMeters,
       hardwareButtonsEnabled,
       showStartStopButton,
       selectedMapFileName,
       colorScheme,
       mapZoom,
-      autoPauseEnabled,
-      autoPauseSpeedKmh,
-      autoStartEnabled,
       proximityHoldEnabled,
       vibrateOnStartStop,
       retentionDays,
-      saveToAppleHealth);
+      saveToAppleHealth,
+      legacyBikeSettings);
 }

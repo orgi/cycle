@@ -182,8 +182,9 @@ abstract class SensorService {
   Future<void> resumeConnections() async {}
 
   /// Sets the wheel circumference (metres) used to derive speed from a CSC
-  /// sensor. Applies to sensors connected after this call. Concrete default is
-  /// a no-op so fakes/implementations need not override it.
+  /// sensor — the active bike's, so it changes with the bike. Applies to
+  /// sensors already linked too. Concrete default is a no-op so
+  /// fakes/implementations need not override it.
   void setWheelCircumference(double meters) {}
 
   /// Sensors currently known (connected or reconnecting).

@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 import '../../../core/db/database.dart';
-import '../../../core/services/settings/app_settings.dart';
+import '../../../core/models/bike_settings.dart';
 import 'track_repair.dart';
 
 /// Human-readable summary of an [OruxMapsImportService.importFrom] result —
@@ -119,7 +119,10 @@ class OruxMapsImportService {
   OruxMapsImportService(this._db, this._settings);
 
   final AppDatabase _db;
-  final AppSettings _settings;
+
+  /// The active bike's: imported rides have no bike, so its auto-pause
+  /// applies to their stats (see `bikeSettingsFor`).
+  final BikeSettings _settings;
 
   // Guards against two importFrom() calls running concurrently on this
   // instance. A full history import can take minutes (hundreds of

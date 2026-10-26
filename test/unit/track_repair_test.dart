@@ -1,5 +1,5 @@
 import 'package:cycle/core/db/database.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/features/tracks/application/track_repair.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -9,7 +9,8 @@ void main() {
   late AppDatabase db;
   final t0 = DateTime.utc(2026, 1, 1, 12, 0, 0);
   // Auto-pause off so the recompute reflects only spike removal.
-  const settings = AppSettings(autoPauseEnabled: false);
+  const settings = BikeSettings(autoPauseEnabled: false);
+  BikeSettings lookup(String? _) => settings;
 
   setUp(() => db = AppDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
@@ -39,7 +40,7 @@ void main() {
     await addPoint(id, 3, 0, 0.0002, speed: 5); // back on track
     await addPoint(id, 4, 0, 0.0003, speed: 5);
 
-    final result = await repairTrackSpikes(db, settings, id);
+    final result = await repairTrackSpikes(db, lookup, id);
     expect(result.removed, 1);
     expect(result.kept, 4);
 
@@ -60,7 +61,7 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await addPoint(id, i, 0, 0.0001 * i, speed: 5);
     }
-    final result = await repairTrackSpikes(db, settings, id);
+    final result = await repairTrackSpikes(db, lookup, id);
     expect(result.removed, 0);
     expect((await db.pointsFor(id)).length, 5);
   });
@@ -80,7 +81,7 @@ void main() {
       expect(track.distanceMeters, 0);
 
       // Old timestamps → recovered but not offered for resume.
-      expect(await recoverInterruptedTracks(db, settings), isNull);
+      expect(await recoverInterruptedTracks(db, lookup), isNull);
 
       track = await db.track(id);
       expect(track!.endedAt, isNotNull);
@@ -88,7 +89,7 @@ void main() {
       expect(track.durationSeconds, greaterThan(0));
       expect(track.avgSpeedMps, greaterThan(0));
       // A finalised ride is left alone on a second pass.
-      expect(await recoverInterruptedTracks(db, settings), isNull);
+      expect(await recoverInterruptedTracks(db, lookup), isNull);
     },
   );
 
@@ -106,12 +107,12 @@ void main() {
         ),
       );
     }
-    expect(await recoverInterruptedTracks(db, settings), id);
+    expect(await recoverInterruptedTracks(db, lookup), id);
   });
 
   test('drops an empty interrupted track (crash before any point)', () async {
     final id = await db.createTrack(t0);
-    expect(await recoverInterruptedTracks(db, settings), isNull);
+    expect(await recoverInterruptedTracks(db, lookup), isNull);
     expect(await db.track(id), isNull); // deleted
   });
 
@@ -176,10 +177,47 @@ void main() {
     final interrupted = await db.createTrack(t0); // endedAt stays null
     await addPoint(interrupted, 0, 0, 0);
 
-    final n = await recalculateAllTrackStats(db, settings);
+    final n = await recalculateAllTrackStats(db, lookup);
     expect(n, 1);
     final track = await db.track(finished);
     expect(track!.distanceMeters, lessThan(100));
+  });
+
+  test('recalculateAllTrackStats uses the auto-pause of each ride\'s bike',
+      () async {
+    // Same ride twice at a steady 7.2 km/h: the bike pausing below 5 km/h
+    // counts it as moving, the one pausing below 10 km/h as standing still.
+    Future<int> ride(int day, String bike) async {
+      final start = t0.add(Duration(days: day));
+      final id = await db.createTrack(start, bikeProfileId: bike);
+      for (var i = 0; i < 5; i++) {
+        await db.addPoint(TrackPointsCompanion.insert(
+          trackId: id,
+          time: start.add(Duration(seconds: i)),
+          latitude: 0,
+          longitude: 0.00002 * i,
+          speedMps: const Value(2),
+        ));
+      }
+      await db.finalizeTrack(id,
+          endedAt: start.add(const Duration(seconds: 4)),
+          distanceMeters: 0,
+          durationSeconds: 0,
+          avgSpeedMps: 0,
+          maxSpeedMps: 0);
+      return id;
+    }
+
+    final touring = await ride(0, 'touring');
+    final road = await ride(1, 'road');
+    final perBike = {
+      'touring': const BikeSettings(autoPauseSpeedKmh: 5),
+      'road': const BikeSettings(autoPauseSpeedKmh: 10),
+    };
+    expect(
+        await recalculateAllTrackStats(db, (bike) => perBike[bike]!), 2);
+    expect((await db.track(touring))!.durationSeconds, 4);
+    expect((await db.track(road))!.durationSeconds, 0);
   });
 
   group('removeDuplicateTracks', () {

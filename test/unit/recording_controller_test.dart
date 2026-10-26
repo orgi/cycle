@@ -1,5 +1,6 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
@@ -260,6 +261,57 @@ void main() {
     await notifier.cycleBikeProfile();
     expect(container.read(bikeProfilesProvider).activeId, 'p1');
     expect((await db.track(trackId))!.bikeProfileId, 'p1');
+  });
+
+  test('the active bike\'s auto-pause applies to the ride, also after a '
+      'switch mid-ride', () async {
+    // Touring pauses below 10 km/h, the road bike never.
+    container.dispose();
+    container = build(
+      bikeProfiles: const BikeProfilesState(
+        profiles: [
+          BikeProfile(
+              id: 'touring',
+              name: 'Touring',
+              colorArgb: 1,
+              settings: BikeSettings(autoPauseSpeedKmh: 10)),
+          BikeProfile(
+              id: 'road',
+              name: 'Road',
+              colorArgb: 2,
+              settings: BikeSettings(autoPauseEnabled: false)),
+        ],
+        activeId: 'touring',
+      ),
+    );
+    container.listen(rideControllerProvider, (_, _) {});
+    container.listen(bikeProfilesProvider, (_, _) {});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final notifier = container.read(recordingProvider.notifier);
+    await notifier.start();
+
+    final t0 = DateTime.utc(2026, 1, 1, 12);
+    var s = 0;
+    Future<void> roll(int seconds) async {
+      for (final end = s + seconds; s < end; s++) {
+        location.emit(GeoSample(
+          latitude: 0,
+          longitude: s * 0.00002, // ~2.2 m per second
+          time: t0.add(Duration(seconds: s)),
+          speedMps: 2, // 7.2 km/h
+        ));
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    await roll(5);
+    expect(container.read(rideControllerProvider).elapsed, Duration.zero);
+
+    await notifier.setBikeProfile('road');
+    await roll(5);
+    expect(container.read(rideControllerProvider).elapsed,
+        const Duration(seconds: 5));
+    await notifier.stop();
   });
 
   test('cycleBikeProfile is a no-op with a single profile', () async {

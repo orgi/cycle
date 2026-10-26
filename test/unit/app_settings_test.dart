@@ -1,3 +1,4 @@
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/core/services/settings/settings_store.dart';
 import 'package:cycle/core/utils/format.dart';
@@ -8,18 +9,16 @@ void main() {
   test('AppSettings JSON round-trips', () {
     const s = AppSettings(
       units: UnitSystem.imperial,
-      wheelCircumferenceMeters: 2.2,
       hardwareButtonsEnabled: false,
       showStartStopButton: true,
       selectedMapFileName: 'Bayern.map',
       colorScheme: AppColorScheme.bw,
       mapZoom: 14,
-      autoStartEnabled: true,
       proximityHoldEnabled: true,
+      legacyBikeSettings: BikeSettings(wheelCircumferenceMeters: 2.2),
     );
     final back = AppSettings.fromJson(s.toJson());
     expect(back, s);
-    expect(back.autoStartEnabled, isTrue);
     expect(back.proximityHoldEnabled, isTrue);
     expect(back.colorScheme, AppColorScheme.bw);
     expect(back.showStartStopButton, isTrue);
@@ -61,20 +60,60 @@ void main() {
         isNull);
   });
 
-  test('auto-start and hand-over-screen are opt-in', () {
-    const d = AppSettings();
-    expect(d.autoStartEnabled, isFalse);
-    expect(d.proximityHoldEnabled, isFalse);
-    final fromOld = AppSettings.fromJson(const {'units': 'metric'});
-    expect(fromOld.autoStartEnabled, isFalse);
-    expect(fromOld.proximityHoldEnabled, isFalse);
+  test('hand-over-screen is opt-in', () {
+    expect(const AppSettings().proximityHoldEnabled, isFalse);
+    expect(AppSettings.fromJson(const {'units': 'metric'}).proximityHoldEnabled,
+        isFalse);
   });
 
   test('AppSettings.fromJson tolerates missing/garbage fields', () {
     final s = AppSettings.fromJson({'units': 'nonsense'});
     expect(s.units, UnitSystem.metric);
-    expect(s.wheelCircumferenceMeters, 2.105);
     expect(s.hardwareButtonsEnabled, isTrue);
+  });
+
+  group('legacy (pre per-bike) wheel / auto-pause / auto-start', () {
+    // What 0.7.x wrote: these four were app-wide settings.
+    const old = {
+      'units': 'metric',
+      'wheel_circumference_m': 2.2,
+      'auto_pause': false,
+      'auto_pause_kmh': 3.5,
+      'auto_start': true,
+    };
+
+    test('are read from an older build\'s settings', () {
+      expect(
+        AppSettings.fromJson(old).legacyBikeSettings,
+        const BikeSettings(
+          wheelCircumferenceMeters: 2.2,
+          autoPauseEnabled: false,
+          autoPauseSpeedKmh: 3.5,
+          autoStartEnabled: true,
+        ),
+      );
+    });
+
+    test('survive saving other settings (and stay readable by old builds)',
+        () {
+      final saved = AppSettings.fromJson(old)
+          .copyWith(units: UnitSystem.imperial, mapZoom: 12)
+          .toJson();
+      for (final key in ['wheel_circumference_m', 'auto_pause',
+          'auto_pause_kmh', 'auto_start']) {
+        expect(saved[key], old[key], reason: key);
+      }
+      expect(AppSettings.fromJson(saved).legacyBikeSettings!.autoPauseSpeedKmh,
+          3.5);
+    });
+
+    test('are absent on a fresh install', () {
+      expect(const AppSettings().legacyBikeSettings, isNull);
+      expect(AppSettings.fromJson(const {'units': 'metric'}).legacyBikeSettings,
+          isNull);
+      expect(const AppSettings().toJson().containsKey('wheel_circumference_m'),
+          isFalse);
+    });
   });
 
   test('SharedPrefsSettingsStore persists and defaults', () async {
@@ -128,11 +167,6 @@ void main() {
               .copyWith(showStartStopButton: true)
               .startStopButtonVisible(
                   volumeKeysSupported: false, proximityHoldSupported: true),
-          isTrue);
-      // Auto-start can't stop a ride, so it never hides the button.
-      expect(
-          defaults.copyWith(autoStartEnabled: true).startStopButtonVisible(
-              volumeKeysSupported: false, proximityHoldSupported: true),
           isTrue);
     });
 

@@ -5,6 +5,7 @@ import '../../../core/export/gpx_export_service.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../map/application/map_providers.dart';
 import '../../map/application/map_render_service.dart';
+import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/application/settings_providers.dart';
 import 'track_repair.dart';
 
@@ -39,7 +40,7 @@ class SelectedBikeProfileFilter extends Notifier<String?> {
 final interruptedTrackRecoveryProvider = FutureProvider<int?>(
   (ref) => recoverInterruptedTracks(
     ref.read(appDatabaseProvider),
-    ref.read(settingsProvider),
+    ref.read(bikeSettingsLookupProvider),
   ),
 );
 

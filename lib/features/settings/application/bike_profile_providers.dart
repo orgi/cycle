@@ -1,10 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/bike_profile.dart';
+import '../../../core/models/bike_settings.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
 import '../../../core/services/bike_profiles/bike_profiles_store.dart';
 import '../../../core/sync/profile_sync.dart';
 import '../../../core/sync/sync_clock.dart';
+import 'settings_providers.dart';
 
 /// Persists bike profiles. Overridable in tests.
 final bikeProfilesStoreProvider = Provider<BikeProfilesStore>(
@@ -18,6 +20,35 @@ final bikeProfilesStoreProvider = Provider<BikeProfilesStore>(
 final bikeProfilesProvider =
     NotifierProvider<BikeProfilesController, BikeProfilesState>(
         BikeProfilesController.new);
+
+/// The settings that apply to rides on bike [bikeProfileId]: that bike's own
+/// (following merge aliases), or — for a ride with no bike, or one whose bike
+/// is gone — the active bike's. A bike whose settings were never set uses
+/// [legacy], the phone's app-wide values from before they were per bike
+/// (`AppSettings.legacyBikeSettings`), else the defaults. With one bike this
+/// is exactly what the app-wide settings used to give.
+BikeSettings bikeSettingsFor(BikeProfilesState bikes, String? bikeProfileId,
+    {BikeSettings? legacy}) {
+  final id = ProfilesDoc.resolve(bikes.aliases, bikeProfileId);
+  final bike =
+      bikes.profiles.where((p) => p.id == id).firstOrNull ?? bikes.active;
+  return bike?.settings ?? legacy ?? const BikeSettings();
+}
+
+/// [bikeSettingsFor] over the live profiles: the settings for a ride's
+/// `bikeProfileId` (null = the active bike). For recomputing a ride's stats
+/// with the auto-pause of the bike it was ridden on.
+final bikeSettingsLookupProvider = Provider<BikeSettingsLookup>((ref) {
+  final bikes = ref.watch(bikeProfilesProvider);
+  final legacy =
+      ref.watch(settingsProvider.select((s) => s.legacyBikeSettings));
+  return (id) => bikeSettingsFor(bikes, id, legacy: legacy);
+});
+
+/// The active bike's settings: the wheel size the speed sensor uses, and the
+/// auto-pause/auto-start of the ride being (or about to be) recorded.
+final activeBikeSettingsProvider = Provider<BikeSettings>(
+    (ref) => ref.watch(bikeSettingsLookupProvider)(null));
 
 class BikeProfilesController extends Notifier<BikeProfilesState> {
   @override
@@ -112,8 +143,10 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
   }
 
   /// Adds a new profile (auto-assigned the next unused preset colour) and
-  /// makes it active if it's the first one. Returns false (and changes
-  /// nothing) for an empty or already-used name.
+  /// makes it active if it's the first one. It starts with a copy of the
+  /// active bike's settings — the rider's auto-pause/auto-start habits, and
+  /// often the same wheel size. Returns false (and changes nothing) for an
+  /// empty or already-used name.
   Future<bool> add(String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty || nameTaken(trimmed)) return false;
@@ -123,8 +156,18 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
       orElse: () =>
           kBikeProfileColors[state.profiles.length % kBikeProfileColors.length],
     );
+    final clock = await _stamp();
+    // An active bike without settings of its own uses the legacy/default
+    // values, and so will this one.
+    final settings = state.active?.settings;
     final p = BikeProfile(
-        id: _newId(), name: trimmed, colorArgb: color, clock: await _stamp());
+      id: _newId(),
+      name: trimmed,
+      colorArgb: color,
+      clock: clock,
+      settings: settings,
+      settingsClock: settings == null ? null : clock,
+    );
     state = state.copyWith(
       profiles: [...state.profiles, p],
       activeId: state.activeId ?? p.id,
@@ -155,6 +198,17 @@ class BikeProfilesController extends Notifier<BikeProfilesState> {
         p.id == id
             ? p.copyWith(sensorIds: sensorIds, clearSensorIds: sensorIds == null)
             : p,
+    ]);
+    await _persist();
+  }
+
+  /// Sets bike [id]'s wheel size / auto-pause / auto-start, stamped so the
+  /// edit wins over older ones on other phones.
+  Future<void> setSettings(String id, BikeSettings settings) async {
+    final clock = await _stamp();
+    state = state.copyWith(profiles: [
+      for (final p in state.profiles)
+        p.id == id ? p.copyWith(settings: settings, settingsClock: clock) : p,
     ]);
     await _persist();
   }

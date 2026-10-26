@@ -109,7 +109,12 @@ class BleSensorService implements SensorService {
 
   @override
   void setWheelCircumference(double meters) {
-    if (meters > 0) _wheelCircumferenceMeters = meters;
+    if (meters <= 0) return;
+    _wheelCircumferenceMeters = meters;
+    // Sensors already linked too: the active bike can change mid-ride.
+    for (final csc in _csc.values) {
+      csc.wheelCircumferenceMeters = meters;
+    }
   }
 
   static final List<String> _serviceUuids = [

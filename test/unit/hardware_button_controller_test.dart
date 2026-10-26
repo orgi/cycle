@@ -1,5 +1,6 @@
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
@@ -133,17 +134,36 @@ void main() {
     expect(container.read(bikeProfilesProvider).activeId, 'p1');
   });
 
-  test('wheel-circumference setting is pushed to the sensor service', () async {
-    container = build(enabled: true);
+  test('the active bike\'s wheel circumference is pushed to the sensor service',
+      () async {
+    container = build(
+      enabled: true,
+      bikeProfiles: const BikeProfilesState(
+        profiles: [
+          BikeProfile(id: 'road', name: 'Road', colorArgb: 1),
+          BikeProfile(
+              id: 'mtb',
+              name: 'MTB',
+              colorArgb: 2,
+              settings: BikeSettings(wheelCircumferenceMeters: 2.3)),
+        ],
+        activeId: 'road',
+      ),
+    );
     container.listen(sensorSettingsSyncProvider, (_, _) {});
     await settle();
+    // Road never had its own: the default.
     expect(sensors.wheelCircumference, closeTo(2.105, 1e-9));
 
-    await container
-        .read(settingsProvider.notifier)
-        .setWheelCircumference(2.2);
+    await container.read(bikeProfilesProvider.notifier).setSettings(
+        'road', const BikeSettings(wheelCircumferenceMeters: 2.2));
     await settle();
     expect(sensors.wheelCircumference, closeTo(2.2, 1e-9));
+
+    // Switching bikes (e.g. volume-up mid-ride) switches the wheel too.
+    await container.read(bikeProfilesProvider.notifier).setActive('mtb');
+    await settle();
+    expect(sensors.wheelCircumference, closeTo(2.3, 1e-9));
   });
 
   group('proximity hold (iOS)', () {

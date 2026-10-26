@@ -329,6 +329,30 @@ void main() {
     expect(sensor(hr)!.connected, isTrue);
   });
 
+  test('a new wheel circumference applies to a speed sensor already linked',
+      () async {
+    // Switching to a bike with another wheel size, same sensor (or one
+    // shared by both bikes): no relink, the next revolution uses it.
+    ble.inRange.add(cadence);
+    await service.connect(cadence);
+    await settle();
+    // CSC: flags = wheel data, uint32 revs, uint16 event time (1/1024 s).
+    List<int> wheel(int revs, int time) => [
+          0x01,
+          revs & 0xFF, (revs >> 8) & 0xFF, 0, 0,
+          time & 0xFF, (time >> 8) & 0xFF,
+        ];
+    ble.notify(cadence, GattIds.cscMeasurement, wheel(100, 1024));
+    ble.notify(cadence, GattIds.cscMeasurement, wheel(101, 2048));
+    await settle(20);
+    expect(snapshots.last.wheelSpeedMps, closeTo(2.105, 1e-3));
+
+    service.setWheelCircumference(2.3);
+    ble.notify(cadence, GattIds.cscMeasurement, wheel(102, 3072));
+    await settle(20);
+    expect(snapshots.last.wheelSpeedMps, closeTo(2.3, 1e-3));
+  });
+
   test('switching bikes drops sensors that are out of scope', () async {
     ble.inRange.addAll([hr, cadence]);
     await service.setActiveTargets({hr, cadence});

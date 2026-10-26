@@ -1,13 +1,15 @@
 import 'dart:convert';
 
 import '../models/bike_profile.dart';
+import '../models/bike_settings.dart';
 import '../sensors/sensor_catalog.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
 import 'sync_clock.dart';
 
-/// The synced part of the bike profiles: names/colours and each bike's sensor
-/// choice (by sensor name), each with its own clock; deletions; merge aliases;
-/// and the [sensors] catalog. The active profile and this phone's sensor *ids*
+/// The synced part of the bike profiles: names/colours, each bike's sensor
+/// choice (by sensor name) and its settings (wheel size, auto-pause,
+/// auto-start), each with its own clock; deletions; merge aliases; and the
+/// [sensors] catalog. The active profile and this phone's sensor *ids*
 /// stay local.
 class ProfilesDoc {
   const ProfilesDoc({
@@ -71,13 +73,20 @@ class ProfilesDoc {
       for (final id in ids.skip(1)) {
         aliases[id] = ids.first;
       }
-      // The survivor keeps the newest sensor choice of the group.
+      // The survivor keeps the newest sensor choice and the newest settings
+      // of the group.
       var survivor = profiles[ids.first]!;
       for (final id in ids.skip(1)) {
         final other = profiles[id]!;
-        if (_sensorKey(other).compareTo(_sensorKey(survivor)) > 0) {
-          survivor = _withSensors(survivor, other);
-        }
+        survivor = _compose(
+          survivor,
+          sensors: _sensorKey(other).compareTo(_sensorKey(survivor)) > 0
+              ? other
+              : survivor,
+          settings: _settingsKey(other).compareTo(_settingsKey(survivor)) > 0
+              ? other
+              : survivor,
+        );
       }
       profiles[ids.first] = survivor;
     }
@@ -90,29 +99,40 @@ class ProfilesDoc {
     );
   }
 
-  /// Name/colour and the sensor choice are separate parts: each takes the
-  /// newer of the two, so editing one on a phone never undoes the other.
-  static BikeProfile _mergeOne(BikeProfile x, BikeProfile y) {
-    final base = _key(y).compareTo(_key(x)) > 0 ? y : x;
-    final sensors = _sensorKey(y).compareTo(_sensorKey(x)) > 0 ? y : x;
-    return _withSensors(base, sensors);
-  }
+  /// Name/colour, the sensor choice and the settings are separate parts:
+  /// each takes the newer of the two, so editing one on a phone never undoes
+  /// another.
+  static BikeProfile _mergeOne(BikeProfile x, BikeProfile y) => _compose(
+        _key(y).compareTo(_key(x)) > 0 ? y : x,
+        sensors: _sensorKey(y).compareTo(_sensorKey(x)) > 0 ? y : x,
+        settings: _settingsKey(y).compareTo(_settingsKey(x)) > 0 ? y : x,
+      );
 
-  static BikeProfile _withSensors(BikeProfile base, BikeProfile from) =>
+  /// [base]'s name/colour with [sensors]' sensor choice and [settings]'
+  /// settings.
+  static BikeProfile _compose(BikeProfile base,
+          {required BikeProfile sensors, required BikeProfile settings}) =>
       BikeProfile(
         id: base.id,
         name: base.name,
         colorArgb: base.colorArgb,
         clock: base.clock,
         sensorIds: base.sensorIds,
-        sensorKeys: from.sensorKeys,
-        sensorsClock: from.sensorsClock,
+        sensorKeys: sensors.sensorKeys,
+        sensorsClock: sensors.sensorsClock,
+        settings: settings.settings,
+        settingsClock: settings.settingsClock,
       );
 
   static String _sensorKey(BikeProfile p) {
     final keys = p.sensorKeys == null ? '*' : (p.sensorKeys!.toList()..sort()).join(',');
     return '${p.sensorsClock ?? ''}\u0001$keys';
   }
+
+  /// Like [_key]: clock, then content. No settings (`null`, a phone that
+  /// doesn't sync them yet) has no clock either, so it's the oldest.
+  static String _settingsKey(BikeProfile p) =>
+      '${p.settingsClock ?? ''}\u0001${jsonEncode(p.settings?.toJson())}';
 
   static String normalizeName(String name) => name.trim().toLowerCase();
 
@@ -162,6 +182,8 @@ class ProfilesDoc {
         sensorIds: sensorsOf(id),
         sensorKeys: m.sensorKeys,
         sensorsClock: m.sensorsClock,
+        settings: m.settings,
+        settingsClock: m.settingsClock,
       ));
     }
     final added = profiles.values.where((p) => !placed.contains(p.id)).toList()
@@ -173,7 +195,9 @@ class ProfilesDoc {
           colorArgb: p.colorArgb,
           clock: p.clock,
           sensorKeys: p.sensorKeys,
-          sensorsClock: p.sensorsClock));
+          sensorsClock: p.sensorsClock,
+          settings: p.settings,
+          settingsClock: p.settingsClock));
     }
     final active = resolve(aliases, local.activeId);
     final activeId =
@@ -189,6 +213,7 @@ class ProfilesDoc {
     return jsonEncode([
       for (final id in ids) _key(profiles[id]!),
       for (final id in ids) _sensorKey(profiles[id]!),
+      for (final id in ids) _settingsKey(profiles[id]!),
       ...ids,
       for (final id in del) '$id=${deleted[id]}',
       for (final id in (aliases.keys.toList()..sort())) '$id>${aliases[id]}',
@@ -207,6 +232,8 @@ class ProfilesDoc {
               'clock': p.clock,
               if (p.sensorKeys != null) 'sensor_keys': p.sensorKeys!.toList(),
               if (p.sensorsClock != null) 'sensors_clock': p.sensorsClock,
+              if (p.settings != null) 'settings': p.settings!.toJson(),
+              if (p.settingsClock != null) 'settings_clock': p.settingsClock,
             },
         ],
         'sensors': sensors.toJson(),
@@ -228,6 +255,11 @@ class ProfilesDoc {
                 ?.map((e) => e as String)
                 .toSet(),
             sensorsClock: raw['sensors_clock'] as String?,
+            settings: raw['settings'] is Map
+                ? BikeSettings.fromJson(
+                    (raw['settings'] as Map).cast<String, dynamic>())
+                : null,
+            settingsClock: raw['settings_clock'] as String?,
           ),
       },
       sensors: SensorCatalog.fromJson(j['sensors'] as List?),

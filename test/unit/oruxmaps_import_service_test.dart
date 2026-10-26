@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cycle/core/db/database.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/features/tracks/application/oruxmaps_import_service.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -202,7 +202,7 @@ void main() {
     );
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final service = OruxMapsImportService(db, const AppSettings());
+    final service = OruxMapsImportService(db, const BikeSettings());
 
     await service.importFrom(file.path);
 
@@ -245,7 +245,7 @@ void main() {
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
-    final service = OruxMapsImportService(db, const AppSettings());
+    final service = OruxMapsImportService(db, const BikeSettings());
     final result = await service.importFrom(file.path);
 
     expect(result.imported, 1);
@@ -262,7 +262,7 @@ void main() {
     final file = buildOruxFixture(tmp, withSpeedColumn: true);
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final service = OruxMapsImportService(db, const AppSettings());
+    final service = OruxMapsImportService(db, const BikeSettings());
 
     final first = await service.importFrom(file.path);
     final second = await service.importFrom(file.path);
@@ -287,7 +287,7 @@ void main() {
       );
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final service = OruxMapsImportService(db, const AppSettings());
+      final service = OruxMapsImportService(db, const BikeSettings());
 
       final first = await service.importFrom(file.path);
       final second = await service.importFrom(file.path);
@@ -309,7 +309,7 @@ void main() {
       );
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final service = OruxMapsImportService(db, const AppSettings());
+      final service = OruxMapsImportService(db, const BikeSettings());
 
       // Import once via a fixture copy with no sensor column at all (as if
       // imported before the sensor-decoding fix shipped).
@@ -345,7 +345,7 @@ void main() {
       final file = buildOruxFixture(tmp, withSpeedColumn: true);
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final service = OruxMapsImportService(db, const AppSettings());
+      final service = OruxMapsImportService(db, const BikeSettings());
 
       final first = service.importFrom(file.path);
       await expectLater(
@@ -365,7 +365,7 @@ void main() {
       // also fires on a real device with OruxMaps not installed / no tracks.
       final db = AppDatabase(NativeDatabase.memory());
       addTearDown(db.close);
-      final service = OruxMapsImportService(db, const AppSettings());
+      final service = OruxMapsImportService(db, const BikeSettings());
 
       expect(
         () => service.importFromDeviceStorage(),
