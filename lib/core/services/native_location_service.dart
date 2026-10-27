@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../models/geo_sample.dart';
 import 'location_service.dart';
+import 'sea_level_altitude.dart';
 
 /// Android GPS via ONE continuous native `LocationManager.requestLocationUpdates`
 /// (the raw GPS provider), streamed over the `cycle/location` EventChannel —
@@ -24,6 +25,7 @@ class NativeLocationService implements LocationService {
   static const EventChannel _events = EventChannel('cycle/location');
 
   Stream<GeoSample>? _shared;
+  final SeaLevelAltitude _seaLevel = SeaLevelAltitude();
 
   @override
   Future<bool> ensurePermission() async {
@@ -39,15 +41,28 @@ class NativeLocationService implements LocationService {
   @override
   Stream<GeoSample> positions() => _shared ??= _events
       .receiveBroadcastStream()
-      .map((e) => _toSample((e as Map).cast<String, Object?>()))
+      .map((e) => geoSampleFromNativeFix(
+          (e as Map).cast<String, Object?>(), _seaLevel))
       .asBroadcastStream();
+}
 
-  GeoSample _toSample(Map<String, Object?> m) => GeoSample(
-        latitude: (m['latitude']! as num).toDouble(),
-        longitude: (m['longitude']! as num).toDouble(),
-        time: DateTime.fromMillisecondsSinceEpoch((m['timeMillis']! as num).toInt()),
-        speedMps: (m['speed'] as num?)?.toDouble(),
-        altitudeMeters: (m['altitude'] as num?)?.toDouble(),
-        accuracyMeters: (m['accuracy'] as num?)?.toDouble(),
-      );
+/// One fix from `MainActivity.locationToMap`, its height above sea level like
+/// iOS reports it (see [SeaLevelAltitude]).
+GeoSample geoSampleFromNativeFix(
+    Map<String, Object?> m, SeaLevelAltitude seaLevel) {
+  final time =
+      DateTime.fromMillisecondsSinceEpoch((m['timeMillis']! as num).toInt());
+  return GeoSample(
+    latitude: (m['latitude']! as num).toDouble(),
+    longitude: (m['longitude']! as num).toDouble(),
+    time: time,
+    speedMps: (m['speed'] as num?)?.toDouble(),
+    altitudeMeters: seaLevel.resolve(
+      fixTime: time,
+      altitude: (m['altitude'] as num?)?.toDouble(),
+      platformMsl: (m['mslAltitude'] as num?)?.toDouble(),
+      gga: m['gga'] as String?,
+    ),
+    accuracyMeters: (m['accuracy'] as num?)?.toDouble(),
+  );
 }

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/db/database.dart';
+import '../../../core/metrics/elevation.dart';
 import '../../../core/metrics/ride_metrics_accumulator.dart';
 import '../../../core/models/bike_settings.dart';
 import '../../../core/models/geo_sample.dart';
@@ -279,6 +280,10 @@ final rideControllerProvider =
 
 class RideController extends Notifier<RideMetrics> {
   final RideMetricsAccumulator _accumulator = RideMetricsAccumulator();
+  // The ride's climb and profile; the shown height runs whether or not a
+  // ride records.
+  final RideElevation _elevation = RideElevation();
+  final AltitudeSmoother _altitude = AltitudeSmoother();
   final SpeedFusion _fusion = SpeedFusion();
   double _maxSpeedMps = 0;
   SensorSnapshot? _latestSnapshot;
@@ -321,6 +326,9 @@ class RideController extends Notifier<RideMetrics> {
     // time/distance/avg/max. When idle we still show the live current speed,
     // but the ride totals stay at zero so e.g. the timer does not run before
     // the rider taps Start.
+    final altitude = sample.altitudeMeters;
+    // An inaccurate fix's height is no better than its position.
+    if (altitude != null && isAccurateEnough(sample)) _altitude.add(altitude);
     if (!_accumulating) {
       final gps = (sample.speedMps != null && sample.speedMps! >= 0)
           ? sample.speedMps!
@@ -329,7 +337,8 @@ class RideController extends Notifier<RideMetrics> {
       final now = DateTime.now();
       state = RideMetrics.zero().copyWith(
           currentSpeedMps: _fusion.fused(now),
-          speedFromSensor: _fusion.isUsingBle(now));
+          speedFromSensor: _fusion.isUsingBle(now),
+          elevationMeters: _altitude.value);
       return;
     }
     // A fix too inaccurate to record (typically while standing still, when
@@ -355,10 +364,15 @@ class RideController extends Notifier<RideMetrics> {
     final now = DateTime.now();
     final fused = _fusedSpeed(now);
     final fromSensor = _fusion.isUsingBle(now);
+    // The speed the point is saved with, so the saved ride's climb matches.
+    _elevation.add(altitude, metrics.distanceMeters, fused);
     state = metrics.copyWith(
         currentSpeedMps: fused,
         maxSpeedMps: _maxSpeedMps,
-        speedFromSensor: fromSensor);
+        speedFromSensor: fromSensor,
+        elevationMeters: _altitude.value,
+        climbMeters: _elevation.climbMeters,
+        elevationProfile: _elevation.profile);
     // A battery test's simulated ride is never saved as a ride (it writes its
     // points to its own scratch database).
     if (!ref.read(recordingProvider)) return;
@@ -382,7 +396,8 @@ class RideController extends Notifier<RideMetrics> {
     if (!_accumulating) {
       state = RideMetrics.zero().copyWith(
           currentSpeedMps: _fusion.fused(now),
-          speedFromSensor: _fusion.isUsingBle(now));
+          speedFromSensor: _fusion.isUsingBle(now),
+          elevationMeters: _altitude.value);
       return;
     }
     state = state.copyWith(
@@ -396,7 +411,8 @@ class RideController extends Notifier<RideMetrics> {
   /// continues from where it left off (the dead-time gap is not counted).
   /// [bike] is the settings of the bike the ride was recorded on.
   void resumeFrom(List<TrackPoint> points, BikeSettings bike) {
-    final m = computeStatsFromPoints(points, bike);
+    _elevation.reset();
+    final m = computeStatsFromPoints(points, bike, elevation: _elevation);
     _maxSpeedMps = m.maxSpeedMps;
     _accumulator.resumeWith(
       distanceMeters: m.distanceMeters,
@@ -422,8 +438,9 @@ class RideController extends Notifier<RideMetrics> {
   void reset() {
     _accumulator.reset();
     _fusion.reset();
+    _elevation.reset();
     _maxSpeedMps = 0;
-    state = const RideMetrics.zero();
+    state = RideMetrics.zero().copyWith(elevationMeters: _altitude.value);
   }
 }
 

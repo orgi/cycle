@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/db/database.dart';
+import '../../../core/metrics/elevation.dart';
 import '../../../core/services/apple_health_service.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -305,17 +306,9 @@ class _BodyState extends State<_Body> {
 
   bool get _hasElevation => widget.points.any((p) => p.altitude != null);
 
-  double get _ascentMeters {
-    var gain = 0.0;
-    double? prev;
-    for (final p in widget.points) {
-      final a = p.altitude;
-      if (a == null) continue;
-      if (prev != null && a > prev) gain += a - prev;
-      prev = a;
-    }
-    return gain;
-  }
+  // Counted like the live CLIMB (smoothed, with a threshold), so both agree.
+  double get _ascentMeters => rideClimbMeters(
+      widget.points.map((p) => (altitude: p.altitude, speedMps: p.speedMps)));
 
   double? _avg(num? Function(TrackPoint) select) {
     var sum = 0.0;

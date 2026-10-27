@@ -2,12 +2,15 @@ import '../../models/bike_settings.dart';
 
 /// Distance/speed unit system the UI displays in.
 enum UnitSystem {
-  metric('km', 'km/h'),
-  imperial('mi', 'mph');
+  metric('km', 'km/h', 'm'),
+  imperial('mi', 'mph', 'ft');
 
-  const UnitSystem(this.distanceLabel, this.speedLabel);
+  const UnitSystem(this.distanceLabel, this.speedLabel, this.elevationLabel);
   final String distanceLabel;
   final String speedLabel;
+
+  /// Heights and climb.
+  final String elevationLabel;
 }
 
 /// App + map colour scheme. Each restyles the UI, the offline map render theme,

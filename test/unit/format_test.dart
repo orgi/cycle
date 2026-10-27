@@ -1,3 +1,4 @@
+import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/core/utils/format.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,6 +31,16 @@ void main() {
         formatDuration(const Duration(hours: 13, minutes: 4, seconds: 9)),
         '13:04:09',
       );
+    });
+  });
+
+  group('formatElevation', () {
+    test('whole metres, or feet for imperial', () {
+      expect(formatElevation(612.4, UnitSystem.metric), '612');
+      expect(formatElevation(612.6, UnitSystem.metric), '613');
+      expect(formatElevation(100, UnitSystem.imperial), '328');
+      expect(UnitSystem.metric.elevationLabel, 'm');
+      expect(UnitSystem.imperial.elevationLabel, 'ft');
     });
   });
 }

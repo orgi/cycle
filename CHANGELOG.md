@@ -8,6 +8,29 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-27
+
+### Added
+- The home screen's tiles can be arranged right on the map: long-press any tile, then drag
+  it onto another to swap them, onto a row's "+" or a "+ row" line to move it, or onto the
+  bin to remove it; tap a tile to choose what it shows. Each bike profile has its own
+  layout (e.g. one for hiking), and it syncs with the bike. Bike settings → Home screen
+  has "Edit" and "Reset to the standard tiles".
+- New tiles: ELEV (current height above sea level), CLIMB (how far up this ride has
+  gone), and two elevation profiles: the ride's, from its start until now, and the
+  followed route's whole profile with where you are and the climb still ahead.
+- A followed route's heights are read from its GPX file.
+
+### Changed
+- The ascent shown on a ride's details is smoothed and counted with a 5 m threshold,
+  like the new live CLIMB, so GPS jitter no longer adds up to a too-high number. A ride's
+  ascent can therefore read lower than before.
+
+### Fixed
+- Android: heights are above sea level, as on iOS and on maps. Android reports them above
+  the WGS84 ellipsoid, about 48 m higher in Bavaria; the sea-level height now comes from
+  the GPS chip itself. Rides recorded before keep their old heights.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added
@@ -632,7 +655,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/orgi/cycle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/orgi/cycle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/orgi/cycle/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/orgi/cycle/compare/v0.6.0...v0.7.0

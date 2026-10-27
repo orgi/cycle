@@ -36,6 +36,23 @@ void main() {
     expect(route.points.length, 2);
   });
 
+  test('reads the heights (<ele>), when the GPX has them', () {
+    const xml = '''
+<?xml version="1.0"?>
+<gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="47.0000" lon="11.0000"><ele>600</ele></trkpt>
+    <trkpt lat="47.0010" lon="11.0000"><ele>650.5</ele></trkpt>
+    <trkpt lat="47.0020" lon="11.0000"></trkpt>
+  </trkseg></trk>
+</gpx>''';
+    final route = parseGpxRoute(xml);
+    expect([for (final p in route.points) p.elevationMeters],
+        [600, 650.5, null]);
+    expect(route.hasElevation, isTrue);
+    expect(route.totalClimbMeters, 50.5);
+  });
+
   test('prefers the track name when present', () {
     const xml = '''
 <?xml version="1.0"?>
