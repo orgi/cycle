@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/models/bike_settings.dart';
+import '../../../core/models/home_layout.dart';
+import '../../map/application/home_layout_providers.dart';
 import '../application/bike_profile_providers.dart';
 import 'widgets/bike_color_dot.dart';
 import 'widgets/bike_sensor_picker.dart';
@@ -21,7 +24,8 @@ String bikeSettingsSummary(BikeSettings s) => [
     ].join(' · ');
 
 /// Everything that belongs to one bike rather than to the rider or phone:
-/// which sensors it uses, its wheel size, auto-pause and auto-start. The
+/// which sensors it uses, its wheel size, auto-pause and auto-start, and the
+/// home screen's tiles while riding it. The
 /// active bike's settings apply while riding; editing them syncs to the same
 /// bike on other phones. `/bike-profiles/:id`.
 class BikeSettingsScreen extends ConsumerWidget {
@@ -126,6 +130,35 @@ class BikeSettingsScreen extends ConsumerWidget {
                 ? () => _editAutoStartSpeed(context, settings, save)
                 : null,
           ),
+          const SettingsHeader('Home screen'),
+          ListTile(
+            key: const Key('homeLayoutTile'),
+            title: Text(settings.homeLayout == HomeLayout.standard
+                ? 'Standard tiles'
+                : 'Your own tiles'),
+            subtitle: Text(bike.id == bikes.activeId
+                ? 'Long-press a tile on the map to move or change it.'
+                : 'Make this bike active, then long-press a tile on the map '
+                    'to move or change it.'),
+            trailing: bike.id == bikes.activeId
+                ? TextButton(
+                    key: const Key('homeLayoutEdit'),
+                    onPressed: () {
+                      ref.read(homeLayoutEditingProvider.notifier).set(true);
+                      context.go('/');
+                    },
+                    child: const Text('Edit'),
+                  )
+                : null,
+          ),
+          if (settings.homeLayout != HomeLayout.standard)
+            ListTile(
+              key: const Key('homeLayoutReset'),
+              leading: const Icon(Icons.restart_alt),
+              title: const Text('Reset to the standard tiles'),
+              onTap: () =>
+                  save(settings.copyWith(homeLayout: HomeLayout.standard)),
+            ),
         ],
       ),
     );

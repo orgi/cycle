@@ -6,12 +6,14 @@ import android.content.Intent
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.location.OnNmeaMessageListener
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -99,6 +101,14 @@ class MainActivity : FlutterActivity() {
     private var locationManager: LocationManager? = null
     private var locationListener: LocationListener? = null
     private var locationEvents: EventChannel.EventSink? = null
+
+    // Height above sea level. Location.altitude is above the WGS84 ellipsoid
+    // (about 48 m more than the map/summit figure in Bavaria). The chip's own
+    // GGA sentence carries the height above mean sea level, so it is read
+    // alongside the same request (no extra GPS work) and the latest one sent
+    // with each fix; Dart matches it to the fix (SeaLevelAltitude).
+    private var nmeaListener: OnNmeaMessageListener? = null
+    private var lastGga: String? = null
 
     // The GPS request is held only while it has a consumer: Dart is listening
     // AND (the app is in the foreground OR a ride is recording). Leaving it
@@ -449,6 +459,7 @@ class MainActivity : FlutterActivity() {
                 listener,
                 Looper.getMainLooper(),
             )
+            addNmeaListener(lm)
         } catch (e: SecurityException) {
             events.error("PERMISSION", "Location permission not granted", null)
         }
@@ -457,6 +468,27 @@ class MainActivity : FlutterActivity() {
     private fun stopLocationUpdates() {
         locationListener?.let { locationManager?.removeUpdates(it) }
         locationListener = null
+        nmeaListener?.let { locationManager?.removeNmeaListener(it) }
+        nmeaListener = null
+        lastGga = null
+    }
+
+    /// Reads the GGA sentences of the GPS request that is already running; it
+    /// adds no request of its own.
+    @Suppress("DEPRECATION")
+    private fun addNmeaListener(lm: LocationManager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
+        val nl = OnNmeaMessageListener { message, _ ->
+            if (message.length > 6 && message.substring(3, 6) == "GGA") {
+                lastGga = message.trim()
+            }
+        }
+        nmeaListener = nl
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            lm.addNmeaListener(mainExecutor, nl)
+        } else {
+            lm.addNmeaListener(nl, Handler(Looper.getMainLooper()))
+        }
     }
 
     private fun locationToMap(l: Location): Map<String, Any?> = mapOf(
@@ -465,6 +497,11 @@ class MainActivity : FlutterActivity() {
         "timeMillis" to l.time,
         "speed" to if (l.hasSpeed()) l.speed.toDouble() else null,
         "altitude" to if (l.hasAltitude()) l.altitude else null,
+        // Android 14+ may add the sea-level height itself.
+        "mslAltitude" to if (Build.VERSION.SDK_INT >= 34 && l.hasMslAltitude()) {
+            l.mslAltitudeMeters
+        } else null,
+        "gga" to lastGga,
         "accuracy" to if (l.hasAccuracy()) l.accuracy.toDouble() else null,
     )
 

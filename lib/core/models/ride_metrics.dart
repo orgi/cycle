@@ -1,3 +1,5 @@
+import '../metrics/elevation.dart';
+
 /// Immutable snapshot of the live metrics shown on the dashboard.
 class RideMetrics {
   const RideMetrics({
@@ -8,6 +10,9 @@ class RideMetrics {
     required this.elapsed,
     this.speedFromSensor = false,
     this.paused = false,
+    this.elevationMeters,
+    this.climbMeters = 0,
+    this.elevationProfile = const ElevationProfile.empty(),
   });
 
   const RideMetrics.zero()
@@ -17,7 +22,10 @@ class RideMetrics {
         maxSpeedMps = 0,
         elapsed = Duration.zero,
         speedFromSensor = false,
-        paused = false;
+        paused = false,
+        elevationMeters = null,
+        climbMeters = 0,
+        elevationProfile = const ElevationProfile.empty();
 
   final double distanceMeters;
   final double currentSpeedMps;
@@ -33,6 +41,16 @@ class RideMetrics {
   /// while paused, moving time and distance don't accumulate.
   final bool paused;
 
+  /// The current height above sea level (smoothed), or null without one. Shown
+  /// whether or not a ride records.
+  final double? elevationMeters;
+
+  /// How far this ride has climbed so far (see `RideElevation`).
+  final double climbMeters;
+
+  /// This ride's height over its distance so far.
+  final ElevationProfile elevationProfile;
+
   RideMetrics copyWith({
     double? distanceMeters,
     double? currentSpeedMps,
@@ -41,6 +59,9 @@ class RideMetrics {
     Duration? elapsed,
     bool? speedFromSensor,
     bool? paused,
+    double? elevationMeters,
+    double? climbMeters,
+    ElevationProfile? elevationProfile,
   }) =>
       RideMetrics(
         distanceMeters: distanceMeters ?? this.distanceMeters,
@@ -50,6 +71,9 @@ class RideMetrics {
         elapsed: elapsed ?? this.elapsed,
         speedFromSensor: speedFromSensor ?? this.speedFromSensor,
         paused: paused ?? this.paused,
+        elevationMeters: elevationMeters ?? this.elevationMeters,
+        climbMeters: climbMeters ?? this.climbMeters,
+        elevationProfile: elevationProfile ?? this.elevationProfile,
       );
 
   double get distanceKm => distanceMeters / 1000.0;
@@ -66,7 +90,10 @@ class RideMetrics {
       other.maxSpeedMps == maxSpeedMps &&
       other.elapsed == elapsed &&
       other.speedFromSensor == speedFromSensor &&
-      other.paused == paused;
+      other.paused == paused &&
+      other.elevationMeters == elevationMeters &&
+      other.climbMeters == climbMeters &&
+      other.elevationProfile == elevationProfile;
 
   @override
   int get hashCode => Object.hash(
@@ -77,5 +104,8 @@ class RideMetrics {
         elapsed,
         speedFromSensor,
         paused,
+        elevationMeters,
+        climbMeters,
+        elevationProfile,
       );
 }

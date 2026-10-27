@@ -1,4 +1,5 @@
 import '../../../core/db/database.dart';
+import '../../../core/metrics/elevation.dart';
 import '../../../core/metrics/ride_metrics_accumulator.dart';
 import '../../../core/models/geo_sample.dart';
 import '../../../core/models/ride_metrics.dart';
@@ -27,19 +28,26 @@ GeoSample _toSample(TrackPoint p) => GeoSample(
 /// live ride would — with the auto-pause of [bike], the bike it was ridden on.
 RideMetrics computeStatsFromPoints(
   List<TrackPoint> points,
-  BikeSettings bike,
-) {
+  BikeSettings bike, {
+  RideElevation? elevation,
+}) {
   final filter = GpsOutlierFilter();
   final acc = RideMetricsAccumulator(
     autoPauseEnabled: bike.autoPauseEnabled,
     autoPauseThresholdMps: bike.autoPauseThresholdMps,
   );
+  final e = elevation ?? RideElevation();
   var m = const RideMetrics.zero();
   for (final p in points) {
     final s = _toSample(p);
     if (filter.accept(s)) m = acc.add(s);
+    e.add(p.altitude, m.distanceMeters, p.speedMps);
   }
-  return m;
+  return m.copyWith(
+    elevationMeters: e.elevationMeters,
+    climbMeters: e.climbMeters,
+    elevationProfile: e.profile,
+  );
 }
 
 /// Recovers rides interrupted by a crash/kill: any track still marked unfinished

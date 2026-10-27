@@ -1,7 +1,9 @@
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/models/bike_settings.dart';
+import 'package:cycle/core/models/home_layout.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
+import 'package:cycle/features/map/application/home_layout_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/bike_profiles_screen.dart';
@@ -214,6 +216,70 @@ void main() {
     expect(find.byType(BikeSettingsScreen), findsOneWidget);
     expect(find.byKey(const Key('wheelCircumferenceTile')), findsOneWidget);
     expect(find.text('MTB'), findsOneWidget);
+  });
+
+  group('home screen tiles', () {
+    testWidgets('a bike with the standard tiles; only the active one is '
+        'edited on the map', (tester) async {
+      await pump(tester, bikeId: 'mtb');
+      await tester.scrollUntilVisible(
+          find.byKey(const Key('homeLayoutTile')), 100);
+      expect(find.text('Standard tiles'), findsOneWidget);
+      expect(find.byKey(const Key('homeLayoutEdit')), findsNothing);
+      expect(find.textContaining('Make this bike active'), findsOneWidget);
+      expect(find.byKey(const Key('homeLayoutReset')), findsNothing);
+    });
+
+    testWidgets('own tiles can be reset to the standard ones', (tester) async {
+      final own = HomeLayout.standard.addRow(HomeArea.top, 1, HomeTile.climb);
+      final store = await pump(tester,
+          bikeId: 'road',
+          bikes: twoBikes.copyWith(profiles: [
+            BikeProfile(
+                id: 'road',
+                name: 'Road',
+                colorArgb: 1,
+                settings: BikeSettings(homeLayout: own)),
+            twoBikes.profiles.last,
+          ]));
+      final reset = find.byKey(const Key('homeLayoutReset'));
+      await tester.scrollUntilVisible(reset, 100);
+      expect(find.text('Your own tiles'), findsOneWidget);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(saved(await store.load(), 'road').settings!.homeLayout,
+          HomeLayout.standard);
+      expect(find.text('Standard tiles'), findsOneWidget);
+      expect(reset, findsNothing);
+    });
+
+    testWidgets('"Edit" goes to the map, editing', (tester) async {
+      final router = GoRouter(initialLocation: '/bike-profiles/road', routes: [
+        GoRoute(path: '/', builder: (context, state) => const Text('home')),
+        GoRoute(
+          path: '/bike-profiles/:id',
+          builder: (context, state) =>
+              BikeSettingsScreen(bikeId: state.pathParameters['id']!),
+        ),
+      ]);
+      addTearDown(router.dispose);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+          bikeProfilesStoreProvider
+              .overrideWithValue(FakeBikeProfilesStore(twoBikes)),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ));
+      await tester.pumpAndSettle();
+      final edit = find.byKey(const Key('homeLayoutEdit'));
+      await tester.scrollUntilVisible(edit, 100);
+      final container = ProviderScope.containerOf(tester.element(edit));
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+      expect(container.read(homeLayoutEditingProvider), isTrue);
+    });
   });
 
   test('bikeSettingsSummary', () {

@@ -39,9 +39,9 @@ void main() {
     final t0 = DateTime.utc(2026, 1, 1, 10);
     // Same geometry but with timestamps: 10 s between points.
     final timed = FollowRoute.fromGpxPoints('r', [
-      (lat: 43.7380, lon: 7.4250, time: t0),
-      (lat: 43.7390, lon: 7.4250, time: t0.add(const Duration(seconds: 10))),
-      (lat: 43.7400, lon: 7.4250, time: t0.add(const Duration(seconds: 20))),
+      (lat: 43.7380, lon: 7.4250, ele: null, time: t0),
+      (lat: 43.7390, lon: 7.4250, ele: null, time: t0.add(const Duration(seconds: 10))),
+      (lat: 43.7400, lon: 7.4250, ele: null, time: t0.add(const Duration(seconds: 20))),
     ]);
 
     test('route reports it is timed', () {

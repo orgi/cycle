@@ -144,6 +144,17 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     volume-key start, with no re-registration); the four-state probe — foreground idle /
     background idle / foreground recording / background recording — is what makes this visible,
     so re-run it after touching either side of the gate.
+  * **Heights are above sea level on both platforms** (0.9.0). Android's
+    `Location.altitude` is above the WGS84 ellipsoid (~48 m more in Bavaria); iOS's is
+    above sea level. `MainActivity` adds an NMEA listener to the **same** running request
+    (no request of its own; registered/removed with it) and sends the latest GGA sentence
+    with every fix, plus Android 14's own `mslAltitudeMeters` when present;
+    `SeaLevelAltitude` (`lib/core/services/sea_level_altitude.dart`, unit-tested) matches
+    the GGA to the fix's second and keeps the last ellipsoid–sea-level offset for a fix
+    without one, so the height never jumps by the offset (the climb would count it). The
+    emulator ignores injected NMEA (`geo nmea`), so this path is only proven on a real
+    phone: check ELEV against a known height, and `dumpsys location` still shows the one
+    continuous request. Rides recorded before keep their ellipsoid heights.
   * **Bad-fix rejection is accuracy-based, not speed-based.** A fix whose GPS-chip
     accuracy estimate is worse than 10 m is kept out of the **ride** — distance/time/max,
     saved points (`RideController`), the drawn track line and auto-start
@@ -568,9 +579,10 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   start/stop + wakelock. **UI later consolidated (post-M4):** the home screen is now a single
   combined view — a full-screen map with the recorded track + location dot and the 5 ride
   stats as semi-transparent overlay boxes (SPEED/TIME top, DIST/AVG/MAX bottom). The separate
-  metric-only dashboard was removed. An editable/drag-resize dashboard was attempted but the
-  only suitable package hangs on-device, so it's **deferred** (build from first-party widgets
-  if revisited). `lib/features/map/presentation/map_screen.dart` is the home.
+  metric-only dashboard was removed. Since 0.9.0 the tiles are arranged per bike (see "Home
+  screen layout" below). An earlier editable dashboard used a package that hung on-device;
+  the editor is built from first-party widgets instead — don't bring such a package back.
+  `lib/features/map/presentation/map_screen.dart` is the home.
   * **Map-follow camera:** the first GPS fix sets a riding zoom (16); later fixes use
     `MapModel.moveTo` (re-centre, **keep the user's zoom/rotation**) — `setPosition` with a
     fixed zoom on every 1 Hz fix snapped a manual zoom back. Before any GPS fix the camera sits
@@ -765,8 +777,8 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `adb input keyevent KEYCODE_VOLUME_UP/DOWN` starts/stops a recording **and the media volume
   stays unchanged** (proving interception), with the native `volume key -> up/down` log firing.
   Full plan: `~/.claude/plans/please-plan-an-implementation-zany-shannon.md`.
-* **Post-M7 polish.** Home screen also shows **HR/Cadence/Power** boxes (live BLE
-  `sensorSnapshotProvider`, always visible, "—" with no data). **Colour schemes**
+* **Post-M7 polish.** Home screen also shows **HR/Cadence/Power** tiles (live BLE
+  `sensorSnapshotProvider`, shown for the sensors the active bike has, "—" with no data). **Colour schemes**
   (`AppColorScheme` Dark/Light/B&W + Detailed/Detailed — Dark, Settings → Appearance): each
   restyles the app `ThemeData` (`buildAppTheme`), the offline map render theme (`dark.xml`/
   `light.xml`/`bw.xml`/`detailed.xml`/`detailed_dark.xml`, swapped via `activeMapModelProvider` reloading), and the overlay accents
@@ -1052,6 +1064,36 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     through `RecordingController.recordPoint`, so **new** rides going forward can
     be classified by it; old points stay `null` (unknown, not "false").
 
+* **Home screen layout + elevation** (0.9.0). The map's tiles come from the active bike's
+  `HomeLayout` (`lib/core/models/home_layout.dart`, in `BikeSettings.homeLayout`, so it is
+  per bike and syncs with the bike settings; stored only once it differs from
+  `HomeLayout.standard`, which is the pre-0.9 screen): rows of up to 3 `HomeTile`s at the
+  top and bottom, an elevation profile alone in its row. All edits are pure functions on
+  the layout (swap, move to a row's end, move to a new row, add, replace, remove;
+  unit-tested). `HomeOverlay` (`features/map/presentation/home_overlay.dart`) draws it and
+  is the editor: long-press a tile → `homeLayoutEditingProvider` (the app bar becomes
+  "Layout for <bike> · Done", back finishes); drag onto a tile = swap, onto a row's "+" =
+  move there, onto a "+ row" line = own row, onto the bin = remove; tap = picker
+  (`showHomeTilePicker`). Each tile (`HomeTileView`) watches only its own value, so the
+  map screen no longer rebuilds per fix — it keeps `rideMetricsProvider` alive with a
+  `ref.listen` (the recorded points' sensor values depend on it, whatever tiles show).
+  Sensor tiles hide for sensors the bike doesn't have, the route profile while no route is
+  followed (all show while editing); a row keeps each tile at its full-row width, centred.
+  Bike settings → Home screen: "Edit" (active bike: goes home, editing) and "Reset".
+  **Elevation** (`lib/core/metrics/elevation.dart`, pure + unit-tested): `RideElevation`
+  in `RideController` smooths the GPS height (5-fix average), counts climb with a 5 m
+  hysteresis (a rise counts in full once 5 m above the last low) and only from fixes at
+  ≥0.3 m/s (standing still, the height wanders by metres), and builds the ride's
+  `ElevationProfile` (height over ride distance, ≤400 points). `rideClimbMeters` counts a
+  saved ride's points the same way (the saved speed is the same fused one), so the ride
+  details' Ascent equals the live CLIMB; `computeStatsFromPoints` rebuilds it on resume.
+  ELEV shows the smoothed height whether or not a ride records. A route's heights come
+  from the GPX `<ele>` (`RoutePoint.elevationMeters`; the fingerprint ignores them):
+  `FollowRoute.elevationProfile`, `totalClimbMeters`, `climbRemainingMeters(traveled)`
+  (2 m hysteresis — terrain-model heights aren't jittery). The strips are
+  `ElevationProfileStrip` (a `CustomPainter`, a 20 m minimum height range so a flat ride
+  doesn't look mountainous). `integration_test/home_layout_test.dart` edits the layout on
+  the real home screen and rides a hill.
 * **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
   answers "how long does the phone last on a ride" without riding. While running, the app's
   `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
@@ -1089,6 +1131,14 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   **runtime** is the reliable number and %/h is only shown from 10 min on.
 
 ## Known gotchas
+
+* **Android lays out the first frame at zero size.** A width computed from a
+  `LayoutBuilder` (e.g. `HomeOverlay._row`'s tile slots) then goes negative, and in a
+  **debug** build the invalid-constraints assertion leaves the layout broken for the whole
+  session: the bottom tiles never showed and long-press did nothing, with no error in
+  logcat (only `flutter attach` showed "Another exception was thrown: …
+  `!_debugDoingThisLayout`"). Widget tests always have a size, so they can't see it — clamp
+  computed sizes, and look at a debug build on the emulator after layout changes.
 
 * **Riverpod 3 pauses what only a covered screen listens to.** A `ref.watch` from a widget
   under another route (TickerMode off — e.g. the home map while Settings is open) is paused,

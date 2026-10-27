@@ -10,6 +10,7 @@ import 'package:mapsforge_flutter/marker.dart';
 import 'package:mapsforge_flutter_core/model.dart';
 
 import '../../../core/models/geo_sample.dart';
+import '../../../core/models/home_layout.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_visibility.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
@@ -19,7 +20,6 @@ import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
-import '../../../core/widgets/every_second.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../battery_test/application/battery_test_providers.dart';
 import '../../battery_test/presentation/battery_test_screen.dart';
@@ -39,14 +39,15 @@ import '../../settings/application/settings_providers.dart';
 import '../../settings/presentation/widgets/bike_color_dot.dart';
 import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../../tracks/application/track_providers.dart';
+import '../application/home_layout_providers.dart';
 import '../application/map_providers.dart';
 import '../application/map_render_service.dart';
 import '../domain/map_install_link.dart';
 import 'manage_maps_screen.dart';
+import 'home_overlay.dart';
 import 'live_track_marker.dart';
 import 'osm_attribution.dart';
 import 'route_arrows_marker.dart';
-import 'time_stat.dart';
 
 /// User's choice when a timestamped GPX arrives — it could be either.
 enum _GpxChoice { cancel, follow, importRide }
@@ -513,14 +514,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   Widget build(BuildContext context) {
     final mapModelAsync = ref.watch(activeMapModelProvider);
-    final m = ref.watch(rideMetricsProvider);
-    final sensor = ref.watch(sensorSnapshotProvider).value;
+    // Keeps the ride metrics (and with them the recorded points' sensor
+    // values) running whatever tiles the layout shows; each tile watches its
+    // own value, so the map screen doesn't rebuild per fix.
+    ref.listen(rideMetricsProvider, (_, _) {});
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
     final ghost = ref.watch(ghostProvider);
     final settings = ref.watch(settingsProvider);
-    final units = settings.units;
-    final speedUnit = units.speedLabel;
+    final editing = ref.watch(homeLayoutEditingProvider);
     // Hidden while a hands-free start/stop is on (volume keys, or the
     // hand-over-screen hold on iOS) unless requested; otherwise always shown,
     // so there is a way to start and stop a ride.
@@ -637,7 +639,38 @@ class _MapScreenState extends ConsumerState<MapScreen>
     });
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: editing
+          ? AppBar(
+              automaticallyImplyLeading: false,
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    activeBike == null
+                        ? 'Edit layout'
+                        : 'Layout for ${activeBike.name}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Drag to move, tap to change',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.white60),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  key: const Key('homeEditDone'),
+                  onPressed: () =>
+                      ref.read(homeLayoutEditingProvider.notifier).set(false),
+                  child: const Text('Done'),
+                ),
+              ],
+            )
+          : AppBar(
         title: const Text('Radl'),
         // A dedicated, fixed-width slot for the bike-profile chip — putting it
         // in the title Row instead overflowed on a narrow phone once the title +
@@ -712,186 +745,95 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     },
                   ),
                 ),
-                // Five live stats overlaid: two on top, three on the bottom,
-                // each row of boxes spanning almost the full width.
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  right: 8,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _MapStat(
-                          label: 'SPEED',
-                          value: formatSpeed(m.currentSpeedKmh, units),
-                          unit: speedUnit,
-                          emphasized: true,
-                          // Green when the speed comes from the BLE wheel sensor
-                          // (accurate); default accent when it's GPS.
-                          valueColor: m.speedFromSensor
-                              ? const Color(0xFF4CD964)
-                              : null,
-                          // Tap to reconnect the (BLE) speed sensor, which has
-                          // no tile of its own — its data lands here.
-                          onTap: canReconnectSpeed
-                              ? () => _runReconnect(
-                                  () => ref
-                                      .read(sensorConnectionProvider.notifier)
-                                      .reconnectCsc(wantSpeed: true),
-                                  'speed')
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: EverySecond(builder: (context) {
-                          // Auto-paused (below the threshold): flag it in
-                          // amber; the time is frozen while paused. During a
-                          // battery test: the test's running time — which
-                          // needs its own 1 s tick: the simulated ride's
-                          // constant speed never changes the metrics, so the
-                          // screen doesn't rebuild by itself.
-                          final t = timeStat(
-                            rideElapsed: m.elapsed,
-                            paused: m.paused,
-                            batteryTestStartedAt: batteryTest?.startedAt,
-                            now: DateTime.now(),
-                          );
-                          return _MapStat(
-                            label: t.label,
-                            value: t.value,
-                            unit: '',
-                            valueColor:
-                                t.amber ? const Color(0xFFFFA726) : null,
-                          );
-                        }),
-                      ),
-                    ],
-                  ),
-                ),
-                if (batteryTest != null)
-                  Positioned(
-                    top: route != null ? 120 : 72,
-                    left: 8,
-                    right: 8,
-                    child: Center(
-                      child: GestureDetector(
-                        onTap: () => context.push('/battery-test'),
-                        child: Container(
-                          key: const Key('batteryTestBanner'),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.62),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'BATTERY TEST · simulated ride · '
-                            '${batteryTest.currentLevel == null ? '' : '${batteryTest.currentLevel} %'}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelLarge
-                                ?.copyWith(color: Colors.orangeAccent),
+                // The bike's stat tiles (see HomeOverlay; long-press one to
+                // edit the layout), with the route/battery-test banners and
+                // the recenter button below the top rows.
+                Positioned.fill(
+                  child: HomeOverlay(
+                    // Clear the system inset (Android nav bar, iPhone home
+                    // indicator) when there's no Start/Stop button (with its
+                    // SafeArea) below to push the stats up.
+                    bottomInset: statsBottom,
+                    visibleSensors: visibleSensors,
+                    onTileTap: (tile) => switch (tile) {
+                      // A speed sensor's data lands in SPEED, which has no
+                      // tile of its own: tap it to reconnect the sensor.
+                      HomeTile.speed => canReconnectSpeed
+                          ? () => _runReconnect(
+                              () => ref
+                                  .read(sensorConnectionProvider.notifier)
+                                  .reconnectCsc(wantSpeed: true),
+                              'speed')
+                          : null,
+                      HomeTile.heartRate => () => _runReconnect(
+                          () => ref
+                              .read(sensorConnectionProvider.notifier)
+                              .reconnectKind(SensorKind.heartRate),
+                          'HR'),
+                      HomeTile.cadence => () => _runReconnect(
+                          () => ref
+                              .read(sensorConnectionProvider.notifier)
+                              .reconnectCsc(wantSpeed: false),
+                          'cadence'),
+                      HomeTile.power => () => _runReconnect(
+                          () => ref
+                              .read(sensorConnectionProvider.notifier)
+                              .reconnectKind(SensorKind.power),
+                          'power'),
+                      _ => null,
+                    },
+                    belowTop: [
+                      // Follow-route navigation banner (only while following
+                      // a route).
+                      if (route != null)
+                        Center(
+                          child: _RouteBanner(
+                            route: route,
+                            progress: progress,
+                            ghost: ghost,
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                // Follow-route navigation banner (only while following a route).
-                if (route != null)
-                  Positioned(
-                    top: 72,
-                    left: 8,
-                    right: 8,
-                    child: Center(
-                      child: _RouteBanner(
-                        route: route,
-                        progress: progress,
-                        ghost: ghost,
-                      ),
-                    ),
-                  ),
-                Positioned(
-                  // Clear the system inset (Android nav bar, iPhone home
-                  // indicator) when there's no Start/Stop button (with its
-                  // SafeArea) below to push the stats up.
-                  bottom: statsBottom,
-                  left: 8,
-                  right: 8,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Live BLE sensor values — shown for paired sensors the
-                      // active bike is configured to use, regardless of
-                      // whether they're currently connected ("—" while no
-                      // data/reconnecting, so a mid-ride drop doesn't make the
-                      // tile disappear).
-                      if (visibleSensors.isNotEmpty) ...[
-                        _CenteredThirdWidthStats([
-                          if (visibleSensors.contains(SensorKind.heartRate))
-                            _MapStat(
-                              label: 'HR',
-                              value: sensor?.heartRate?.toString() ?? '—',
-                              unit: 'bpm',
-                              onTap: () => _runReconnect(
-                                  () => ref
-                                      .read(sensorConnectionProvider.notifier)
-                                      .reconnectKind(SensorKind.heartRate),
-                                  'HR'),
-                            ),
-                          if (visibleSensors.contains(SensorKind.speedCadence))
-                            _MapStat(
-                              label: 'CAD',
-                              value: sensor?.cadenceRpm?.round().toString() ??
-                                  '—',
-                              unit: 'rpm',
-                              onTap: () => _runReconnect(
-                                  () => ref
-                                      .read(sensorConnectionProvider.notifier)
-                                      .reconnectCsc(wantSpeed: false),
-                                  'cadence'),
-                            ),
-                          if (visibleSensors.contains(SensorKind.power))
-                            _MapStat(
-                              label: 'PWR',
-                              value: sensor?.power?.toString() ?? '—',
-                              unit: 'W',
-                              onTap: () => _runReconnect(
-                                  () => ref
-                                      .read(sensorConnectionProvider.notifier)
-                                      .reconnectKind(SensorKind.power),
-                                  'power'),
-                            ),
-                        ]),
+                      if (route != null && batteryTest != null)
                         const SizedBox(height: 6),
-                      ],
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _MapStat(
-                              label: 'DIST',
-                              value: formatDistance(m.distanceKm, units),
-                              unit: units.distanceLabel,
+                      if (batteryTest != null)
+                        Center(
+                          child: GestureDetector(
+                            onTap: () => context.push('/battery-test'),
+                            child: Container(
+                              key: const Key('batteryTestBanner'),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.62),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                'BATTERY TEST · simulated ride · '
+                                '${batteryTest.currentLevel == null ? '' : '${batteryTest.currentLevel} %'}',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .labelLarge
+                                    ?.copyWith(color: Colors.orangeAccent),
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: _MapStat(
-                              label: 'AVG',
-                              value: formatSpeed(m.avgSpeedKmh, units),
-                              unit: speedUnit,
+                        ),
+                      // Recenter button: shown once you've panned away
+                      // (follow paused). Tap to recentre on your location and
+                      // resume following.
+                      if (!_follow)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 6, right: 6),
+                            child: FloatingActionButton.small(
+                              heroTag: 'recenter',
+                              tooltip: 'Recenter & follow',
+                              onPressed: _recenter,
+                              child: const Icon(Icons.my_location),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: _MapStat(
-                              label: 'MAX',
-                              value: formatSpeed(m.maxSpeedKmh, units),
-                              unit: speedUnit,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
                     ],
                   ),
                 ),
@@ -903,19 +845,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   bottom: bottomLayout.creditBottom,
                   child: const OsmAttribution(),
                 ),
-                // Recenter button: shown once you've panned away (follow paused).
-                // Tap to recentre on your location and resume following.
-                if (!_follow)
-                  Positioned(
-                    top: 96,
-                    right: 14,
-                    child: FloatingActionButton.small(
-                      heroTag: 'recenter',
-                      tooltip: 'Recenter & follow',
-                      onPressed: _recenter,
-                      child: const Icon(Icons.my_location),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -930,128 +859,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-/// Lays out 1-3 stat tiles at a fixed 1/3-of-row width each, centered — so
-/// showing fewer than 3 (e.g. only HR paired for this bike) doesn't stretch a
-/// tile to fill the whole row; the freed-up space becomes side gaps instead.
-class _CenteredThirdWidthStats extends StatelessWidget {
-  const _CenteredThirdWidthStats(this.tiles);
-  final List<Widget> tiles;
-
-  static const _gap = 6.0;
-
-  @override
-  Widget build(BuildContext context) {
-    if (tiles.isEmpty) return const SizedBox.shrink();
-    return LayoutBuilder(builder: (context, constraints) {
-      final slotWidth = (constraints.maxWidth - _gap * 2) / 3;
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (var i = 0; i < tiles.length; i++) ...[
-            if (i > 0) const SizedBox(width: _gap),
-            SizedBox(width: slotWidth, child: tiles[i]),
-          ],
-        ],
-      );
-    });
-  }
-}
-
-/// A compact, semi-transparent live stat drawn over the map. Fills the width
-/// it is given (use inside an Expanded).
-class _MapStat extends StatelessWidget {
-  const _MapStat({
-    required this.label,
-    required this.value,
-    required this.unit,
-    this.emphasized = false,
-    this.valueColor,
-    this.onTap,
-  });
-
-  final String label;
-  final String value;
-  final String unit;
-  final bool emphasized;
-
-  /// Overrides the value colour (e.g. to show the speed source). Falls back to
-  /// the emphasized/normal default.
-  final Color? valueColor;
-
-  /// Optional tap handler (e.g. a sensor tile → quick manual reconnect).
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tile = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: Colors.white60,
-              letterSpacing: 1.1,
-            ),
-          ),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  value,
-                  style:
-                      (emphasized
-                              ? theme.textTheme.headlineMedium
-                              : theme.textTheme.headlineSmall)
-                          ?.copyWith(
-                            color:
-                                valueColor ??
-                                (emphasized
-                                    ? theme.colorScheme.primary
-                                    : Colors.white),
-                            fontWeight: FontWeight.w600,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                ),
-                if (unit.isNotEmpty) ...[
-                  const SizedBox(width: 3),
-                  Text(
-                    unit,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.white38,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onTap == null) return tile;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: tile,
       ),
     );
   }

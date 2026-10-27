@@ -1,4 +1,5 @@
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/metrics/elevation.dart';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
@@ -178,6 +179,66 @@ void main() {
     expect(metrics.distanceMeters, 0); // the ride doesn't
     expect(metrics.maxSpeedMps, 5);
     expect(await db.pointsFor(trackId), hasLength(1));
+    await notifier.stop();
+  });
+
+  test(
+      'elevation: the height shows idle and riding; a ride counts its climb '
+      'and profile, its saved points give the same climb, also on resume',
+      () async {
+    final notifier = container.read(recordingProvider.notifier);
+    container.listen(rideControllerProvider, (_, _) {});
+    final t0 = DateTime.utc(2026, 1, 1, 12);
+    var s = 0;
+    Future<void> fix(double altitude, {double speed = 5}) async {
+      location.emit(GeoSample(
+        latitude: 0,
+        longitude: s * 0.00005, // ~5.6 m per fix
+        time: t0.add(Duration(seconds: s)),
+        speedMps: speed,
+        altitudeMeters: altitude,
+        accuracyMeters: 4,
+      ));
+      s++;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+
+    await fix(500, speed: 0);
+    var m = container.read(rideControllerProvider);
+    expect(m.elevationMeters, 500);
+    expect(m.climbMeters, 0);
+    expect(m.elevationProfile.isEmpty, isTrue); // no ride, no profile
+
+    await notifier.start();
+    final trackId = notifier.currentTrackId!;
+    for (var i = 0; i < 60; i++) {
+      await fix(500 + i.toDouble());
+    }
+    m = container.read(rideControllerProvider);
+    // Smoothed over 5 fixes, so 2 m short of the 559 m reached.
+    expect(m.elevationMeters, closeTo(557, 1e-9));
+    expect(m.climbMeters, closeTo(57, 1e-9));
+    expect(m.elevationProfile.points.length, greaterThan(20));
+    expect(m.elevationProfile.points.last.elevationMeters, closeTo(557, 1e-9));
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    await notifier.stop();
+
+    final points = await db.pointsFor(trackId);
+    expect(
+        rideClimbMeters(
+            points.map((p) => (altitude: p.altitude, speedMps: p.speedMps))),
+        m.climbMeters);
+
+    await notifier.resume(trackId);
+    expect(container.read(rideControllerProvider).climbMeters, m.climbMeters);
+    await notifier.stop();
+
+    // The next ride starts from nothing.
+    await notifier.start();
+    m = container.read(rideControllerProvider);
+    expect(m.climbMeters, 0);
+    expect(m.elevationProfile.isEmpty, isTrue);
+    expect(m.elevationMeters, closeTo(557, 1e-9)); // the height still shows
     await notifier.stop();
   });
 

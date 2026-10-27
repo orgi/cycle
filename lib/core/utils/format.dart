@@ -12,6 +12,15 @@ double speedInUnits(double kmh, UnitSystem units) =>
 double distanceInUnits(double km, UnitSystem units) =>
     units == UnitSystem.imperial ? km / _kmPerMile : km;
 
+/// Converts a height in metres to the user's units (feet for imperial).
+double elevationInUnits(double meters, UnitSystem units) =>
+    units == UnitSystem.imperial ? meters / 0.3048 : meters;
+
+/// Formats a height or climb in metres in the user's units, whole numbers
+/// (value only; unit label separate).
+String formatElevation(double meters, UnitSystem units) =>
+    elevationInUnits(meters, units).round().toString();
+
 String formatSpeedKmh(double kmh) => kmh.toStringAsFixed(2);
 
 String formatDistanceKm(double km) => km.toStringAsFixed(2);
