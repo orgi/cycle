@@ -76,7 +76,9 @@ class HardwareButtonController extends Notifier<bool> {
 
   void _toggleRecording() {
     final recording = ref.read(recordingProvider.notifier);
-    unawaited(ref.read(recordingProvider) ? recording.stop() : recording.start());
+    unawaited(ref.read(recordingProvider)
+        ? recording.stop()
+        : recording.start(manual: true));
   }
 
   void _onButton(HardwareButton button) {
@@ -89,7 +91,7 @@ class HardwareButtonController extends Notifier<bool> {
           // for this ride instead of a no-op.
           unawaited(recording.cycleBikeProfile());
         } else {
-          unawaited(recording.start());
+          unawaited(recording.start(manual: true));
         }
       case HardwareButton.volumeDown:
         unawaited(recording.stop());

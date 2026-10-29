@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/models/ride_place.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/sensors/sensor_snapshot_merger.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
@@ -11,6 +12,7 @@ import 'package:cycle/core/services/haptics_service.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
 import 'package:cycle/core/services/location_power_control.dart';
 import 'package:cycle/core/services/location_service.dart';
+import 'package:cycle/core/services/places/ride_places_store.dart';
 import 'package:cycle/core/services/route_import_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
@@ -291,4 +293,16 @@ class FakeBikeProfilesStore implements BikeProfilesStore {
 
   @override
   Future<void> save(BikeProfilesState state) async => _state = state;
+}
+
+/// An in-memory [RidePlacesStore] seeded with [initial].
+class FakeRidePlacesStore implements RidePlacesStore {
+  FakeRidePlacesStore([this.places = const []]);
+  List<RidePlace> places;
+
+  @override
+  Future<List<RidePlace>> load() async => places;
+
+  @override
+  Future<void> save(List<RidePlace> places) async => this.places = places;
 }

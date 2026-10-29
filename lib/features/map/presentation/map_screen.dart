@@ -24,7 +24,9 @@ import '../../backup/application/backup_providers.dart';
 import '../../battery_test/application/battery_test_providers.dart';
 import '../../battery_test/presentation/battery_test_screen.dart';
 import '../../dashboard/application/auto_start_providers.dart';
+import '../../dashboard/application/keep_screen_on_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../places/application/ride_places_providers.dart';
 import '../../tracks/application/oruxmaps_import_service.dart';
 import '../../tracks/application/oruxmaps_providers.dart';
 import '../../dashboard/presentation/widgets/start_stop_button.dart';
@@ -541,6 +543,36 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
     ref.watch(autoStartControllerProvider);
+    ref.watch(placeTriggerControllerProvider);
+    ref.watch(keepScreenOnProvider);
+    // A ride a place started/stopped, or a manual start that continued the
+    // last ride (offering a new ride instead).
+    ref.listen(rideNoticeProvider, (_, notice) {
+      if (notice == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          key: const Key('rideNoticeSnack'),
+          duration: const Duration(seconds: 8),
+          // Above the Start/Stop button, not over it: these come right at a
+          // start or stop, when the rider may want the button.
+          behavior: SnackBarBehavior.floating,
+          margin: showStartStop
+              ? EdgeInsets.fromLTRB(
+                  8, 0, 8, 76 + MediaQuery.of(context).viewPadding.bottom)
+              : null,
+          content: Text(notice.message),
+          action: notice.offerNewRide
+              ? SnackBarAction(
+                  key: const Key('rideNoticeNewRide'),
+                  label: 'NEW RIDE',
+                  onPressed: () => ref
+                      .read(recordingProvider.notifier)
+                      .startNewRideInstead(),
+                )
+              : null,
+        ));
+    });
     final batteryTest = ref.watch(batteryTestProvider);
     // A battery test that ended with the phone switching off: announce the
     // result once, the first time the home screen is up again.

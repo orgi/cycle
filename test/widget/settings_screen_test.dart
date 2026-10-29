@@ -6,6 +6,7 @@ import 'package:cycle/core/services/apple_health_service.dart';
 import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/health/application/apple_health_providers.dart';
+import 'package:cycle/features/places/application/ride_places_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:cycle/features/settings/presentation/settings_screen.dart';
@@ -356,6 +357,48 @@ void main() {
     final tile = find.byKey(const Key('bikeProfilesTile'));
     expect(find.descendant(of: tile, matching: find.text('1 bike • active: Gravel bike')),
         findsOneWidget);
+  });
+
+  testWidgets('keep screen on and continue a ride are picked from a list',
+      (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+          ridePlacesStoreProvider.overrideWithValue(FakeRidePlacesStore()),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byKey(const Key('placesTile')), 200);
+    expect(find.textContaining('Start a ride by leaving home'), findsOneWidget);
+
+    final keepOn = find.byKey(const Key('keepScreenOnTile'));
+    // The tile below it: built, but offstage until scrolled to.
+    await tester.ensureVisible(
+        find.byKey(const Key('keepScreenOnTile'), skipOffstage: false));
+    await tester.pumpAndSettle();
+    expect(find.text('Off: only while a ride records'), findsOneWidget);
+    await tester.tap(keepOn);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('keepScreenOn_15')));
+    await tester.pumpAndSettle();
+    expect((await store.load()).keepScreenOnMinutes, 15);
+    expect(find.textContaining("hasn't moved for 15 min"), findsOneWidget);
+
+    final resume = find.byKey(const Key('continueRideTile'));
+    expect(find.textContaining('within 30 min'), findsOneWidget);
+    await tester.tap(resume);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('continueRide_0')));
+    await tester.pumpAndSettle();
+    expect((await store.load()).continueRideWithinMinutes, 0);
+    expect(find.textContaining('always a new ride'), findsOneWidget);
+
   });
 }
 

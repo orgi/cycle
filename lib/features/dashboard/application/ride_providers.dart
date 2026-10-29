@@ -14,6 +14,7 @@ import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_service.dart';
 import '../../../core/sensors/speed_fusion.dart';
 import '../../../core/battery_test/simulated_zigzag.dart';
+import '../../../core/controls/ride_continuation.dart';
 import '../../../core/services/apple_location_service.dart';
 import '../../../core/services/battery_service.dart';
 import '../../../core/services/location_power_control.dart';
@@ -24,6 +25,7 @@ import '../../../core/services/haptics_service.dart';
 import '../../../core/services/recording_foreground_service.dart';
 import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
+import '../../../core/utils/format.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
@@ -122,19 +124,59 @@ final recordingForegroundServiceProvider = Provider<RecordingForegroundService>(
       : const FgTaskRecordingService(),
 );
 
+/// How long a manual start waits for a current GPS fix when it might continue
+/// the ride stopped last (see [RecordingController.start]). Overridable so
+/// tests needn't wait in real time.
+final continueFixWaitProvider =
+    Provider<Duration>((ref) => const Duration(seconds: 15));
+
+/// A message about a ride for the home screen to show once: a ride a place
+/// started or stopped, or a manual start that continued the last ride.
+class RideNotice {
+  const RideNotice(this.message, {this.offerNewRide = false});
+  final String message;
+
+  /// Offers "New ride", which undoes a continuation
+  /// ([RecordingController.startNewRideInstead]).
+  final bool offerNewRide;
+}
+
+/// The latest [RideNotice], or null. Each notice is a new object, so the same
+/// message twice is shown twice.
+final rideNoticeProvider =
+    NotifierProvider<RideNoticeController, RideNotice?>(
+        RideNoticeController.new);
+
+class RideNoticeController extends Notifier<RideNotice?> {
+  @override
+  RideNotice? build() => null;
+
+  void show(RideNotice notice) => state = notice;
+}
+
 /// Whether a ride is currently being recorded. Recording persists a [Tracks]
 /// row plus a [TrackPoints] row per GPS sample, and finalises stats on stop.
 final recordingProvider =
     NotifierProvider<RecordingController, bool>(RecordingController.new);
 
 class RecordingController extends Notifier<bool> {
+  /// [SyncMeta] key: the id of the ride stopped last — the one a manual start
+  /// may continue, and whose Apple Health save waits until it can't be.
+  static const lastStoppedRideKey = 'last_stopped_ride';
+
   int? _trackId;
+  bool _starting = false;
+  ({Track before, DateTime lastPointAt})? _continued;
+  Timer? _healthSave;
 
   /// The id of the ride being recorded, if any.
   int? get currentTrackId => _trackId;
 
   @override
-  bool build() => false;
+  bool build() {
+    ref.onDispose(() => _healthSave?.cancel());
+    return false;
+  }
 
   /// Confirms [feedback] by vibration (if enabled). Fired up front, not after
   /// the DB/foreground-service work, so it's felt the instant the trigger
@@ -144,19 +186,51 @@ class RecordingController extends Notifier<bool> {
     unawaited(ref.read(hapticsServiceProvider).confirm(feedback));
   }
 
-  Future<void> start() async {
-    if (state) return;
+  /// Starts a ride. A [manual] start (the button, a volume key, the hand over
+  /// the screen — not auto-start or a place) continues the ride stopped last
+  /// instead, if it stopped recently right here (`shouldContinueRide`, the
+  /// "Continue a stopped ride" setting): an accidental stop is undone by
+  /// starting again. Without a current fix it waits up to
+  /// [continueFixWaitProvider] for one, then starts a new ride.
+  Future<void> start({bool manual = false}) async {
+    if (state || _starting) return;
     // A battery runtime test feeds simulated positions: never record those as
     // a ride (volume keys, auto-start and the button all come through here).
     if (ref.read(simulatedRideProvider) != null) return;
-    _confirm(RideFeedback.started);
-    // Flag the ride to the native GPS gate FIRST, before anything that can push
-    // the activity through onPause (the foreground service can raise a
-    // notification-permission dialog) — otherwise that pause sees "not
-    // recording" and drops the GPS request mid-ride.
-    await ref.read(locationPowerControlProvider).setRecordingActive(true);
+    _starting = true;
+    try {
+      _confirm(RideFeedback.started);
+      // Flag the ride to the native GPS gate FIRST, before anything that can
+      // push the activity through onPause (the foreground service can raise a
+      // notification-permission dialog) — otherwise that pause sees "not
+      // recording" and drops the GPS request mid-ride.
+      await ref.read(locationPowerControlProvider).setRecordingActive(true);
+      ({Track before, DateTime lastPointAt})? stopped;
+      try {
+        if (manual) stopped = await _continuableRide();
+      } on Object catch (e) {
+        debugPrint('continue a stopped ride: $e'); // a new ride, then
+      }
+      if (stopped != null) {
+        await _resumeInto(stopped.before.id);
+        _continued = stopped;
+        ref.read(rideNoticeProvider.notifier).show(RideNotice(
+            'Continued the ride stopped at '
+            '${formatClock(stopped.before.endedAt!)}',
+            offerNewRide: true));
+      } else {
+        await _startNew();
+      }
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _startNew() async {
     await ref.read(screenWakeServiceProvider).enable(ScreenWakeService.ownerRecording);
     ref.read(rideControllerProvider.notifier).reset();
+    // The ride stopped last can't be continued any more.
+    unawaited(settleStoppedRide(force: true));
     final battery = await ref.read(batteryServiceProvider).level();
     final bikeProfileId = ref.read(bikeProfilesProvider).activeId;
     _trackId = await ref.read(appDatabaseProvider).createTrack(
@@ -170,6 +244,84 @@ class RecordingController extends Notifier<bool> {
     // bike) gets picked up now, without the user tapping.
     await ref.read(sensorServiceProvider).retryConnections();
     state = true;
+  }
+
+  /// The ride stopped last, with when its last point was recorded, if a
+  /// manual start now should continue it.
+  Future<({Track before, DateTime lastPointAt})?> _continuableRide() async {
+    final window = ref.read(settingsProvider).continueRideWindow;
+    if (window == null) return null;
+    final db = ref.read(appDatabaseProvider);
+    final id = int.tryParse(await db.meta(lastStoppedRideKey) ?? '');
+    final track = id == null ? null : await db.track(id);
+    final stoppedAt = track?.endedAt;
+    if (track == null || stoppedAt == null || track.deletedAt != null) {
+      return null;
+    }
+    // Too long ago: no need to wait for a fix to know.
+    if (DateTime.now().difference(stoppedAt) > window) return null;
+    final last = await db.lastPoint(track.id);
+    if (last == null) return null;
+    final here = await _currentFix();
+    final resume = shouldContinueRide(
+      stoppedAt: stoppedAt,
+      lastLatitude: last.latitude,
+      lastLongitude: last.longitude,
+      here: here,
+      now: DateTime.now(),
+      window: window,
+    );
+    return resume ? (before: track, lastPointAt: last.time) : null;
+  }
+
+  /// The latest fix if it is current (`isCurrentFix`), else the next current
+  /// one within [continueFixWaitProvider], else null.
+  Future<GeoSample?> _currentFix() async {
+    final last = ref.read(rideControllerProvider.notifier).lastFix;
+    if (last != null && isCurrentFix(last, DateTime.now())) return last;
+    final found = Completer<GeoSample?>();
+    final sub = ref.read(locationServiceProvider).positions().listen(
+      (s) {
+        if (!found.isCompleted && isCurrentFix(s, DateTime.now())) {
+          found.complete(s);
+        }
+      },
+      onError: (Object _) {},
+    );
+    final timeout = Timer(ref.read(continueFixWaitProvider), () {
+      if (!found.isCompleted) found.complete(null);
+    });
+    try {
+      return await found.future;
+    } finally {
+      timeout.cancel();
+      await sub.cancel();
+    }
+  }
+
+  /// Undoes a continuation (the "New ride" action of its notice): the
+  /// continued ride is put back the way it was stopped — the points recorded
+  /// since are dropped, they were seconds at the same place — and a new ride
+  /// starts instead.
+  Future<void> startNewRideInstead() async {
+    final continued = _continued;
+    final before = continued?.before;
+    if (!state || continued == null || _trackId != before!.id) return;
+    _continued = null;
+    state = false;
+    _trackId = null;
+    final db = ref.read(appDatabaseProvider);
+    await db.deletePointsAfter(before.id, continued.lastPointAt);
+    await db.finalizeTrack(
+      before.id,
+      endedAt: before.endedAt!,
+      distanceMeters: before.distanceMeters,
+      durationSeconds: before.durationSeconds,
+      avgSpeedMps: before.avgSpeedMps,
+      maxSpeedMps: before.maxSpeedMps,
+      batteryEndPercent: before.batteryEndPercent,
+    );
+    await _startNew();
   }
 
   /// Sets the active bike profile; if a ride is currently recording, also
@@ -198,11 +350,18 @@ class RecordingController extends Notifier<bool> {
   /// Resumes recording into an existing, interrupted ride — continues appending
   /// to the same track, its stats carried over.
   Future<void> resume(int trackId) async {
-    if (state) return;
+    if (state || _starting) return;
     // See start(): the gate is told before anything that can pause the activity.
     await ref.read(locationPowerControlProvider).setRecordingActive(true);
+    await _resumeInto(trackId);
+  }
+
+  /// Records into [trackId] again, open until the next [stop] (see
+  /// [AppDatabase.reopenTrack]).
+  Future<void> _resumeInto(int trackId) async {
     await ref.read(screenWakeServiceProvider).enable(ScreenWakeService.ownerRecording);
     final db = ref.read(appDatabaseProvider);
+    await db.reopenTrack(trackId);
     final points = await db.pointsFor(trackId);
     final bike = (await db.track(trackId))?.bikeProfileId;
     ref
@@ -223,6 +382,7 @@ class RecordingController extends Notifier<bool> {
     _confirm(RideFeedback.stopped);
     final id = _trackId;
     _trackId = null;
+    _continued = null;
     if (id != null) {
       final m = ref.read(rideControllerProvider);
       final battery = await ref.read(batteryServiceProvider).level();
@@ -235,15 +395,53 @@ class RecordingController extends Notifier<bool> {
             maxSpeedMps: m.maxSpeedMps,
             batteryEndPercent: battery,
           );
-      // iOS: save it to Apple Health if that's switched on. Unawaited and
-      // never throwing — it mustn't hold up or break stopping the ride.
-      unawaited(ref.read(appleHealthExporterProvider).saveIfEnabled(id));
+      // The ride a manual start may continue; Apple Health gets it once it
+      // can't be continued any more.
+      await ref.read(appDatabaseProvider).setMeta(lastStoppedRideKey, '$id');
+      unawaited(settleStoppedRide());
     }
     await ref.read(recordingForegroundServiceProvider).stop();
     // No ride: the GPS request may now be dropped whenever the app goes to the
     // background (it stays on while the app is in the foreground).
     await ref.read(locationPowerControlProvider).setRecordingActive(false);
     await ref.read(screenWakeServiceProvider).disable(ScreenWakeService.ownerRecording);
+  }
+
+  /// Saves the ride stopped last to Apple Health (if that's switched on) once
+  /// it can't be continued any more — or now, with [force] (a new ride has
+  /// started). Until then it schedules itself for when the "Continue a
+  /// stopped ride" window ends: a workout can't be extended afterwards, and
+  /// Strava imports it from Health right away, so saving at the stop would
+  /// leave a continued ride's first part as a ride of its own. Also run at
+  /// launch and whenever the app comes back to the foreground
+  /// (`stoppedRideSettlerProvider`): iOS suspends the app, so the timer alone
+  /// may fire late or never. Unawaited by callers and never throwing.
+  Future<void> settleStoppedRide({bool force = false}) async {
+    _healthSave?.cancel();
+    _healthSave = null;
+    try {
+      final db = ref.read(appDatabaseProvider);
+      final id = int.tryParse(await db.meta(lastStoppedRideKey) ?? '');
+      if (id == null) return;
+      if (state && _trackId == id) return; // continued: settled at its stop
+      final endedAt = (await db.track(id))?.endedAt;
+      final window = ref.read(settingsProvider).continueRideWindow;
+      if (!force && endedAt != null && window != null) {
+        final left = endedAt.add(window).difference(DateTime.now());
+        if (left > Duration.zero) {
+          _healthSave = Timer(left, () => unawaited(settleStoppedRide()));
+          return;
+        }
+      }
+      if (!await ref.read(appleHealthExporterProvider).saveIfEnabled(id)) {
+        return; // tried and failed: again next time
+      }
+      if (await db.meta(lastStoppedRideKey) == '$id') {
+        await db.clearMeta(lastStoppedRideKey);
+      }
+    } on Object catch (e) {
+      debugPrint('settleStoppedRide: $e');
+    }
   }
 
   /// Persists one sample to the current ride (no-op when not recording).
@@ -271,7 +469,8 @@ class RecordingController extends Notifier<bool> {
         );
   }
 
-  Future<void> toggle() => state ? stop() : start();
+  /// The on-screen button: a manual start or a stop.
+  Future<void> toggle() => state ? stop() : start(manual: true);
 }
 
 /// Live ride metrics derived from the location stream.
@@ -288,6 +487,10 @@ class RideController extends Notifier<RideMetrics> {
   double _maxSpeedMps = 0;
   SensorSnapshot? _latestSnapshot;
   StreamSubscription<GeoSample>? _subscription;
+  GeoSample? _lastFix;
+
+  /// The latest fix, whatever its accuracy, or null before the first.
+  GeoSample? get lastFix => _lastFix;
 
   @override
   RideMetrics build() {
@@ -322,6 +525,7 @@ class RideController extends Notifier<RideMetrics> {
   }
 
   void _onSample(GeoSample sample) {
+    _lastFix = sample;
     // Only a recording ride (or a battery test's simulated one) accumulates
     // time/distance/avg/max. When idle we still show the live current speed,
     // but the ride totals stay at zero so e.g. the timer does not run before

@@ -199,5 +199,5 @@ void main() {
 /// A recording controller that only notes that a ride was started.
 class _StartOnly extends RecordingController {
   @override
-  Future<void> start() async => state = true;
+  Future<void> start({bool manual = false}) async => state = true;
 }

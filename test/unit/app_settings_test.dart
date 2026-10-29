@@ -72,6 +72,29 @@ void main() {
     expect(s.hardwareButtonsEnabled, isTrue);
   });
 
+  test('keep screen on, continue a ride and places: defaults and round trip',
+      () {
+    const d = AppSettings();
+    expect(d.keepScreenOnMinutes, 0); // off: only a ride holds the screen
+    expect(d.continueRideWithinMinutes, 30);
+    expect(d.continueRideWindow, const Duration(minutes: 30));
+    expect(d.placesEnabled, isTrue);
+    // An older build's settings have none of them: the same defaults.
+    expect(AppSettings.fromJson(const {'units': 'metric'}), d);
+
+    final s = d.copyWith(
+        keepScreenOnMinutes: 15,
+        continueRideWithinMinutes: 0,
+        placesEnabled: false);
+    expect(s.continueRideWindow, isNull);
+    expect(AppSettings.fromJson(s.toJson()), s);
+    expect(
+        AppSettings.fromJson(
+                {'keep_screen_on_min': -3, 'continue_ride_min': 'x'})
+            .copyWith(),
+        d);
+  });
+
   group('legacy (pre per-bike) wheel / auto-pause / auto-start', () {
     // What 0.7.x wrote: these four were app-wide settings.
     const old = {

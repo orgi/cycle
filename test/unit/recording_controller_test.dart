@@ -6,6 +6,7 @@ import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/sensors/sensor_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
+import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
@@ -24,15 +25,19 @@ void main() {
   late FakeSensorService sensors;
   late AppDatabase db;
 
-  ProviderContainer build({BikeProfilesState? bikeProfiles}) =>
+  ProviderContainer build(
+          {BikeProfilesState? bikeProfiles, AppSettings? settings}) =>
       ProviderContainer(
         overrides: [
+          continueFixWaitProvider
+              .overrideWithValue(const Duration(milliseconds: 200)),
           screenWakeServiceProvider.overrideWithValue(wake),
           locationPowerControlProvider.overrideWithValue(gpsGate),
           locationServiceProvider.overrideWithValue(location),
           sensorServiceProvider.overrideWithValue(sensors),
           appDatabaseProvider.overrideWithValue(db),
-          settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+          settingsStoreProvider.overrideWithValue(
+              FakeSettingsStore(settings ?? const AppSettings())),
           bikeProfilesStoreProvider.overrideWithValue(
             FakeBikeProfilesStore(bikeProfiles ?? BikeProfilesState.empty),
           ),
@@ -400,5 +405,171 @@ void main() {
 
     await container.read(recordingProvider.notifier).stop();
     expect(gpsGate.calls, [true, false]);
+  });
+
+  group('continuing a stopped ride', () {
+    // Fixes "now", 100 m apart along the equator, like a ride.
+    GeoSample at(double meters, {Duration age = Duration.zero}) => GeoSample(
+          latitude: 0,
+          longitude: meters / 111195,
+          time: DateTime.now().subtract(age),
+          speedMps: 5,
+          accuracyMeters: 4,
+        );
+
+    Future<void> emit(GeoSample s) async {
+      location.emit(s);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    }
+
+    /// Records a ride of [meters] ending [age] ago (by its fixes) and stops.
+    Future<int> rideAndStop(
+        {double meters = 100, Duration age = Duration.zero}) async {
+      final notifier = container.read(recordingProvider.notifier);
+      await notifier.start();
+      final id = notifier.currentTrackId!;
+      await emit(at(0, age: age + const Duration(seconds: 10)));
+      await emit(at(meters, age: age));
+      await notifier.stop();
+      return id;
+    }
+
+    Future<void> loadSettings() async {
+      container.read(settingsProvider);
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    setUp(() async {
+      container.listen(rideControllerProvider, (_, _) {});
+      await loadSettings();
+    });
+
+    test('a manual start right where the ride stopped continues it',
+        () async {
+      final notices = <RideNotice?>[];
+      container.listen(rideNoticeProvider, (_, n) => notices.add(n));
+      final id = await rideAndStop();
+      final notifier = container.read(recordingProvider.notifier);
+
+      await notifier.start(manual: true);
+      expect(container.read(recordingProvider), isTrue);
+      expect(notifier.currentTrackId, id);
+      expect(await db.allTracks(), hasLength(1));
+      // Open again while it records: not synced, recovered after a crash.
+      expect((await db.track(id))!.endedAt, isNull);
+      // The totals carry on.
+      expect(container.read(rideControllerProvider).distanceMeters,
+          closeTo(100, 1));
+      expect(notices.single!.offerNewRide, isTrue);
+      expect(notices.single!.message, startsWith('Continued the ride'));
+
+      await emit(at(150));
+      await notifier.stop();
+      expect((await db.track(id))!.endedAt, isNotNull);
+      expect(await db.pointsFor(id), hasLength(3));
+    });
+
+    test('auto-start and places always start a new ride', () async {
+      final id = await rideAndStop();
+      await container.read(recordingProvider.notifier).start();
+      expect(container.read(recordingProvider.notifier).currentTrackId,
+          isNot(id));
+    });
+
+    test('a new ride once the rider has moved on', () async {
+      final id = await rideAndStop();
+      await emit(at(600)); // 500 m from where it stopped
+      await container.read(recordingProvider.notifier).start(manual: true);
+      expect(container.read(recordingProvider.notifier).currentTrackId,
+          isNot(id));
+      expect(await db.allTracks(), hasLength(2));
+    });
+
+    test('a new ride with the setting off', () async {
+      container.dispose();
+      container = build(
+          settings: const AppSettings(continueRideWithinMinutes: 0));
+      container.listen(rideControllerProvider, (_, _) {});
+      await loadSettings();
+      final id = await rideAndStop();
+      await container.read(recordingProvider.notifier).start(manual: true);
+      expect(container.read(recordingProvider.notifier).currentTrackId,
+          isNot(id));
+    });
+
+    test('a deleted ride is not continued', () async {
+      final id = await rideAndStop();
+      await db.deleteTrack(id);
+      await container.read(recordingProvider.notifier).start(manual: true);
+      expect(container.read(recordingProvider.notifier).currentTrackId,
+          isNot(id));
+    });
+
+    test('without a current fix it waits for one', () async {
+      // The ride's last fix is a minute old: not current.
+      final id = await rideAndStop(age: const Duration(minutes: 1));
+      final notifier = container.read(recordingProvider.notifier);
+      final started = notifier.start(manual: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(container.read(recordingProvider), isFalse); // still waiting
+      location.emit(at(120));
+      await started;
+      expect(notifier.currentTrackId, id);
+    });
+
+    test('and starts a new ride if none comes in time', () async {
+      final id = await rideAndStop(age: const Duration(minutes: 1));
+      final notifier = container.read(recordingProvider.notifier);
+      await notifier.start(manual: true); // waits 200 ms (overridden)
+      expect(container.read(recordingProvider), isTrue);
+      expect(notifier.currentTrackId, isNot(id));
+    });
+
+    test('a second start while waiting for the fix is ignored', () async {
+      await rideAndStop(age: const Duration(minutes: 1));
+      final notifier = container.read(recordingProvider.notifier);
+      final first = notifier.start(manual: true);
+      await notifier.start(manual: true);
+      await first;
+      expect(await db.allTracks(), hasLength(2)); // the old one + one new
+    });
+
+    test('"New ride" puts the continued ride back and starts a new one',
+        () async {
+      final id = await rideAndStop();
+      final before = (await db.track(id))!;
+      final notifier = container.read(recordingProvider.notifier);
+      await notifier.start(manual: true);
+      // Recorded into the continued ride (a later second: times are stored
+      // to the second).
+      await emit(at(110, age: const Duration(seconds: -2)));
+      expect(await db.pointsFor(id), hasLength(3));
+
+      await notifier.startNewRideInstead();
+      expect(container.read(recordingProvider), isTrue);
+      final newId = notifier.currentTrackId!;
+      expect(newId, isNot(id));
+      final restored = (await db.track(id))!;
+      expect(restored.endedAt, before.endedAt);
+      expect(restored.distanceMeters, before.distanceMeters);
+      expect(restored.durationSeconds, before.durationSeconds);
+      expect(await db.pointsFor(id), hasLength(2));
+      // The new ride starts from zero.
+      expect(container.read(rideControllerProvider).distanceMeters, 0);
+
+      // Not offered twice, nor for a ride that wasn't a continuation.
+      await notifier.startNewRideInstead();
+      expect(notifier.currentTrackId, newId);
+      await notifier.stop();
+    });
+
+    test('resuming an interrupted ride reopens it until it stops', () async {
+      final id = await rideAndStop();
+      final notifier = container.read(recordingProvider.notifier);
+      await notifier.resume(id);
+      expect((await db.track(id))!.endedAt, isNull);
+      await notifier.stop();
+      expect((await db.track(id))!.endedAt, isNotNull);
+    });
   });
 }

@@ -8,6 +8,35 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-29
+
+### Added
+- Start/stop places (Settings → Controls): rides start when you leave a place and stop
+  when you arrive at one — home, work, the café at the end of the loop. Each place is a
+  start place, a stop place or both, with a radius of 25–200 m, and is added where you
+  stand ("Add this place"). A ride stops only once you've been at the place for 20 seconds,
+  so riding past doesn't end it, and a ride started inside a stop place isn't stopped
+  there. Places stay on the phone (not synced).
+- Keep screen on without a ride (Settings → Controls): the screen stays on while Radl is
+  open, also before a ride starts — so the phone can wait on the handlebar for a ride to
+  start by leaving a place, or by auto-start. It goes off once the phone hasn't moved for
+  5–60 minutes (your choice), so a phone left lying around doesn't keep its screen and GPS
+  on until the battery is empty. Off by default.
+- Continue a stopped ride (Settings → Controls, on by default, 30 minutes): starting a ride
+  by hand — button, volume key, hand over the screen — soon after stopping one, still at
+  the same place (within 200 m), continues that ride instead of starting a new one. An
+  accidental stop or a short break stays one ride. A notice then offers "New ride" in case
+  it should have been a new one. Rides started by a place or by auto-start are always new.
+
+### Changed
+- With "Continue a stopped ride" on, a ride is saved to Apple Health once it can no longer
+  be continued (when the time is up, or when the next ride starts) instead of right at the
+  stop — a workout can't be extended afterwards, and Strava imports it right away.
+
+### Fixed
+- A ride resumed after a crash is unfinished again while it records, so a second crash
+  during it is recovered at the next launch too (it used to keep its old stats).
+
 ## [0.9.0] - 2026-10-27
 
 ### Added
@@ -655,7 +684,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/orgi/cycle/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/orgi/cycle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/orgi/cycle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/orgi/cycle/compare/v0.7.0...v0.7.1

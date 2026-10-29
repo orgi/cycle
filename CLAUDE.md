@@ -394,6 +394,10 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     no remote file already has exactly its signature → delete other copies the merged state
     `covers`, with `If-Match` so a copy changed meanwhile survives. Steady state is one file per
     ride. Unfinished rides (`endedAt == null`) and anything during recording are never synced.
+    A remote copy of a ride that is **open** locally (a continued ride — finished and synced,
+    then reopened — interrupted before it stops again) is skipped without caching its ETag
+    (`LocalRideStore.openKeys`): `rides()` doesn't list open rides, so applying the copy
+    would insert the ride a second time.
   * **When:** only while the app is open (no background scheduler, by decision): startup (after
     `SyncController.startupDelay`, behind GPS), native network-change events (`cycle/network`
     EventChannel — `ConnectivityManager.registerDefaultNetworkCallback` in `MainActivity.kt`,
@@ -1094,6 +1098,57 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `ElevationProfileStrip` (a `CustomPainter`, a 20 m minimum height range so a flat ride
   doesn't look mountainous). `integration_test/home_layout_test.dart` edits the layout on
   the real home screen and rides a hill.
+* **Start/stop places, keep screen on, continue a stopped ride** (0.10.0; prompted by
+  accidental stops from the iOS hand-over-screen hold). All three in Settings → Controls.
+  * **Places** (`RidePlace`, `lib/core/models/ride_place.dart`; `/places`,
+    `RidePlacesScreen`; prefs JSON via `RidePlacesStore`, **local, not synced**; master
+    switch `AppSettings.placesEnabled`). A point + radius (25-200 m), `PlaceTrigger`
+    start / stop / both, added at the current fix (≤20 m accuracy). Rule
+    (`PlaceTriggerDetector`, `lib/core/controls/`, pure + unit-tested): a ride **starts on
+    leaving** a start place and **stops after staying 20 s at** a stop place
+    (`placeStopAfterProvider`; a wall-clock timer, so a garage that loses the GPS still
+    stops it; riding past doesn't). Both are *transitions*: inside must have been seen
+    before leaving counts, and outside (during the ride) before arriving counts — a ride
+    started by hand inside a stop place isn't stopped there. Only `isAccurateEnough` fixes;
+    outside = beyond radius + 20 m (edge band changes nothing). `PlaceTriggerController`
+    (watched by the home screen like auto-start, places/setting read per fix) calls the
+    ordinary `start()`/`stop()` and posts a `RideNotice` (home-screen snackbar). Leaving
+    needs the GPS, i.e. the app in the foreground — hence the next setting.
+  * **Keep screen on without a ride** (`AppSettings.keepScreenOnMinutes`, 0 = off default,
+    5-60): `KeepScreenOnController` (`keep_screen_on_providers.dart`, listened from `main()`)
+    holds wakelock owner `ownerKeepOn` while the app is open, released once the phone hasn't
+    moved (accurate fix > 50 m from the last move) for that long, re-held on a move, a ride
+    stop and app resume. The timeout is the point: otherwise a phone left on a desk keeps
+    screen **and GPS** (held while foreground) on until the battery is empty.
+  * **Continue a stopped ride** (`AppSettings.continueRideWithinMinutes`, default 30, 0 =
+    off). `start({manual: true})` — the on-screen button (`toggle`), volume-up, the
+    proximity hold; **not** auto-start or places, and plain `start()` defaults to
+    `manual: false` — continues the ride stopped last (`SyncMeta` `last_stopped_ride`, so
+    only a ride stopped on *this* phone, never a synced one) if `shouldContinueRide`
+    (`ride_continuation.dart`, pure): stopped ≤ window ago and a **current** fix (≤30 s old,
+    ≤50 m accuracy — iOS hands out a cached position first) within 200 m of its last point.
+    Without a current fix it waits up to `continueFixWaitProvider` (15 s; `_starting` guards
+    a second start meanwhile), then starts a new ride. A continuation reuses `resume()`'s
+    path, which now **reopens** the track (`AppDatabase.reopenTrack`, `endedAt = null`, no
+    clock) so it's unfinished while recording (crash recovery + sync guard above). Its
+    notice offers **NEW RIDE** (`startNewRideInstead`: drops the points since, restores the
+    old row from the snapshot, starts a new ride). The continuation check must never break
+    a start: any error there means a new ride.
+  * **Apple Health waits until a ride can't be continued** (`settleStoppedRide`): at stop it
+    schedules the save for the end of the window; a new ride's start saves the previous one
+    at once (`force`); `stoppedRideSettlerProvider` (from `main()`) re-checks at launch and on
+    every app resume, since iOS suspends the app and its timer. `saveIfEnabled` returns false
+    on a failed save, which keeps the meta for a retry. Reason: a workout can't be extended
+    later and Strava imports it right away, so saving at the stop would split a continued ride.
+  * Tests: unit (`place_trigger_detector_test`, `place_trigger_controller_test`,
+    `ride_continuation_test`, `keep_screen_on_test`, continuation group in
+    `recording_controller_test`, deferred saves in `apple_health_test`, the sync guard in
+    `sync_service_test` — mutation-checked), widget (`ride_places_screen_test`,
+    `settings_screen_test`), GUI `integration_test/ride_places_test.dart` (set up in
+    Settings, leave → start, return → stop, manual start → continue, NEW RIDE). **Not yet
+    verified on a real phone** — check there: a start on leaving home with the screen kept
+    on, the stop on arrival with the screen off (A33 `dumpsys location` still one continuous
+    request), and the iOS deferred Apple Health save.
 * **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
   answers "how long does the phone last on a ride" without riding. While running, the app's
   `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
@@ -1139,6 +1194,13 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   logcat (only `flutter attach` showed "Another exception was thrown: …
   `!_debugDoingThisLayout`"). Widget tests always have a size, so they can't see it — clamp
   computed sizes, and look at a debug build on the emulator after layout changes.
+
+* **`tester.pump()` doesn't run Riverpod's rebuilds.** A listened provider whose dependency
+  changed is rebuilt on a zero-length `Timer` (Riverpod's default vsync in a bare
+  `ProviderContainer`); in `testWidgets` a `pump()` without a duration only flushes
+  microtasks, so the rebuild never happens — use `pump(Duration.zero)`. Also: drift work
+  (the real `RecordingController`) inside `testWidgets`' fake clock can hang; stub the
+  controller there (`keep_screen_on_test.dart`) or use a plain `test()`.
 
 * **Riverpod 3 pauses what only a covered screen listens to.** A `ref.watch` from a widget
   under another route (TickerMode off — e.g. the home map while Settings is open) is paused,

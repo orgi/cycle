@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/services/removed_logins.dart';
+import 'features/dashboard/application/keep_screen_on_providers.dart';
 import 'features/dashboard/application/ride_providers.dart';
+import 'features/health/application/apple_health_providers.dart';
 import 'features/map/application/map_providers.dart';
 import 'features/routing/application/follow_route_providers.dart';
 import 'features/sensors/application/sensor_power_gate.dart';
@@ -36,6 +38,9 @@ void main() {
   // or its setting changes, whichever screen is open: a watch from the home
   // screen alone is paused by Riverpod while another screen covers it.
   container.listen(sensorSettingsSyncProvider, (_, _) {});
+  // "Keep screen on without a ride": from launch, and a change in Settings
+  // applies at once (never paused, unlike the home screen's watch).
+  container.listen(keepScreenOnProvider, (_, _) {});
 
   runApp(
     UncontrolledProviderScope(
@@ -50,6 +55,10 @@ void main() {
   // Ride sync + trash/backup housekeeping. After runApp and self-delayed
   // (SyncController.startupDelay), so it never competes with GPS/map startup.
   container.read(syncControllerProvider);
+
+  // Apple Health gets the ride stopped last once it can't be continued any
+  // more — also if that window ended while the app was closed.
+  container.read(stoppedRideSettlerProvider);
 
   // Komoot and Strava upload were removed; delete logins older versions saved.
   unawaited(forgetRemovedLogins());

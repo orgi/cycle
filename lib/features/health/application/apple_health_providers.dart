@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +16,18 @@ final appleHealthServiceProvider =
 /// Saves rides to Apple Health (iOS). See [AppleHealthExporter].
 final appleHealthExporterProvider =
     Provider<AppleHealthExporter>((ref) => AppleHealthExporter(ref));
+
+/// Gives Apple Health the ride stopped last once it can't be continued any
+/// more (`RecordingController.settleStoppedRide`) — at launch and whenever the
+/// app comes back to the foreground, since iOS suspends the app and its timer
+/// with it. Listened from `main()`.
+final stoppedRideSettlerProvider = Provider<void>((ref) {
+  final recording = ref.read(recordingProvider.notifier);
+  unawaited(recording.settleStoppedRide());
+  final lifecycle = AppLifecycleListener(
+      onResume: () => unawaited(recording.settleStoppedRide()));
+  ref.onDispose(lifecycle.dispose);
+});
 
 /// Outcome of saving one ride.
 enum HealthSaveOutcome { saved, alreadySaved, notFinished, failed }
@@ -67,19 +82,24 @@ class AppleHealthExporter {
     return const HealthSaveResult(HealthSaveOutcome.saved);
   }
 
-  /// Called when a ride ends: saves it if "Save rides to Apple Health" is on.
-  /// Never throws — a failed save mustn't disturb stopping a ride; the rider
-  /// can still save it by hand from the ride's screen.
-  Future<void> saveIfEnabled(int trackId) async {
-    if (!appleHealthSupported) return;
-    if (!_ref.read(settingsProvider).saveToAppleHealth) return;
+  /// Called when a ride can't change any more: saves it if "Save rides to
+  /// Apple Health" is on. Never throws — a failed save mustn't disturb
+  /// stopping a ride; the rider can still save it by hand from the ride's
+  /// screen.
+  /// True unless the save was tried and failed (worth retrying later).
+  Future<bool> saveIfEnabled(int trackId) async {
+    if (!appleHealthSupported) return true;
+    if (!_ref.read(settingsProvider).saveToAppleHealth) return true;
     try {
       final result = await saveRide(trackId);
       if (result.outcome == HealthSaveOutcome.failed) {
         debugPrint('Apple Health: ${result.message}');
+        return false;
       }
+      return true;
     } on Object catch (e) {
       debugPrint('Apple Health: $e');
+      return false;
     }
   }
 }

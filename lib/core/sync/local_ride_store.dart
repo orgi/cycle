@@ -37,6 +37,15 @@ class LocalRideStore {
     };
   }
 
+  /// Sync keys of rides still open: being recorded, or interrupted and not
+  /// recovered yet. [rides] doesn't list them, so applying a remote copy of
+  /// one would insert the ride a second time. Only a continued ride can have
+  /// one (it was finished, and maybe synced, before it was reopened).
+  Future<Set<int>> openKeys() async => {
+        for (final t in await _db.allTracksIncludingDeleted())
+          if (t.endedAt == null) t.startedAt.millisecondsSinceEpoch ~/ 1000,
+      };
+
   /// Live beats trashed; then lowest id (the original over a later copy).
   static bool _prefer(Track a, Track b) {
     final aLive = a.deletedAt == null, bLive = b.deletedAt == null;

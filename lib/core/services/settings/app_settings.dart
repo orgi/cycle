@@ -67,8 +67,17 @@ class AppSettings {
     this.vibrateOnStartStop = true,
     this.retentionDays = 30,
     this.saveToAppleHealth = false,
+    this.keepScreenOnMinutes = 0,
+    this.continueRideWithinMinutes = 30,
+    this.placesEnabled = true,
     this.legacyBikeSettings,
   });
+
+  /// The choices offered for [keepScreenOnMinutes] (0 = off).
+  static const List<int> keepScreenOnChoices = [0, 5, 15, 30, 60];
+
+  /// The choices offered for [continueRideWithinMinutes] (0 = off).
+  static const List<int> continueRideChoices = [0, 10, 30, 60, 120];
 
   /// Distance/speed units shown in the UI.
   final UnitSystem units;
@@ -109,6 +118,25 @@ class AppSettings {
   /// default: turning it on asks iOS for write access.
   final bool saveToAppleHealth;
 
+  /// Keep the screen on while Radl is open without a ride, so it can wait on
+  /// the handlebar for a ride to start (by leaving a start place, or by
+  /// auto-start), until the phone hasn't moved for this many minutes. 0 = off
+  /// (the default): the screen is only kept on while a ride records.
+  final int keepScreenOnMinutes;
+
+  /// Starting a ride by hand within this many minutes of stopping one, where
+  /// it stopped, continues that ride (see `shouldContinueRide`). 0 = off.
+  final int continueRideWithinMinutes;
+
+  /// Whether rides start and stop at the saved places (`RidePlace`). On by
+  /// default; without places it does nothing.
+  final bool placesEnabled;
+
+  /// [continueRideWithinMinutes] as a duration, or null when off.
+  Duration? get continueRideWindow => continueRideWithinMinutes > 0
+      ? Duration(minutes: continueRideWithinMinutes)
+      : null;
+
   /// The wheel size / auto-pause / auto-start this phone used app-wide before
   /// they became per-bike settings (0.7.x and older), or null on an install
   /// that never had them. Read-only: a bike whose own [BikeSettings] were
@@ -140,6 +168,9 @@ class AppSettings {
     bool? vibrateOnStartStop,
     int? retentionDays,
     bool? saveToAppleHealth,
+    int? keepScreenOnMinutes,
+    int? continueRideWithinMinutes,
+    bool? placesEnabled,
   }) =>
       AppSettings(
         units: units ?? this.units,
@@ -155,6 +186,10 @@ class AppSettings {
         vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
         retentionDays: retentionDays ?? this.retentionDays,
         saveToAppleHealth: saveToAppleHealth ?? this.saveToAppleHealth,
+        keepScreenOnMinutes: keepScreenOnMinutes ?? this.keepScreenOnMinutes,
+        continueRideWithinMinutes:
+            continueRideWithinMinutes ?? this.continueRideWithinMinutes,
+        placesEnabled: placesEnabled ?? this.placesEnabled,
         legacyBikeSettings: legacyBikeSettings,
       );
 
@@ -169,6 +204,9 @@ class AppSettings {
         'vibrate_start_stop': vibrateOnStartStop,
         'retention_days': retentionDays,
         'apple_health': saveToAppleHealth,
+        'keep_screen_on_min': keepScreenOnMinutes,
+        'continue_ride_min': continueRideWithinMinutes,
+        'places': placesEnabled,
         ...?legacyBikeSettings?.toJson(),
       };
 
@@ -186,10 +224,15 @@ class AppSettings {
         vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
         retentionDays: (json['retention_days'] as num?)?.toInt() ?? 30,
         saveToAppleHealth: json['apple_health'] as bool? ?? false,
+        keepScreenOnMinutes: _minutes(json['keep_screen_on_min']) ?? 0,
+        continueRideWithinMinutes: _minutes(json['continue_ride_min']) ?? 30,
+        placesEnabled: json['places'] as bool? ?? true,
         legacyBikeSettings: _legacyBikeKeys.any(json.containsKey)
             ? BikeSettings.fromJson(json)
             : null,
       );
+
+  static int? _minutes(Object? v) => v is num && v >= 0 ? v.toInt() : null;
 
   /// The keys the per-bike settings were stored under while app-wide.
   static const _legacyBikeKeys = [
@@ -212,6 +255,9 @@ class AppSettings {
       other.vibrateOnStartStop == vibrateOnStartStop &&
       other.retentionDays == retentionDays &&
       other.saveToAppleHealth == saveToAppleHealth &&
+      other.keepScreenOnMinutes == keepScreenOnMinutes &&
+      other.continueRideWithinMinutes == continueRideWithinMinutes &&
+      other.placesEnabled == placesEnabled &&
       other.legacyBikeSettings == legacyBikeSettings;
 
   @override
@@ -226,5 +272,8 @@ class AppSettings {
       vibrateOnStartStop,
       retentionDays,
       saveToAppleHealth,
+      keepScreenOnMinutes,
+      continueRideWithinMinutes,
+      placesEnabled,
       legacyBikeSettings);
 }
