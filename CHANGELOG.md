@@ -8,6 +8,17 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-29
+
+### Fixed
+- Riding back the way you came — to a dead end and back, an out-and-back, turning round
+  after a missed turn — counted only the straight line from the start of that stretch of
+  road to where you were, not the way there and back (1.5 km out and back read 450 m).
+  Both ways count now. Turning round within about 30 m still isn't counted, so GPS noise
+  along the road doesn't add distance. For rides recorded before: Settings → Data →
+  "Recalculate ride distances" (on 830 real rides this changed only those with a
+  turn-back, by up to 1.75 km).
+
 ## [0.10.0] - 2026-10-29
 
 ### Added
@@ -684,7 +695,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/orgi/cycle/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/orgi/cycle/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/orgi/cycle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/orgi/cycle/compare/v0.7.1...v0.8.0

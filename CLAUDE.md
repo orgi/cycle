@@ -218,6 +218,20 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     live recording and `track_repair.dart`'s replay (same accumulator) — existing
     rides recorded under either earlier approach can be corrected via Settings →
     Data → "Recalculate ride distances".
+    **Turning back** (0.10.1): the "within 5 m" test measures to the *infinite* line,
+    so a ride back along the same road (a dead end, an out-and-back) never broke the
+    run and counted as the straight distance from the anchor to the newest fix
+    (1.5 km out and back read 450 m). A buffered point more than `_turnBackMeters`
+    (30 m) beyond either end of the anchor→newest line is a turn-back: the run is
+    committed **up to that point** (not to the last still-valid one) and the points
+    since start the next run. **Not 5 m** (plain distance to the segment): on the
+    A33's June/July 2026 rides, along-road GPS noise then counted as tiny turn-backs
+    (+3-4%; rides 44/45 of the A33 backup, most likely the two Komoot reference rides,
+    moved to +1.6%/+3.7%). At 30 m, replaying every ride of a full A33 backup
+    (`~/cycle-backups/a33_20261014_post_upgrade.sqlite`, ~830 rides, old vs new
+    accumulator over the saved points) changed only rides with real turn-backs:
+    total +0.03 %, max +1.75 km, none shorter. Re-run such a replay after touching
+    the simplifier — synthetic tests can't show what noise real rides carry.
 * **BLE sensors:** `universal_ble` (BSD-3, Navideck; pinned to 2.x) using the standard
   Bluetooth SIG GATT profiles (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin
   dual-band sensors work over BLE with no special code. Parsers + CSC speed/cadence + GPS/BLE

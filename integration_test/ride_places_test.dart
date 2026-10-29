@@ -126,17 +126,15 @@ void main() {
     expect(find.text('Ride started: you left Home'), findsOneWidget);
     expect(find.text('Stop'), findsOneWidget);
 
-    // A loop — out east, back along a street 300 m north — then home
-    // again: stopped after the stay.
+    // To the end of the street and back the same way, then home: stopped
+    // after the stay.
     for (var m = 150.0; m <= 1500; m += 150) {
       await at(m);
     }
-    await at(1500, north: 150);
-    for (var m = 1500.0; m >= 0; m -= 150) {
-      await at(m, north: 300);
+    for (var m = 1350.0; m >= 150; m -= 150) {
+      await at(m);
     }
-    await at(0, north: 150);
-    await at(0, north: 20);
+    await at(20);
     expect(recording(), isTrue);
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
@@ -145,7 +143,9 @@ void main() {
     final rides = await db.allTracks();
     expect(rides, hasLength(1));
     expect(rides.single.endedAt, isNotNull);
-    expect(rides.single.distanceMeters, greaterThan(2000));
+    // Both ways count: ~1.4 km out, ~1.5 km back (this came to 450 m while
+    // the distance missed turning back along the same road).
+    expect(rides.single.distanceMeters, greaterThan(2800));
     // The screen stays on without a ride.
     expect(wake.holds(ScreenWakeService.ownerKeepOn), isTrue);
 

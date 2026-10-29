@@ -49,6 +49,18 @@ class RideMetricsAccumulator {
   /// cleanly; real GPS jitter is typically 1-2 m).
   static const double _simplifyEpsilonMeters = 5.0;
 
+  /// A pending point this far beyond either end of the anchor→newest line —
+  /// back the way the rider came — means the ride turned back there: a dead
+  /// end, an out-and-back, a missed turn. Every point of such a ride lies on
+  /// one line, so [_simplifyEpsilonMeters] alone never broke the run and the
+  /// way out and back counted as the few metres between the anchor and the
+  /// newest fix (1.5 km out and back, nearly straight, came to 450 m).
+  /// Not 5 m: on the A33's rides of June/July 2026, along-road GPS noise
+  /// then added 3-4% (counted as tiny turn-backs); from 30 m none of the
+  /// ~830 rides in a full backup changed except those with real turn-backs
+  /// (up to +1.75 km), which keep their full length at any value up to 50 m.
+  static const double _turnBackMeters = 30.0;
+
   RideMetrics add(GeoSample sample) {
     _startTime ??= sample.time;
 
@@ -117,7 +129,10 @@ class RideMetricsAccumulator {
   /// explained as noise on one straight bit of path, so nothing is committed
   /// yet. The moment one of them doesn't, the path actually turned there: the
   /// line up to the *last point that was still valid* is committed as real
-  /// distance, and a new anchor/pending run starts from there.
+  /// distance, and a new anchor/pending run starts from there. A point more
+  /// than [_turnBackMeters] beyond either end of the line is where the path
+  /// turned back on itself: the way to that point is committed, and the
+  /// points since — already on the way back — start the next run.
   ///
   /// Testing against the anchor→newest line each step (not just anchor→prior
   /// point) is what makes this robust: a naive two-point "sleeve" that only
@@ -165,13 +180,29 @@ class RideMetricsAccumulator {
       _distanceMeters = _committedMeters + _legMeters(anchor, sample);
       return;
     }
-    final stillValid = _pending.every(
-      (p) => _perpendicularDistanceMeters(p, anchor, sample) <=
-          _simplifyEpsilonMeters,
-    );
-    if (stillValid) {
-      _pending.add(sample);
-    } else {
+    var sideways = false;
+    var turnedAt = -1;
+    var farthest = _turnBackMeters;
+    for (var i = 0; i < _pending.length; i++) {
+      final (:across, :beyond) = _offsetMeters(_pending[i], anchor, sample);
+      if (across > _simplifyEpsilonMeters) sideways = true;
+      if (beyond > farthest) {
+        farthest = beyond;
+        turnedAt = i;
+      }
+    }
+    if (turnedAt >= 0) {
+      // Commit the way to the turning point; the points after it are on the
+      // way back and start the next run.
+      final turn = _pending[turnedAt];
+      _committedMeters += _legMeters(anchor, turn);
+      _anchor = turn;
+      final since = _pending.sublist(turnedAt + 1);
+      _pending
+        ..clear()
+        ..addAll(since)
+        ..add(sample);
+    } else if (sideways) {
       // Commit up to the last point that was still a valid simplification,
       // and start a fresh run from there.
       final stable = _pending.last;
@@ -180,6 +211,8 @@ class RideMetricsAccumulator {
       _pending
         ..clear()
         ..add(sample);
+    } else {
+      _pending.add(sample);
     }
     _distanceMeters = _committedMeters + _legMeters(_anchor!, _pending.last);
   }
@@ -187,11 +220,12 @@ class RideMetricsAccumulator {
   static double _legMeters(GeoSample a, GeoSample b) =>
       haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
 
-  /// Perpendicular distance in metres from [p] to the *infinite* line through
-  /// [a] and [b] (not clamped to the segment between them). Projects to a
-  /// flat local plane (equirectangular, centred at [a]) — accurate for the
-  /// short spans between consecutive GPS fixes this is used on.
-  static double _perpendicularDistanceMeters(
+  /// Where [p] lies relative to the line from [a] to [b], in metres:
+  /// [across] it (perpendicular distance to the infinite line through them)
+  /// and [beyond] either end along it (0 between them). Projects to a flat
+  /// local plane (equirectangular, centred at [a]) — accurate for the short
+  /// spans between consecutive GPS fixes this is used on.
+  static ({double across, double beyond}) _offsetMeters(
     GeoSample p,
     GeoSample a,
     GeoSample b,
@@ -207,12 +241,17 @@ class RideMetricsAccumulator {
 
     final dx = bx - ax, dy = by - ay;
     if (dx == 0 && dy == 0) {
-      return math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+      return (
+        across: math.sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay)),
+        beyond: 0.0,
+      );
     }
-    final t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy);
-    final projX = ax + t * dx, projY = ay + t * dy;
-    final ddx = px - projX, ddy = py - projY;
-    return math.sqrt(ddx * ddx + ddy * ddy);
+    final length = math.sqrt(dx * dx + dy * dy);
+    final along = ((px - ax) * dx + (py - ay) * dy) / length;
+    return (
+      across: ((px - ax) * dy - (py - ay) * dx).abs() / length,
+      beyond: along < 0 ? -along : math.max(0.0, along - length),
+    );
   }
 
   /// Resets all running totals so the accumulator can be reused for a new ride.
