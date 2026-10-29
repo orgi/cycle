@@ -103,7 +103,13 @@ class PlaceTriggerController extends Notifier<bool> {
     if (!ref.read(recordingProvider)) return;
     ref
         .read(rideNoticeProvider.notifier)
-        .show(RideNotice('Ride started: you left ${place.name}'));
+        .show(
+          RideNotice(
+            place.passThrough
+                ? 'Ride started: you passed ${place.name}'
+                : 'Ride started: you left ${place.name}',
+          ),
+        );
   }
 
   Future<void> _stop(RidePlace place) async {
@@ -111,6 +117,12 @@ class PlaceTriggerController extends Notifier<bool> {
     await ref.read(recordingProvider.notifier).stop();
     ref
         .read(rideNoticeProvider.notifier)
-        .show(RideNotice('Ride stopped: you arrived at ${place.name}'));
+        .show(
+          RideNotice(
+            place.passThrough
+                ? 'Ride stopped: you passed ${place.name}'
+                : 'Ride stopped: you arrived at ${place.name}',
+          ),
+        );
   }
 }

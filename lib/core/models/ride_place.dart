@@ -4,17 +4,28 @@ enum PlaceTrigger {
   start('Start', 'Starts a ride when you leave'),
 
   /// Arriving at the place stops the ride.
-  stop('Stop', 'Stops the ride when you arrive'),
+  stop(
+    'Stop',
+    'Stops the ride when you arrive',
+    "Stops the ride once you've passed through",
+  ),
 
   /// Both: leaving starts a ride, arriving stops it (home, work).
   startAndStop(
     'Both',
     'Starts a ride when you leave, stops it when you arrive',
+    "Starts a ride when you leave, stops it once you've passed through",
   );
 
-  const PlaceTrigger(this.label, this.description);
+  const PlaceTrigger(this.label, this.description, [String? passing])
+    : passingDescription = passing ?? description;
   final String label;
+
+  /// What it does at a place where the rider stays (leaving, arriving).
   final String description;
+
+  /// What it does at a [RidePlace.passThrough] place (starting is the same).
+  final String passingDescription;
 
   bool get startsRides => this != stop;
   bool get stopsRides => this != start;
@@ -31,6 +42,7 @@ class RidePlace {
     required this.longitude,
     this.radiusMeters = defaultRadiusMeters,
     this.trigger = PlaceTrigger.startAndStop,
+    this.passThrough = false,
   });
 
   static const double defaultRadiusMeters = 50;
@@ -46,12 +58,22 @@ class RidePlace {
   final double radiusMeters;
   final PlaceTrigger trigger;
 
+  /// A point on the way (the end of the street, a crossing) rather than a
+  /// place where the rider stays: the ride stops once the rider has passed
+  /// through it — on the way out — instead of on arriving. Starting is the
+  /// same either way (on leaving), so it only matters where rides stop.
+  final bool passThrough;
+
+  String get description =>
+      passThrough ? trigger.passingDescription : trigger.description;
+
   RidePlace copyWith({
     String? name,
     double? latitude,
     double? longitude,
     double? radiusMeters,
     PlaceTrigger? trigger,
+    bool? passThrough,
   }) => RidePlace(
     id: id,
     name: name ?? this.name,
@@ -59,6 +81,7 @@ class RidePlace {
     longitude: longitude ?? this.longitude,
     radiusMeters: radiusMeters ?? this.radiusMeters,
     trigger: trigger ?? this.trigger,
+    passThrough: passThrough ?? this.passThrough,
   );
 
   Map<String, dynamic> toJson() => {
@@ -68,6 +91,7 @@ class RidePlace {
     'lon': longitude,
     'radius_m': radiusMeters,
     'trigger': trigger.name,
+    if (passThrough) 'pass_through': true,
   };
 
   /// Null for an entry without a usable id or position. A missing radius or
@@ -88,6 +112,7 @@ class RidePlace {
         (t) => t.name == json['trigger'],
         orElse: () => PlaceTrigger.startAndStop,
       ),
+      passThrough: json['pass_through'] == true,
     );
   }
 
@@ -99,11 +124,19 @@ class RidePlace {
       other.latitude == latitude &&
       other.longitude == longitude &&
       other.radiusMeters == radiusMeters &&
-      other.trigger == trigger;
+      other.trigger == trigger &&
+      other.passThrough == passThrough;
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, latitude, longitude, radiusMeters, trigger);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    latitude,
+    longitude,
+    radiusMeters,
+    trigger,
+    passThrough,
+  );
 
   @override
   String toString() => 'RidePlace(${toJson()})';

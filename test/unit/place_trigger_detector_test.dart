@@ -200,6 +200,78 @@ void main() {
     });
   });
 
+  group('pass through', () {
+    final corner = _home.copyWith(passThrough: true);
+
+    test('passing through during a ride stops it on the way out', () {
+      feed([500, 200, 30, -30], places: [corner], recording: true);
+      expect(stopped, isEmpty);
+      feed([-200], places: [corner], recording: true);
+      expect(stopped, ['home']);
+      expect(timers, isEmpty); // no stay
+    });
+
+    test('staying there stops nothing: it is a point on the way', () {
+      feed([500, 30, 10, 0], places: [corner], recording: true);
+      expect(detector.stopPending, isFalse);
+      expect(stopped, isEmpty);
+    });
+
+    test('starting is on leaving, like any start place', () {
+      feed([-500, -30], places: [corner]);
+      expect(started, isEmpty);
+      feed([200], places: [corner]);
+      expect(started, ['home']);
+    });
+
+    test('passing a both-way point during a ride stops it, and the same exit '
+        'starts no new ride', () {
+      feed([500, 30], places: [corner], recording: true);
+      feed([-200], places: [corner], recording: true);
+      expect(stopped, ['home']);
+      feed([-500], places: [corner]); // not recording now
+      expect(started, isEmpty);
+      // Passing it again without a ride starts one.
+      feed([-30, 200], places: [corner]);
+      expect(started, ['home']);
+    });
+
+    test('only an entry during this ride counts', () {
+      // A ride started inside (by hand) isn't stopped on the way out…
+      feed([0, 10], places: [corner], recording: true);
+      feed([200], places: [corner], recording: true);
+      // …nor one started after getting there…
+      feed([10], places: [corner]);
+      feed([10, 200], places: [corner], recording: true);
+      // …nor a new ride started there after stopping one by hand.
+      feed([10], places: [corner], recording: true);
+      feed([10], places: [corner]);
+      feed([200], places: [corner], recording: true);
+      expect(stopped, isEmpty);
+    });
+
+    test('a start point stops nothing', () {
+      final startOnly = corner.copyWith(trigger: PlaceTrigger.start);
+      feed([500, 30, -200], places: [startOnly], recording: true);
+      expect(stopped, isEmpty);
+    });
+
+    test('passing a point inside another place stops once, no stay on top', () {
+      const home = RidePlace(
+        id: 'h',
+        name: 'Home',
+        latitude: 47,
+        longitude: 11,
+        radiusMeters: 200,
+      );
+      feed([500, 300, 30], places: [home, corner], recording: true);
+      expect(detector.stopPending, isTrue); // arrived at "h"
+      feed([-100], places: [home, corner], recording: true);
+      expect(stopped, ['home']);
+      expect(detector.stopPending, isFalse);
+    });
+  });
+
   test('a deleted and re-added place starts from unknown again', () {
     feed([0]);
     feed([0], places: const []);

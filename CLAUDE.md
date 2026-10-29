@@ -1123,7 +1123,15 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     (`placeStopAfterProvider`; a wall-clock timer, so a garage that loses the GPS still
     stops it; riding past doesn't). Both are *transitions*: inside must have been seen
     before leaving counts, and outside (during the ride) before arriving counts — a ride
-    started by hand inside a stop place isn't stopped there. Only `isAccurateEnough` fixes;
+    started by hand inside a stop place isn't stopped there. **Pass through**
+    (`RidePlace.passThrough`, 0.11.0, only offered for stop/both places): a point on the way
+    (end of the street, a crossing) stops the ride **on leaving**, without the stay, if the
+    rider got into it during this ride (`_enteredRiding`, cleared whenever not recording —
+    so a ride started inside isn't stopped on the way out); staying there stops nothing.
+    Starting is on leaving for every place, however the rider got in (passing through
+    included), so the option changes nothing for starts — the same exit that stops a ride
+    never starts one (`recording` is per fix). Defined that way by the user: start and
+    pass-through stop on leaving, an ordinary stop on entering. Only `isAccurateEnough` fixes;
     outside = beyond radius + 20 m (edge band changes nothing). `PlaceTriggerController`
     (watched by the home screen like auto-start, places/setting read per fix) calls the
     ordinary `start()`/`stop()` and posts a `RideNotice` (home-screen snackbar). Leaving

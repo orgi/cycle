@@ -22,6 +22,18 @@ void main() {
     expect(p.radiusMeters, 50);
     expect(p.trigger, PlaceTrigger.startAndStop);
     expect(p.name, 'Place');
+    expect(p.passThrough, isFalse);
+  });
+
+  test('pass through: stored only when set, and says what it does', () {
+    final corner = work.copyWith(passThrough: true);
+    expect(RidePlace.fromJson(corner.toJson()), corner);
+    expect(corner, isNot(work));
+    expect(work.toJson().containsKey('pass_through'), isFalse);
+    expect(work.description, 'Stops the ride when you arrive');
+    expect(corner.description, "Stops the ride once you've passed through");
+    expect(PlaceTrigger.start.passingDescription,
+        PlaceTrigger.start.description); // starting doesn't change
   });
 
   test('garbage falls back or is dropped', () {

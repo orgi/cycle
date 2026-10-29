@@ -35,10 +35,13 @@ void main() {
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 30));
 
-  Future<void> build({AppSettings settings = const AppSettings()}) async {
+  Future<void> build({
+    AppSettings settings = const AppSettings(),
+    RidePlace place = _home,
+  }) async {
     location = FakeLocationService();
     sensors = FakeSensorService();
-    places = FakeRidePlacesStore([_home]);
+    places = FakeRidePlacesStore([place]);
     db = AppDatabase(NativeDatabase.memory());
     container = ProviderContainer(
       overrides: [
@@ -108,6 +111,29 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 150));
     expect(container.read(recordingProvider), isFalse);
     expect(notices.last!.message, 'Ride stopped: you arrived at Home');
+    expect(await db.allTracks(), hasLength(1));
+  });
+
+  test('passing a point starts a ride, passing it again stops it — no stay',
+      () async {
+    await build(
+      place: _home.copyWith(name: 'Corner', passThrough: true),
+    );
+    await at(-500);
+    await at(-30);
+    expect(container.read(recordingProvider), isFalse);
+    await at(150); // through it
+    expect(container.read(recordingProvider), isTrue);
+    expect(notices.last!.message, 'Ride started: you passed Corner');
+
+    await at(2000);
+    await at(30);
+    expect(container.read(recordingProvider), isTrue);
+    await at(-150); // through it again: stopped at once
+    expect(container.read(recordingProvider), isFalse);
+    expect(notices.last!.message, 'Ride stopped: you passed Corner');
+    await at(-500);
+    expect(container.read(recordingProvider), isFalse);
     expect(await db.allTracks(), hasLength(1));
   });
 

@@ -70,6 +70,7 @@ void main() {
     expect(find.text('New place'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Home'), findsOneWidget);
     await tester.tap(find.byKey(const Key('placeTrigger_stop')));
+    await tester.ensureVisible(find.byKey(const Key('placeRadius_100')));
     await tester.tap(find.byKey(const Key('placeRadius_100')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('placeSave')));
@@ -137,6 +138,54 @@ void main() {
     await tester.tap(find.text('UNDO'));
     await tester.pumpAndSettle();
     expect(places.places.single.name, 'Flat');
+  });
+
+  testWidgets('sets a place to pass through, and back', (tester) async {
+    const corner = RidePlace(
+      id: 'p1',
+      name: 'Corner',
+      latitude: 47,
+      longitude: 11,
+    );
+    await pump(tester, initial: [corner]);
+    const passing =
+        "Starts a ride when you leave, stops it once you've passed through";
+
+    await tester.tap(find.byKey(const Key('place_p1')));
+    await tester.pumpAndSettle();
+    expect(find.text(passing), findsNothing);
+    final toggle = find.byKey(const Key('placePassThrough'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    // The choices now say what they do at a point on the way.
+    expect(find.text(passing), findsOneWidget);
+    expect(find.text("Stops the ride once you've passed through"),
+        findsOneWidget);
+    // Starting is the same either way: no switch for a start place.
+    await tester.tap(find.byKey(const Key('placeTrigger_start')));
+    await tester.pumpAndSettle();
+    expect(toggle, findsNothing);
+    await tester.tap(find.byKey(const Key('placeTrigger_startAndStop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('placeSave')));
+    await tester.pumpAndSettle();
+    expect(places.places.single.passThrough, isTrue);
+    expect(find.textContaining(passing), findsOneWidget); // in the list
+
+    await tester.tap(find.byKey(const Key('place_p1')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('placeSave')));
+    await tester.pumpAndSettle();
+    expect(places.places.single.passThrough, isFalse);
+    expect(
+      find.textContaining('Starts a ride when you leave, stops it when you '
+          'arrive'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('switches places off, and hints at keeping the screen on', (

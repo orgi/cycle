@@ -12,8 +12,9 @@ import '../../settings/application/settings_providers.dart';
 import '../application/ride_places_providers.dart';
 
 /// Settings → Controls → Start/stop places: the places where rides start
-/// (leaving) and stop (arriving) by themselves. A place is added where the
-/// rider stands, so it's set up at home, at work, … once.
+/// (leaving) and stop (arriving, or passing through a point on the way) by
+/// themselves. A place is added where the rider stands, so it's set up at
+/// home, at work, … once.
 class RidePlacesScreen extends ConsumerWidget {
   const RidePlacesScreen({super.key});
 
@@ -47,8 +48,10 @@ class RidePlacesScreen extends ConsumerWidget {
               'A ride starts when you leave a start place, and stops once '
               "you've been at a stop place for "
               '${ref.watch(placeStopAfterProvider).inSeconds} seconds — '
-              'riding past doesn\'t stop it. Leaving only counts while Radl is '
-              'open with GPS; arriving always counts during a ride.',
+              "riding past doesn't stop it. A stop place set to pass through "
+              '— a point on the way, like the end of your street — stops the '
+              "ride once you've passed through it instead. Starting needs "
+              'Radl open with GPS; stopping always works during a ride.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -169,7 +172,7 @@ class _PlaceTile extends ConsumerWidget {
       title: Text(place.name),
       subtitle: Text(
         [
-          place.trigger.description,
+          place.description,
           'radius ${_length(place.radiusMeters, units)}',
           ?where,
         ].join(' · '),
@@ -231,7 +234,8 @@ class _PlaceTile extends ConsumerWidget {
   }
 }
 
-/// Edits [place]'s name, what it does and its radius; null if cancelled.
+/// Edits [place]'s name, what it does, whether it's passed through and its
+/// radius; null if cancelled.
 Future<RidePlace?> showPlaceDialog(
   BuildContext context,
   RidePlace place, {
@@ -263,6 +267,7 @@ class _PlaceDialogState extends State<_PlaceDialog> {
   );
   late PlaceTrigger _trigger = widget.place.trigger;
   late double _radius = widget.place.radiusMeters;
+  late bool _passThrough = widget.place.passThrough;
 
   @override
   void dispose() {
@@ -299,11 +304,26 @@ class _PlaceDialogState extends State<_PlaceDialog> {
                     value: t,
                     contentPadding: EdgeInsets.zero,
                     title: Text(t.label),
-                    subtitle: Text(t.description),
+                    subtitle: Text(
+                      _passThrough ? t.passingDescription : t.description,
+                    ),
                   ),
               ],
             ),
           ),
+          // Starting is on leaving either way: only stopping changes.
+          if (_trigger.stopsRides)
+            SwitchListTile(
+              key: const Key('placePassThrough'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Pass through'),
+              subtitle: const Text(
+                "For a point on the way: stops the ride once you're through "
+                'it, without stopping there',
+              ),
+              value: _passThrough,
+              onChanged: (v) => setState(() => _passThrough = v),
+            ),
           const SizedBox(height: 8),
           Text('Radius', style: Theme.of(context).textTheme.labelLarge),
           const SizedBox(height: 4),
@@ -336,6 +356,7 @@ class _PlaceDialogState extends State<_PlaceDialog> {
                 name: name.isEmpty ? widget.place.name : name,
                 trigger: _trigger,
                 radiusMeters: _radius,
+                passThrough: _passThrough && _trigger.stopsRides,
               ),
             );
           },

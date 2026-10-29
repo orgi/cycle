@@ -18,6 +18,12 @@ import 'proximity_hold_detector.dart' show HoldTimerFactory;
 /// (or through) a stop place doesn't end the ride; it's a wall-clock timer,
 /// not counted in fixes, so a garage that loses the GPS still stops it.
 ///
+/// A [RidePlace.passThrough] place — a point on the way — stops the ride
+/// once the rider has passed through it: on leaving, without the stay, if
+/// they got into it during this ride. Staying there stops nothing. Starting
+/// is the same as anywhere (on leaving); a both-way point passed during a
+/// ride stops it, and the same exit doesn't start a new one.
+///
 /// Only accurate fixes count (`isAccurateEnough`, like the ride itself).
 /// Inside is within the radius; outside is beyond the radius plus
 /// [exitMarginMeters] — in between nothing changes, so a fix jittering on the
@@ -34,7 +40,8 @@ class PlaceTriggerDetector {
   /// A ride should start: the rider has left [place].
   final void Function(RidePlace place) onStart;
 
-  /// The ride should stop: the rider has been at [place] for [stopAfter].
+  /// The ride should stop: the rider has been at [place] for [stopAfter], or
+  /// has passed through it if it's [RidePlace.passThrough].
   final void Function(RidePlace place) onStop;
 
   final Duration stopAfter;
@@ -43,6 +50,9 @@ class PlaceTriggerDetector {
 
   /// Place id → whether the rider is inside it. Absent = not known yet.
   final Map<String, bool> _inside = {};
+
+  /// Places the rider got into during the ride now recording.
+  final Set<String> _enteredRiding = {};
   Timer? _pendingStop;
   String? _pendingPlaceId;
 
@@ -57,6 +67,8 @@ class PlaceTriggerDetector {
     required bool recording,
   }) {
     _inside.removeWhere((id, _) => !places.any((p) => p.id == id));
+    _enteredRiding.removeWhere((id) => !_inside.containsKey(id));
+    if (!recording) _enteredRiding.clear();
     final pending = _pendingPlaceId;
     if (pending != null &&
         (!recording || !places.any((p) => p.id == pending))) {
@@ -64,7 +76,7 @@ class PlaceTriggerDetector {
     }
     if (!isAccurateEnough(sample)) return;
 
-    var started = false;
+    var started = false, stopped = false;
     for (final place in places) {
       final d = haversineMeters(
         sample.latitude,
@@ -86,11 +98,28 @@ class PlaceTriggerDetector {
 
       if (!inside) {
         if (place.id == _pendingPlaceId) _cancelPending();
-        if (!recording && !started && place.trigger.startsRides) {
-          started = true;
-          onStart(place);
+        final passed = _enteredRiding.remove(place.id);
+        if (!recording) {
+          if (!started && place.trigger.startsRides) {
+            started = true;
+            onStart(place);
+          }
+        } else if (passed &&
+            !stopped &&
+            place.passThrough &&
+            place.trigger.stopsRides) {
+          stopped = true;
+          _cancelPending();
+          onStop(place);
         }
-      } else if (recording && place.trigger.stopsRides && !stopPending) {
+        continue;
+      }
+      if (recording) _enteredRiding.add(place.id);
+      if (recording &&
+          !stopped &&
+          !place.passThrough &&
+          place.trigger.stopsRides &&
+          !stopPending) {
         _pendingPlaceId = place.id;
         _pendingStop = _timer(stopAfter, () {
           _pendingStop = null;
