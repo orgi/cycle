@@ -5,7 +5,6 @@ import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
@@ -61,9 +60,7 @@ void main() {
       appDatabaseProvider.overrideWithValue(db),
       recordingForegroundServiceProvider
           .overrideWithValue(const NoopRecordingForegroundService()),
-      // The on-screen Start/Stop button is hidden by default (volume keys).
-      settingsStoreProvider.overrideWithValue(
-          FakeSettingsStore(const AppSettings(showStartStopButton: true))),
+      settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
       bikeProfilesStoreProvider.overrideWithValue(bikes),
     ]);
     addTearDown(container.dispose);
@@ -128,13 +125,13 @@ void main() {
 
     await roll(10, 10);
     expect(container.read(recordingProvider), isFalse);
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
     await roll(7, 14);
     expect(container.read(recordingProvider), isTrue);
-    expect(find.text('Stop'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
 
     // Make the MTB active from the bike list: its wheel applies.
     await tester.tap(find.byKey(const Key('openSettingsButton')));

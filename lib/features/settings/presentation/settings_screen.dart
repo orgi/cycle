@@ -124,23 +124,12 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Hand over screen start/stop'),
               subtitle: const Text(
                 'Hold a hand over the top of the screen for 2 seconds to start '
-                'or stop a ride. Works with gloves. The screen goes dark while '
-                'covered.',
+                'a ride. To stop it: hold until it buzzes, take the hand away '
+                'and hold again within 6 seconds. Works with gloves. The '
+                'screen goes dark while covered.',
               ),
               value: settings.proximityHoldEnabled,
               onChanged: controller.setProximityHoldEnabled,
-            ),
-          if (volumeKeysSupported || proximityHoldSupported)
-            SwitchListTile(
-              key: const Key('showStartStopSwitch'),
-              title: const Text('Show Start/Stop button'),
-              subtitle: Text(volumeKeysSupported
-                  ? 'Off by default: use the volume keys. Always shown while '
-                      'the volume keys are off.'
-                  : 'Can be hidden while "Hand over screen start/stop" is on. '
-                      'Always shown otherwise, so you can stop a ride.'),
-              value: settings.showStartStopButton,
-              onChanged: controller.setShowStartStopButton,
             ),
           Consumer(builder: (context, ref, _) {
             final places = ref.watch(ridePlacesProvider);
@@ -189,9 +178,10 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => _pickMinutes(
               context,
               title: 'Continue a stopped ride',
-              help: 'Starting a ride by hand (button, volume key, hand over '
-                  'the screen) soon after stopping one, still at the same '
-                  'place, continues it — an accidental stop or a short break '
+              help: 'Starting a ride by hand (tapping TIME, a volume key, a '
+                  'hand over the screen) soon after stopping one, still at '
+                  'the same place, continues it — an accidental stop or a '
+                  'short break '
                   'stays one ride. A notice then offers a new ride instead. '
                   'Rides started by a place or by auto-start are always new. '
                   'Apple Health gets a ride once it can no longer be '

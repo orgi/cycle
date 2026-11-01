@@ -186,7 +186,7 @@ class RecordingController extends Notifier<bool> {
     unawaited(ref.read(hapticsServiceProvider).confirm(feedback));
   }
 
-  /// Starts a ride. A [manual] start (the button, a volume key, the hand over
+  /// Starts a ride. A [manual] start (a tap on TIME, a volume key, the hand over
   /// the screen — not auto-start or a place) continues the ride stopped last
   /// instead, if it stopped recently right here (`shouldContinueRide`, the
   /// "Continue a stopped ride" setting): an accidental stop is undone by
@@ -195,7 +195,7 @@ class RecordingController extends Notifier<bool> {
   Future<void> start({bool manual = false}) async {
     if (state || _starting) return;
     // A battery runtime test feeds simulated positions: never record those as
-    // a ride (volume keys, auto-start and the button all come through here).
+    // a ride (volume keys, auto-start and TIME all come through here).
     if (ref.read(simulatedRideProvider) != null) return;
     _starting = true;
     try {
@@ -469,7 +469,7 @@ class RecordingController extends Notifier<bool> {
         );
   }
 
-  /// The on-screen button: a manual start or a stop.
+  /// A tap on the TIME tile: a manual start or a stop.
   Future<void> toggle() => state ? stop() : start(manual: true);
 }
 

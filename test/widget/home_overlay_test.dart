@@ -9,6 +9,7 @@ import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/map/application/home_layout_providers.dart';
 import 'package:cycle/features/map/presentation/home_overlay.dart';
+import 'package:cycle/features/map/presentation/time_stat.dart';
 import 'package:cycle/features/routing/application/follow_route_providers.dart';
 import 'package:cycle/features/routing/domain/follow_route.dart';
 import 'package:cycle/features/routing/domain/route_navigator.dart';
@@ -20,6 +21,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fakes.dart';
+
+/// Records nothing: just the state, and whether a start was a manual one.
+class _Recording extends RecordingController {
+  bool? manual;
+
+  @override
+  Future<void> start({bool manual = false}) async {
+    this.manual = manual;
+    state = true;
+  }
+
+  @override
+  Future<void> stop() async => state = false;
+}
 
 class _Following extends FollowRouteController {
   _Following(this.route);
@@ -45,6 +60,7 @@ void main() {
     Set<SensorKind> sensors = const {},
     RideMetrics? ride,
     List overrides = const [],
+    VoidCallback? Function(HomeTile tile)? onTileTap,
   }) async {
     store = FakeBikeProfilesStore(BikeProfilesState(
       profiles: [
@@ -73,7 +89,7 @@ void main() {
               child: HomeOverlay(
                 bottomInset: 0,
                 visibleSensors: sensors,
-                onTileTap: (_) => null,
+                onTileTap: onTileTap ?? (_) => null,
               ),
             ),
           ]),
@@ -188,6 +204,77 @@ void main() {
     expect(find.text('—'), findsOneWidget);
   });
 
+  group('TIME starts and stops a ride', () {
+    Finder stateIcon(RideState s) => find.byKey(Key('rideState_${s.name}'));
+
+    testWidgets('its icon shows where the ride stands; a tap toggles it',
+        (tester) async {
+      await pump(tester,
+          overrides: [recordingProvider.overrideWith(_Recording.new)]);
+      final rec = container.read(recordingProvider.notifier) as _Recording;
+      expect(stateIcon(RideState.stopped), findsOneWidget);
+      expect(stateIcon(RideState.recording), findsNothing);
+
+      await tester.tap(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(container.read(recordingProvider), isTrue);
+      // As the old button: a manual start, which may continue a ride.
+      expect(rec.manual, isTrue);
+      expect(stateIcon(RideState.recording), findsOneWidget);
+      expect(stateIcon(RideState.stopped), findsNothing);
+
+      await tester.tap(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(container.read(recordingProvider), isFalse);
+      expect(stateIcon(RideState.stopped), findsOneWidget);
+    });
+
+    testWidgets('auto-paused: yellow bars and PAUSED', (tester) async {
+      await pump(tester,
+          ride: metrics.copyWith(paused: true),
+          overrides: [recordingProvider.overrideWith(_Recording.new)]);
+      // Not while stopped: a paused flag left over isn't a paused ride.
+      expect(find.text('TIME'), findsOneWidget);
+      expect(stateIcon(RideState.stopped), findsOneWidget);
+      await tester.tap(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(find.text('PAUSED'), findsOneWidget);
+      expect(stateIcon(RideState.paused), findsOneWidget);
+      // A tap stops it, paused or not.
+      await tester.tap(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(container.read(recordingProvider), isFalse);
+    });
+
+    testWidgets('a long-press edits the layout, and doesn\'t start a ride',
+        (tester) async {
+      await pump(tester,
+          overrides: [recordingProvider.overrideWith(_Recording.new)]);
+      await tester.longPress(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(container.read(homeLayoutEditingProvider), isTrue);
+      expect(container.read(recordingProvider), isFalse);
+      // While editing, a tap doesn't start one either.
+      await tester.tap(tileAt(top, 0, 1));
+      await tester.pumpAndSettle();
+      expect(container.read(recordingProvider), isFalse);
+    });
+
+    testWidgets('only TIME: the other tiles keep their own tap',
+        (tester) async {
+      final tapped = <HomeTile>[];
+      await pump(tester,
+          overrides: [recordingProvider.overrideWith(_Recording.new)],
+          onTileTap: (t) => () => tapped.add(t));
+      await tester.tap(tileAt(top, 0, 0));
+      await tester.tap(tileAt(bottom, 1, 0));
+      await tester.tap(find.byKey(const Key('rideTimeTile')));
+      await tester.pumpAndSettle();
+      expect(tapped, [HomeTile.speed, HomeTile.distance]);
+      expect(container.read(recordingProvider), isTrue);
+    });
+  });
+
   group('editing', () {
     testWidgets('long-press starts it; tap a tile to change what it shows',
         (tester) async {
@@ -236,18 +323,19 @@ void main() {
       await tester.longPress(tileAt(top, 0, 0));
       await tester.pumpAndSettle();
       // While dragging, the bin shows in the middle.
-      final g = await tester.startGesture(tester.getCenter(tileAt(top, 0, 1)));
+      final g = await tester.startGesture(tester.getCenter(tileAt(top, 0, 0)));
       await g.moveBy(const Offset(0, 20));
       await tester.pump();
       expect(find.byKey(const Key('homeBin')), findsOneWidget);
+      expect(find.text('Remove'), findsOneWidget);
       await g.moveTo(tester.getCenter(find.byKey(const Key('homeBin'))));
       await tester.pump();
       await g.up();
       await tester.pumpAndSettle();
-      expect(find.text('TIME'), findsNothing);
+      expect(find.text('SPEED'), findsNothing);
       expect(find.byKey(const Key('homeBin')), findsNothing);
       expect((await savedLayout()).top, [
-        [HomeTile.speed]
+        [HomeTile.time]
       ]);
 
       // MAX into a new row at the very top.
@@ -256,9 +344,45 @@ void main() {
       final saved = await savedLayout();
       expect(saved.top, [
         [HomeTile.maxSpeed],
-        [HomeTile.speed],
+        [HomeTile.time],
       ]);
       expect(saved.bottom[1], [HomeTile.distance, HomeTile.avgSpeed]);
+    });
+
+    testWidgets(
+        'the last TIME stays: the bin refuses it, a tap explains why — '
+        'a second one can go', (tester) async {
+      await pump(tester);
+      await tester.longPress(tileAt(top, 0, 0));
+      await tester.pumpAndSettle();
+      final g = await tester.startGesture(tester.getCenter(tileAt(top, 0, 1)));
+      await g.moveBy(const Offset(0, 20));
+      await tester.pump();
+      expect(find.text('TIME stays'), findsOneWidget);
+      await g.moveTo(tester.getCenter(find.byKey(const Key('homeBin'))));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(find.text('TIME'), findsOneWidget);
+      expect(await savedLayout(), HomeLayout.standard);
+
+      // A tap: no picker (it would replace or remove it), a note instead.
+      await tester.tap(tileAt(top, 0, 1));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('homeTileRemove')), findsNothing);
+      expect(find.byKey(const Key('homeTimeStays')), findsOneWidget);
+
+      // With a second TIME, either one can go.
+      await tester.tap(find.byKey(const Key('homeRowAdd_top_0')));
+      await tester.pumpAndSettle();
+      await choose(tester, 'homeTileOption_time');
+      expect(find.text('TIME'), findsNWidgets(2));
+      await tester.tap(tileAt(top, 0, 1));
+      await tester.pumpAndSettle();
+      await choose(tester, 'homeTileRemove');
+      expect((await savedLayout()).top, [
+        [HomeTile.speed, HomeTile.time]
+      ]);
     });
 
     testWidgets('"+" adds a tile to a row with room, "+ row" a new row',

@@ -16,7 +16,7 @@ const double kOsmAttributionHeight = 18;
 
 /// Where the home map's bottom stats and the credit below them go, as offsets
 /// from the bottom edge. [inset] is the system area at the bottom the map runs
-/// under (0 when the Start/Stop button's SafeArea already clears it).
+/// under.
 ///
 /// * A **see-through** inset — the iPhone home indicator, ~34 pt — is free
 ///   space: the credit is centred in it and the stats keep their place.

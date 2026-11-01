@@ -8,6 +8,25 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-01
+
+### Changed
+- Rides start and stop with a tap on the TIME tile. An icon next to the time shows where
+  the ride stands: a red square (stopped), a green triangle (recording) or yellow bars
+  (auto-paused). A tap starts a ride as the button did, so it can continue one stopped a
+  moment ago; a long press still edits the home screen.
+- The last TIME tile can't be removed from the home screen any more (it can be moved). A
+  layout saved without TIME gets it back at the top.
+- iOS, hand over the screen: stopping a ride now takes two holds. Hold until it buzzes,
+  take the hand away, then hold again within 6 seconds; a countdown shows how long is
+  left. One hold — a hand passing over the phone — no longer stops a ride; the stop just
+  runs out. Starting is still one hold.
+
+### Removed
+- The Start/Stop button and the "Show Start/Stop button" setting. On iOS the button could
+  only be hidden by turning on "Hand over screen start/stop"; now start/stop places or
+  auto-start can be used with neither.
+
 ## [0.11.0] - 2026-10-29
 
 ### Added
@@ -705,7 +724,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/orgi/cycle/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/orgi/cycle/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/orgi/cycle/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/orgi/cycle/compare/v0.9.0...v0.10.0

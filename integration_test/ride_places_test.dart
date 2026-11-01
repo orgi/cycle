@@ -5,7 +5,6 @@ import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/core/services/screen_wake_service.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/keep_screen_on_providers.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/places/application/ride_places_providers.dart';
@@ -56,9 +55,7 @@ void main() {
       appDatabaseProvider.overrideWithValue(db),
       recordingForegroundServiceProvider
           .overrideWithValue(const NoopRecordingForegroundService()),
-      // The on-screen Start/Stop button is hidden by default (volume keys).
-      settingsStoreProvider.overrideWithValue(
-          FakeSettingsStore(const AppSettings(showStartStopButton: true))),
+      settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
       bikeProfilesStoreProvider
           .overrideWithValue(FakeBikeProfilesStore(oneBike())),
       ridePlacesStoreProvider.overrideWithValue(places),
@@ -136,7 +133,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(recording(), isTrue);
     expect(find.text('Ride started: you left Home'), findsOneWidget);
-    expect(find.text('Stop'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
 
     // To the end of the street and back the same way, then home: stopped
     // after the stay.
@@ -163,7 +160,7 @@ void main() {
 
     // Starting again by hand, still at home: the ride continues.
     await at(10);
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
     expect(recording(), isTrue);
     expect(find.textContaining('Continued the ride stopped at'),
@@ -181,7 +178,7 @@ void main() {
     expect(now.firstWhere((t) => t.id == rides.single.id).endedAt,
         rides.single.endedAt);
 
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
     expect(recording(), isFalse);
   });

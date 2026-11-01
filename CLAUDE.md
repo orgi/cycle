@@ -757,17 +757,33 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   pin the media volume at 0.5 via an off-screen `MPVolumeView` and KVO-observe
   `AVAudioSession.outputVolume` — worked, but **was removed because it breaks App Store
   guideline 2.5.9** (apps must not alter the volume buttons). Don't bring it back for store
-  builds. `volumeKeysSupported` (Android only) gates the settings switches, the
-  `setEnabled` call (`HardwareButtonController` never sends it on iOS) and
-  `AppSettings.startStopButtonVisible`: the button may be hidden only while a hands-free control
-  that can both start AND stop is on — volume keys (Android) or the proximity hold (iOS);
-  auto-start doesn't count (it can't stop). iOS's `HardwareButtons` in `AppDelegate.swift` now only serves the
-  proximity half of the `cycle/hardware_buttons` channel.
+  builds. `volumeKeysSupported` (Android only) gates the settings switch and the
+  `setEnabled` call (`HardwareButtonController` never sends it on iOS). iOS's `HardwareButtons`
+  in `AppDelegate.swift` now only serves the proximity half of the `cycle/hardware_buttons`
+  channel.
+  **No Start/Stop button (0.12.0): tap TIME.** The TIME tile is the on-screen start/stop
+  (`HomeOverlay._tile` → `RecordingController.toggle`, i.e. a manual start that may continue a
+  ride; long-press still edits the layout, and editing taps never toggle). Its icon is the
+  ride's state (`RideState` from `timeStat`): red square stopped, green triangle recording,
+  yellow bars auto-paused; none during a battery test. It replaced a full-width button that
+  was hidden while a hands-free control that can stop was on (`showStartStopButton` /
+  `startStopButtonVisible`, removed; the stored pref is ignored) — which forced the iOS
+  proximity hold on to get rid of it, though that hold is what caused accidental stops.
+  Because TIME is now the only touch control, **the last TIME tile can't be removed or
+  replaced** (`HomeLayout.canRemove`; the bin says "TIME stays", a tap in the editor explains)
+  and `HomeLayout.fromJson` puts it back into a layout saved without it (before 0.12).
   **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
   `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over
   the same channel (`UIDevice.isProximityMonitoringEnabled`, active only while foreground +
   enabled); the "covered ≥2s, once per cover" rule is Dart (`lib/core/controls/
-  proximity_hold_detector.dart`), and `HardwareButtonController` toggles recording on a hold.
+  proximity_hold_detector.dart`). A hold starts a ride; **stopping takes two holds** (0.12.0,
+  `ProximityStop` in `hardware_button_providers.dart`): the first arms the stop (one buzz,
+  `RideFeedback.stopArmed`, plus a countdown snackbar on the home screen), and only a
+  second hold within 6 s (`proximityStopWindowProvider`) stops — "once per cover" makes the
+  rider take the hand away in between. A single hold used to stop the ride, and hovering
+  over the phone did that by accident; an unconfirmed stop just runs out. A stop by any
+  other way disarms it. `integration_test/hand_over_screen_test.dart` runs the gesture on
+  the emulator with `debugDefaultTargetPlatformOverride = iOS` and the fake sensor.
   (2) **auto-start** (`lib/core/controls/auto_start_detector.dart` + `AutoStartController` in
   `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
   ≥8 km/h (the active bike's start speed since 0.8.0) sustained 5s on the shared GPS
@@ -780,7 +796,7 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `cycleBikeProfile` = 3 — at the *start* of `start()`/`stop()` (unawaited, after the
   already-recording guard), so it's felt instantly for every trigger (volume, proximity hold —
   where it's the "you can take your hand away" cue, since the screen is dark — auto-start, the
-  on-screen button). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
+  TIME tile). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
   `vibrate(n)`: Android `VibrationEffect.createWaveform` (350 ms on / 250 ms off, `VIBRATE`
   permission); iOS repeats `kSystemSoundID_Vibrate` every 0.6 s — the strongest buzz an app can
   trigger (a Taptic impact or Flutter's `HapticFeedback` is too subtle to feel through a
@@ -813,9 +829,9 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     sensors **auto-reconnect** on launch (`paired_sensors_store` + `SensorConnectionController`,
     read at startup from the home screen). CSC **cadence** holds through brief gaps (a 1 Hz
     notification with no new crank rev returns null → consumer keeps the last value; only drops
-    to 0 after a few empty intervals) to stop the 0-flicker. The on-screen **Start/Stop button
-    is hidden by default** (volume keys; `showStartStopButton` setting, and always shown when
-    volume keys are off). Recording keeps the screen on (wakelock enabled in `RecordingController.start`).
+    to 0 after a few empty intervals) to stop the 0-flicker. Rides start/stop on the **TIME
+    tile** (no button since 0.12.0, see M7). Recording keeps the screen on (wakelock enabled in
+    `RecordingController.start`).
   * **Ride detail** (`track_detail_screen`) shows the ride on the **real offline map**
     (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
@@ -1143,7 +1159,7 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     stop and app resume. The timeout is the point: otherwise a phone left on a desk keeps
     screen **and GPS** (held while foreground) on until the battery is empty.
   * **Continue a stopped ride** (`AppSettings.continueRideWithinMinutes`, default 30, 0 =
-    off). `start({manual: true})` — the on-screen button (`toggle`), volume-up, the
+    off). `start({manual: true})` — a tap on TIME (`toggle`), volume-up, the
     proximity hold; **not** auto-start or places, and plain `start()` defaults to
     `manual: false` — continues the ride stopped last (`SyncMeta` `last_stopped_ride`, so
     only a ride stopped on *this* phone, never a synced one) if `shouldContinueRide`
@@ -1199,7 +1215,7 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   reads, and tests keep overriding that. `locationPowerControlProvider` unwraps the simulation
   to reach the real service's gate. **`RecordingController.start()` refuses while a test runs**
   (`simulatedRideProvider != null`), so simulated positions can never become a ride (volume
-  keys, auto-start and the button all go through it). Results are **not in the ride DB**
+  keys, auto-start and the TIME tile all go through it). Results are **not in the ride DB**
   (deliberately, which also avoids a schema bump): one JSON-lines file per test in
   `<appSupport>/battery_tests/` (`BatteryTestLog`), appended with a flush every minute, so it
   survives the phone dying. No `stop` line means the phone switched off, and the last sample is

@@ -3,6 +3,7 @@ import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/models/bike_settings.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/hardware_button_service.dart';
+import 'package:cycle/core/services/haptics_service.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
@@ -23,13 +24,16 @@ void main() {
   late FakeLocationService location;
   late FakeSensorService sensors;
   late AppDatabase db;
+  late RecordingHapticsService haptics;
 
   ProviderContainer build({
     bool enabled = true,
     bool proximityHold = false,
+    bool vibrate = true,
     BikeProfilesState? bikeProfiles,
   }) {
     buttons = FakeHardwareButtonService();
+    haptics = RecordingHapticsService();
     location = FakeLocationService();
     sensors = FakeSensorService();
     db = AppDatabase(NativeDatabase.memory());
@@ -38,9 +42,13 @@ void main() {
       settingsStoreProvider.overrideWithValue(
           FakeSettingsStore(AppSettings(
               hardwareButtonsEnabled: enabled,
-              proximityHoldEnabled: proximityHold))),
+              proximityHoldEnabled: proximityHold,
+              vibrateOnStartStop: vibrate))),
       proximityHoldDurationProvider
           .overrideWithValue(const Duration(milliseconds: 50)),
+      proximityStopWindowProvider
+          .overrideWithValue(const Duration(milliseconds: 400)),
+      hapticsServiceProvider.overrideWithValue(haptics),
       locationServiceProvider.overrideWithValue(location),
       screenWakeServiceProvider.overrideWithValue(RecordingScreenWakeService()),
       sensorServiceProvider.overrideWithValue(sensors),
@@ -177,16 +185,92 @@ void main() {
       await settle();
     }
 
-    test('a hold starts a ride, the next hold stops it', () async {
+    bool recording() => container.read(recordingProvider);
+    DateTime? armed() => container.read(proximityStopProvider);
+
+    test(
+        'a hold starts a ride; stopping takes a second hold, the hand taken '
+        'away in between', () async {
       container = build(proximityHold: true);
       container.listen(hardwareButtonControllerProvider, (_, _) {});
       await settle();
       expect(buttons.proximityEnabled, isTrue);
 
       await hold();
-      expect(container.read(recordingProvider), isTrue);
+      expect(recording(), isTrue);
+      expect(haptics.felt, [RideFeedback.started]);
+
+      // The first hold only arms the stop: one buzz.
       await hold();
-      expect(container.read(recordingProvider), isFalse);
+      expect(recording(), isTrue);
+      expect(armed(), isNotNull);
+      expect(haptics.felt.last, RideFeedback.stopArmed);
+
+      await hold();
+      expect(recording(), isFalse);
+      expect(armed(), isNull);
+      expect(haptics.felt.last, RideFeedback.stopped);
+    });
+
+    test('a single hold — a hand passing over — stops nothing: it runs out',
+        () async {
+      container = build(proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      await hold();
+      await hold();
+      expect(armed(), isNotNull);
+
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      expect(armed(), isNull);
+      expect(recording(), isTrue);
+      // The next hold is a first one again.
+      await hold();
+      expect(recording(), isTrue);
+      expect(armed(), isNotNull);
+    });
+
+    test('keeping the hand there is one hold, not two', () async {
+      container = build(proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      await hold();
+
+      buttons.cover(true);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      buttons.cover(false);
+      await settle();
+      expect(recording(), isTrue);
+      expect(armed(), isNotNull);
+    });
+
+    test('stopped some other way: nothing left armed', () async {
+      container = build(proximityHold: true);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      await hold();
+      await hold();
+      expect(armed(), isNotNull);
+
+      await container.read(recordingProvider.notifier).toggle(); // TIME
+      await settle();
+      expect(armed(), isNull);
+      // A new ride starts with a single hold, and is armed afresh.
+      await hold();
+      expect(recording(), isTrue);
+      expect(armed(), isNull);
+    });
+
+    test('vibration off: no buzz, still two holds', () async {
+      container = build(proximityHold: true, vibrate: false);
+      container.listen(hardwareButtonControllerProvider, (_, _) {});
+      await settle();
+      await hold();
+      await hold();
+      expect(recording(), isTrue);
+      await hold();
+      expect(recording(), isFalse);
+      expect(haptics.felt, isEmpty);
     });
 
     test('a brief cover does nothing', () async {

@@ -2,7 +2,6 @@ import 'package:cycle/app.dart';
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
 import 'package:drift/native.dart';
@@ -32,9 +31,7 @@ void main() {
           appDatabaseProvider.overrideWithValue(db),
           recordingForegroundServiceProvider
               .overrideWithValue(const NoopRecordingForegroundService()),
-          // The on-screen Start/Stop button is hidden by default (volume keys).
-          settingsStoreProvider.overrideWithValue(
-              FakeSettingsStore(const AppSettings(showStartStopButton: true))),
+          settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
         ],
         child: const CycleApp(),
       ),
@@ -46,10 +43,11 @@ void main() {
     // The map's required OpenStreetMap credit is on screen.
     expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
 
-    // Start recording.
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    // Start recording: tap TIME (there is no Start/Stop button).
+    expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
-    expect(find.text('Stop'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
 
     // Feed two fixes ~100 m apart.
     final t0 = DateTime.now().toUtc();
@@ -65,9 +63,9 @@ void main() {
     expect(find.text('0.10'), findsOneWidget); // live distance km
 
     // Stop recording → the ride is finalised in the database.
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
 
     // Open Rides and confirm the recorded ride is listed.
     await tester.tap(find.byKey(const Key('openTracksButton')));

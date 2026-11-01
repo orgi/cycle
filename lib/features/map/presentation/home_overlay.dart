@@ -24,10 +24,12 @@ import 'time_stat.dart';
 /// [HomeLayout] says: its top rows (then [belowTop], e.g. the route banner)
 /// from the top, its bottom rows above [bottomInset].
 ///
+/// Tap TIME to start or stop a ride; its icon shows where the ride stands.
+///
 /// Long-press a tile to edit the layout right here: drag a tile onto another
 /// to swap them, onto a row's "+" to move it there, onto a "+ row" line for a
 /// row of its own, or onto the bin to remove it; tap a tile to choose what it
-/// shows.
+/// shows. The last TIME stays ([HomeLayout.canRemove]).
 class HomeOverlay extends ConsumerStatefulWidget {
   const HomeOverlay({
     super.key,
@@ -44,6 +46,7 @@ class HomeOverlay extends ConsumerStatefulWidget {
   final Set<SensorKind> visibleSensors;
 
   /// A tile's tap action outside editing (reconnect its sensor), or null.
+  /// Not asked for TIME, which starts and stops a ride.
   final VoidCallback? Function(HomeTile tile) onTileTap;
   final List<Widget> belowTop;
 
@@ -53,7 +56,9 @@ class HomeOverlay extends ConsumerStatefulWidget {
 
 class _HomeOverlayState extends ConsumerState<HomeOverlay> {
   static const _gap = 6.0;
-  bool _dragging = false;
+
+  /// The tile being dragged, while one is.
+  TilePos? _dragged;
 
   HomeLayout get _layout => ref.read(homeLayoutProvider);
 
@@ -131,9 +136,12 @@ class _HomeOverlayState extends ConsumerState<HomeOverlay> {
               children: area(HomeArea.bottom),
             ),
           ),
-          if (_dragging)
+          if (_dragged case final from?)
             Center(
-              child: _Bin(onDrop: (from) => _save(_layout.remove(from))),
+              child: _Bin(
+                canDrop: layout.canRemove(from),
+                onDrop: (from) => _save(_layout.remove(from)),
+              ),
             ),
         ],
       ),
@@ -192,7 +200,9 @@ class _HomeOverlayState extends ConsumerState<HomeOverlay> {
       return HomeTileView(
         key: key,
         tile: tile,
-        onTap: widget.onTileTap(tile),
+        onTap: tile == HomeTile.time
+            ? () => ref.read(recordingProvider.notifier).toggle()
+            : widget.onTileTap(tile),
         onLongPress: () {
           HapticFeedback.mediumImpact();
           ref.read(homeLayoutEditingProvider.notifier).set(true);
@@ -210,8 +220,8 @@ class _HomeOverlayState extends ConsumerState<HomeOverlay> {
           );
           return Draggable<TilePos>(
             data: pos,
-            onDragStarted: () => setState(() => _dragging = true),
-            onDragEnd: (_) => setState(() => _dragging = false),
+            onDragStarted: () => setState(() => _dragged = pos),
+            onDragEnd: (_) => setState(() => _dragged = null),
             feedback: Material(
               type: MaterialType.transparency,
               child: SizedBox(
@@ -224,6 +234,16 @@ class _HomeOverlayState extends ConsumerState<HomeOverlay> {
               key: key,
               behavior: HitTestBehavior.opaque,
               onTap: () async {
+                if (!layout.canRemove(pos)) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(const SnackBar(
+                      key: Key('homeTimeStays'),
+                      content: Text('TIME starts and stops a ride, so it '
+                          'stays on the screen. Drag it to move it.'),
+                    ));
+                  return;
+                }
                 final pick = await showHomeTilePicker(context,
                     current: tile, allowWide: true);
                 if (pick == null) return;
@@ -369,16 +389,19 @@ class _NewRowTarget extends StatelessWidget {
   }
 }
 
-/// Shown while a tile is dragged: drop it here to remove it.
+/// Shown while a tile is dragged: drop it here to remove it — unless it
+/// can't go (the last TIME), which the bin says.
 class _Bin extends StatelessWidget {
-  const _Bin({required this.onDrop});
+  const _Bin({required this.canDrop, required this.onDrop});
 
+  final bool canDrop;
   final void Function(TilePos from) onDrop;
 
   @override
   Widget build(BuildContext context) {
     return DragTarget<TilePos>(
       key: const Key('homeBin'),
+      onWillAcceptWithDetails: (_) => canDrop,
       onAcceptWithDetails: (d) => onDrop(d.data),
       builder: (context, candidates, _) {
         final hot = candidates.isNotEmpty;
@@ -391,12 +414,13 @@ class _Bin extends StatelessWidget {
                 .withValues(alpha: hot ? 0.85 : 0.6),
             border: Border.all(color: Colors.white38),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.delete_outline, color: Colors.white, size: 30),
-              Text('Remove',
-                  style: TextStyle(color: Colors.white70, fontSize: 11)),
+              Icon(canDrop ? Icons.delete_outline : Icons.block,
+                  color: canDrop ? Colors.white : Colors.white54, size: 30),
+              Text(canDrop ? 'Remove' : 'TIME stays',
+                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
             ],
           ),
         );
@@ -488,13 +512,19 @@ class HomeTileView extends ConsumerWidget {
     final units = ref.watch(settingsProvider.select((s) => s.units));
     final speedUnit = units.speedLabel;
     MapStat stat(String value, String unit,
-            {String? label, bool emphasized = false, Color? valueColor}) =>
+            {Key? key,
+            String? label,
+            bool emphasized = false,
+            Color? valueColor,
+            Widget? leading}) =>
         MapStat(
+          key: key,
           label: label ?? tile.label,
           value: value,
           unit: unit,
           emphasized: emphasized,
           valueColor: valueColor,
+          leading: leading,
           onTap: onTap,
           onLongPress: onLongPress,
         );
@@ -515,6 +545,7 @@ class HomeTileView extends ConsumerWidget {
       case HomeTile.time:
         final (elapsed, paused) =
             ref.watch(rideMetricsProvider.select((m) => (m.elapsed, m.paused)));
+        final recording = ref.watch(recordingProvider);
         final testStart =
             ref.watch(batteryTestProvider.select((t) => t?.startedAt));
         return EverySecond(builder: (context) {
@@ -525,13 +556,16 @@ class HomeTileView extends ConsumerWidget {
           // rebuilds this.
           final t = timeStat(
             rideElapsed: elapsed,
+            recording: recording,
             paused: paused,
             batteryTestStartedAt: testStart,
             now: DateTime.now(),
           );
           return stat(t.value, '',
+              key: const Key('rideTimeTile'),
               label: t.label,
-              valueColor: t.amber ? const Color(0xFFFFA726) : null);
+              valueColor: t.amber ? _pausedColor : null,
+              leading: t.state == null ? null : RideStateIcon(t.state!));
         });
       case HomeTile.distance:
         final km = ref.watch(rideMetricsProvider.select((m) => m.distanceKm));
@@ -607,6 +641,32 @@ class HomeTileView extends ConsumerWidget {
       : GestureDetector(onTap: onTap, onLongPress: onLongPress, child: child);
 }
 
+/// Auto-paused: the PAUSED time and its icon.
+const _pausedColor = Color(0xFFFFC107);
+
+/// The TIME box's icon for where the ride stands: a red square (stopped), a
+/// green triangle (recording) or yellow bars (auto-paused).
+class RideStateIcon extends StatelessWidget {
+  const RideStateIcon(this.state, {super.key});
+
+  final RideState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, label) = switch (state) {
+      RideState.stopped => (Icons.stop, const Color(0xFFFF453A), 'Stopped'),
+      RideState.recording =>
+        (Icons.play_arrow, const Color(0xFF4CD964), 'Recording'),
+      RideState.paused => (Icons.pause, _pausedColor, 'Paused'),
+    };
+    return Icon(icon,
+        key: Key('rideState_${state.name}'),
+        size: 24,
+        color: color,
+        semanticLabel: label);
+  }
+}
+
 /// A route's profile, thinned once for the chart (a route can have
 /// thousands of points; the chart is a phone's width).
 final _chartProfiles = Expando<ElevationProfile>();
@@ -623,6 +683,7 @@ class MapStat extends StatelessWidget {
     required this.unit,
     this.emphasized = false,
     this.valueColor,
+    this.leading,
     this.onTap,
     this.onLongPress,
   });
@@ -632,11 +693,15 @@ class MapStat extends StatelessWidget {
   final String unit;
   final bool emphasized;
 
+  /// Shown before the value (TIME's ride state).
+  final Widget? leading;
+
   /// Overrides the value colour (e.g. to show the speed source). Falls back to
   /// the emphasized/normal default.
   final Color? valueColor;
 
-  /// Optional tap handler (e.g. a sensor tile → quick manual reconnect).
+  /// Optional tap handler (TIME → start/stop, a sensor tile → quick manual
+  /// reconnect).
   final VoidCallback? onTap;
 
   /// Long-press: edit the home screen's layout.
@@ -670,6 +735,10 @@ class MapStat extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
+                if (leading != null) ...[
+                  leading!,
+                  const SizedBox(width: 2),
+                ],
                 Text(
                   value,
                   style: (emphasized

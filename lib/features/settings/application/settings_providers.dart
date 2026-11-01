@@ -31,9 +31,6 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setHardwareButtons(bool enabled) =>
       update(state.copyWith(hardwareButtonsEnabled: enabled));
 
-  Future<void> setShowStartStopButton(bool show) =>
-      update(state.copyWith(showStartStopButton: show));
-
   Future<void> setProximityHoldEnabled(bool enabled) =>
       update(state.copyWith(proximityHoldEnabled: enabled));
 

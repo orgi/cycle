@@ -88,6 +88,14 @@ class HomeLayout {
 
   HomeTile at(TilePos p) => rows(p.area)[p.row][p.index];
 
+  int _count(HomeTile tile) =>
+      [...top, ...bottom].expand((r) => r).where((t) => t == tile).length;
+
+  /// Whether the tile at [p] can go (removed, or replaced by another): TIME
+  /// starts and stops a ride (tap it), so the last one stays.
+  bool canRemove(TilePos p) =>
+      at(p) != HomeTile.time || _count(HomeTile.time) > 1;
+
   bool _isWideRow(List<HomeTile> row) => row.any((t) => t.wide);
 
   /// Whether the tiles at [a] and [b] can trade places: a wide tile only
@@ -159,19 +167,25 @@ class HomeLayout {
       _edit((r) => r[area]!.insert(rowIndex, [tile]));
 
   /// Shows [tile] at [p] instead. A wide tile replacing one of several in a
-  /// row gets a row of its own, right below.
-  HomeLayout replace(TilePos p, HomeTile tile) => _edit((r) {
-        final row = r[p.area]![p.row];
-        if (tile.wide && row.length > 1) {
-          row[p.index] = null;
-          r[p.area]!.insert(p.row + 1, [tile]);
-        } else {
-          row[p.index] = tile;
-        }
-      });
+  /// row gets a row of its own, right below. Not the last TIME
+  /// ([canRemove]).
+  HomeLayout replace(TilePos p, HomeTile tile) {
+    if (tile != at(p) && !canRemove(p)) return this;
+    return _edit((r) {
+      final row = r[p.area]![p.row];
+      if (tile.wide && row.length > 1) {
+        row[p.index] = null;
+        r[p.area]!.insert(p.row + 1, [tile]);
+      } else {
+        row[p.index] = tile;
+      }
+    });
+  }
 
-  HomeLayout remove(TilePos p) =>
-      _edit((r) => r[p.area]![p.row][p.index] = null);
+  /// Not the last TIME ([canRemove]).
+  HomeLayout remove(TilePos p) => canRemove(p)
+      ? _edit((r) => r[p.area]![p.row][p.index] = null)
+      : this;
 
   /// Applies [change] to mutable copies of the rows (a removed tile is set to
   /// null first, so the other positions stay valid), then drops the gaps and
@@ -203,7 +217,10 @@ class HomeLayout {
       };
 
   /// Unknown tiles (from a newer version) are left out; a row is cut to
-  /// [maxPerRow], and a wide tile sharing a row gets one of its own.
+  /// [maxPerRow], and a wide tile sharing a row gets one of its own. A layout
+  /// without TIME (removable before 0.12, when there was a Start/Stop button)
+  /// gets it back: at the end of the first top row with room, else in a row
+  /// of its own at the top — it's how a ride starts and stops now.
   factory HomeLayout.fromJson(Map<String, dynamic> json) {
     List<List<HomeTile>> parse(Object? rows) {
       final out = <List<HomeTile>>[];
@@ -220,7 +237,14 @@ class HomeLayout {
       return out;
     }
 
-    return HomeLayout(top: parse(json['top']), bottom: parse(json['bottom']));
+    final layout =
+        HomeLayout(top: parse(json['top']), bottom: parse(json['bottom']));
+    if (layout._count(HomeTile.time) > 0) return layout;
+    final room = layout.top.indexWhere((row) =>
+        !layout._isWideRow(row) && row.length < maxPerRow);
+    return room < 0
+        ? layout.addRow(HomeArea.top, 0, HomeTile.time)
+        : layout.addToRow(HomeArea.top, room, HomeTile.time);
   }
 
   static bool _rowsEqual(List<List<HomeTile>> a, List<List<HomeTile>> b) {

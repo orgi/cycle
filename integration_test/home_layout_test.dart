@@ -3,7 +3,6 @@ import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/geo_sample.dart';
 import 'package:cycle/core/models/home_layout.dart';
 import 'package:cycle/core/services/recording_foreground_service.dart';
-import 'package:cycle/core/services/settings/app_settings.dart';
 import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
@@ -31,8 +30,9 @@ void main() {
   }
 
   testWidgets(
-      'edit the home screen on the map: CLIMB instead of MAX, TIME removed, '
-      'the ride\'s elevation profile added — then a climbing ride fills them',
+      'edit the home screen on the map: CLIMB instead of MAX, SPEED removed '
+      '(TIME stays), the ride\'s elevation profile added — then a climbing '
+      'ride, started and stopped on TIME, fills them',
       (tester) async {
     final location = FakeLocationService();
     final sensors = FakeSensorService();
@@ -50,9 +50,7 @@ void main() {
         appDatabaseProvider.overrideWithValue(db),
         recordingForegroundServiceProvider
             .overrideWithValue(const NoopRecordingForegroundService()),
-        // The on-screen Start/Stop button is hidden by default (volume keys).
-        settingsStoreProvider.overrideWithValue(
-            FakeSettingsStore(const AppSettings(showStartStopButton: true))),
+        settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
         bikeProfilesStoreProvider.overrideWithValue(bikes),
       ],
       child: const CycleApp(),
@@ -72,15 +70,21 @@ void main() {
     await choose(tester, 'homeTileOption_climb');
     expect(find.text('CLIMB'), findsOneWidget);
 
-    // TIME onto the bin.
-    final g = await tester.startGesture(tester.getCenter(tile('top', 0, 1)));
-    await g.moveBy(const Offset(0, 20));
-    await tester.pump();
-    await g.moveTo(tester.getCenter(find.byKey(const Key('homeBin'))));
-    await tester.pump();
-    await g.up();
-    await tester.pumpAndSettle();
-    expect(find.text('TIME'), findsNothing);
+    // Onto the bin: TIME stays (it starts and stops a ride), SPEED goes.
+    Future<void> toBin(Finder f) async {
+      final g = await tester.startGesture(tester.getCenter(f));
+      await g.moveBy(const Offset(0, 20));
+      await tester.pump();
+      await g.moveTo(tester.getCenter(find.byKey(const Key('homeBin'))));
+      await tester.pump();
+      await g.up();
+      await tester.pumpAndSettle();
+    }
+
+    await toBin(tile('top', 0, 1));
+    expect(find.text('TIME'), findsOneWidget);
+    await toBin(tile('top', 0, 0));
+    expect(find.text('SPEED'), findsNothing);
 
     // A row with the ride's profile below DIST/AVG/CLIMB.
     await tester.tap(find.byKey(const Key('homeNewRow_bottom_2')));
@@ -94,7 +98,7 @@ void main() {
     expect(find.text('MAX'), findsNothing);
     final saved = (await bikes.load()).profiles.single.settings!.homeLayout;
     expect(saved.top, [
-      [HomeTile.speed]
+      [HomeTile.time]
     ]);
     expect(saved.bottom.skip(1), [
       [HomeTile.distance, HomeTile.avgSpeed, HomeTile.climb],
@@ -102,8 +106,9 @@ void main() {
     ]);
 
     // Ride 60 m up a hill.
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
     final t0 = DateTime.now().toUtc();
     for (var s = 0; s < 70; s++) {
       location.emit(GeoSample(
@@ -121,7 +126,7 @@ void main() {
     expect(find.text('↑ 60 m'), findsOneWidget); // the profile's caption
     expect(find.text('Starts with the ride'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('startStopButton')));
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
   });
 }

@@ -59,7 +59,6 @@ class AppSettings {
   const AppSettings({
     this.units = UnitSystem.metric,
     this.hardwareButtonsEnabled = true,
-    this.showStartStopButton = false,
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
     this.mapZoom = 16,
@@ -85,10 +84,6 @@ class AppSettings {
   /// When true, the phone's volume keys start/stop recording (Android only).
   final bool hardwareButtonsEnabled;
 
-  /// When true, show the on-screen Start/Stop button. Off by default — recording
-  /// is started/stopped with the volume keys. It is shown regardless when the
-  /// volume keys are disabled or unsupported (iOS), so there's always a way to start.
-  final bool showStartStopButton;
 
   /// Which installed map to display (its `<id>.map` filename), or null to pick
   /// the map covering the current location automatically.
@@ -145,22 +140,9 @@ class AppSettings {
   /// installed over this one still finds them.
   final BikeSettings? legacyBikeSettings;
 
-  /// Whether the home screen shows the Start/Stop button: on request, or
-  /// whenever no hands-free control that can both start AND stop a ride is
-  /// on — the volume keys (Android) or the hand-over-screen hold (iOS).
-  /// Auto-start doesn't count: it can't stop a ride.
-  bool startStopButtonVisible({
-    required bool volumeKeysSupported,
-    bool proximityHoldSupported = false,
-  }) =>
-      showStartStopButton ||
-      !((hardwareButtonsEnabled && volumeKeysSupported) ||
-          (proximityHoldEnabled && proximityHoldSupported));
-
   AppSettings copyWith({
     UnitSystem? units,
     bool? hardwareButtonsEnabled,
-    bool? showStartStopButton,
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
     int? mapZoom,
@@ -176,7 +158,6 @@ class AppSettings {
         units: units ?? this.units,
         hardwareButtonsEnabled:
             hardwareButtonsEnabled ?? this.hardwareButtonsEnabled,
-        showStartStopButton: showStartStopButton ?? this.showStartStopButton,
         selectedMapFileName: identical(selectedMapFileName, _unset)
             ? this.selectedMapFileName
             : selectedMapFileName as String?,
@@ -196,7 +177,6 @@ class AppSettings {
   Map<String, dynamic> toJson() => {
         'units': units.name,
         'hardware_buttons': hardwareButtonsEnabled,
-        'show_start_stop_button': showStartStopButton,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
         'map_zoom': mapZoom,
@@ -216,7 +196,6 @@ class AppSettings {
           orElse: () => UnitSystem.metric,
         ),
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
-        showStartStopButton: json['show_start_stop_button'] as bool? ?? false,
         selectedMapFileName: json['selected_map'] as String?,
         colorScheme: _colorSchemeFromName(json['color_scheme']),
         mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
@@ -247,7 +226,6 @@ class AppSettings {
       other is AppSettings &&
       other.units == units &&
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
-      other.showStartStopButton == showStartStopButton &&
       other.selectedMapFileName == selectedMapFileName &&
       other.colorScheme == colorScheme &&
       other.mapZoom == mapZoom &&
@@ -264,7 +242,6 @@ class AppSettings {
   int get hashCode => Object.hash(
       units,
       hardwareButtonsEnabled,
-      showStartStopButton,
       selectedMapFileName,
       colorScheme,
       mapZoom,
