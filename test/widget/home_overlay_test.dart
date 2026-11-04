@@ -206,14 +206,33 @@ void main() {
 
   group('TIME starts and stops a ride', () {
     Finder stateIcon(RideState s) => find.byKey(Key('rideState_${s.name}'));
+    const green = Color(0xFF4CD964), red = Color(0xFFFF453A);
+    // What the icon shows: the action a tap takes, like a button.
+    (IconData?, Color?, String?) shown(WidgetTester tester) {
+      final icon = tester.widget<Icon>(find.descendant(
+          of: find.byKey(const Key('rideTimeTile')),
+          matching: find.byType(Icon)));
+      return (icon.icon, icon.color, icon.semanticLabel);
+    }
 
-    testWidgets('its icon shows where the ride stands; a tap toggles it',
+    // The icon sits right of the time, not before it.
+    void expectIconRightOfTime(WidgetTester tester) {
+      Finder inTile(Finder f) =>
+          find.descendant(of: find.byKey(const Key('rideTimeTile')), matching: f);
+      final time = tester.getRect(inTile(find.textContaining(':')));
+      final icon = tester.getRect(inTile(find.byType(Icon)));
+      expect(icon.left, greaterThanOrEqualTo(time.right));
+    }
+
+    testWidgets('its icon shows what a tap does; a tap toggles the ride',
         (tester) async {
       await pump(tester,
           overrides: [recordingProvider.overrideWith(_Recording.new)]);
       final rec = container.read(recordingProvider.notifier) as _Recording;
       expect(stateIcon(RideState.stopped), findsOneWidget);
       expect(stateIcon(RideState.recording), findsNothing);
+      expect(shown(tester), (Icons.play_arrow, green, 'Start ride'));
+      expectIconRightOfTime(tester);
 
       await tester.tap(find.byKey(const Key('rideTimeTile')));
       await tester.pumpAndSettle();
@@ -222,14 +241,18 @@ void main() {
       expect(rec.manual, isTrue);
       expect(stateIcon(RideState.recording), findsOneWidget);
       expect(stateIcon(RideState.stopped), findsNothing);
+      expect(shown(tester), (Icons.stop, red, 'Stop ride'));
+      expectIconRightOfTime(tester);
 
       await tester.tap(find.byKey(const Key('rideTimeTile')));
       await tester.pumpAndSettle();
       expect(container.read(recordingProvider), isFalse);
       expect(stateIcon(RideState.stopped), findsOneWidget);
+      expect(shown(tester), (Icons.play_arrow, green, 'Start ride'));
     });
 
-    testWidgets('auto-paused: yellow bars and PAUSED', (tester) async {
+    testWidgets('auto-paused: amber PAUSED, and the icon still says stop',
+        (tester) async {
       await pump(tester,
           ride: metrics.copyWith(paused: true),
           overrides: [recordingProvider.overrideWith(_Recording.new)]);
@@ -240,6 +263,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('PAUSED'), findsOneWidget);
       expect(stateIcon(RideState.paused), findsOneWidget);
+      // The ride resumes by itself on moving; what a tap does is stop it.
+      expect(shown(tester), (Icons.stop, red, 'Stop ride'));
       // A tap stops it, paused or not.
       await tester.tap(find.byKey(const Key('rideTimeTile')));
       await tester.pumpAndSettle();

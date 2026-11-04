@@ -516,7 +516,7 @@ class HomeTileView extends ConsumerWidget {
             String? label,
             bool emphasized = false,
             Color? valueColor,
-            Widget? leading}) =>
+            Widget? trailing}) =>
         MapStat(
           key: key,
           label: label ?? tile.label,
@@ -524,7 +524,7 @@ class HomeTileView extends ConsumerWidget {
           unit: unit,
           emphasized: emphasized,
           valueColor: valueColor,
-          leading: leading,
+          trailing: trailing,
           onTap: onTap,
           onLongPress: onLongPress,
         );
@@ -565,7 +565,7 @@ class HomeTileView extends ConsumerWidget {
               key: const Key('rideTimeTile'),
               label: t.label,
               valueColor: t.amber ? _pausedColor : null,
-              leading: t.state == null ? null : RideStateIcon(t.state!));
+              trailing: t.state == null ? null : RideActionIcon(t.state!));
         });
       case HomeTile.distance:
         final km = ref.watch(rideMetricsProvider.select((m) => m.distanceKm));
@@ -641,23 +641,26 @@ class HomeTileView extends ConsumerWidget {
       : GestureDetector(onTap: onTap, onLongPress: onLongPress, child: child);
 }
 
-/// Auto-paused: the PAUSED time and its icon.
+/// Auto-paused: the PAUSED time.
 const _pausedColor = Color(0xFFFFC107);
 
-/// The TIME box's icon for where the ride stands: a red square (stopped), a
-/// green triangle (recording) or yellow bars (auto-paused).
-class RideStateIcon extends StatelessWidget {
-  const RideStateIcon(this.state, {super.key});
+/// The TIME box's icon: what a tap does, like a button's — a green triangle
+/// (start) while stopped, a red square (stop) during a ride. Auto-paused too:
+/// a tap stops the ride (it resumes by itself on moving), and the amber PAUSED
+/// already says it's paused. Keyed by the ride's state for tests.
+class RideActionIcon extends StatelessWidget {
+  const RideActionIcon(this.state, {super.key});
 
   final RideState state;
 
   @override
   Widget build(BuildContext context) {
     final (icon, color, label) = switch (state) {
-      RideState.stopped => (Icons.stop, const Color(0xFFFF453A), 'Stopped'),
-      RideState.recording =>
-        (Icons.play_arrow, const Color(0xFF4CD964), 'Recording'),
-      RideState.paused => (Icons.pause, _pausedColor, 'Paused'),
+      RideState.stopped =>
+        (Icons.play_arrow, const Color(0xFF4CD964), 'Start ride'),
+      RideState.recording ||
+      RideState.paused =>
+        (Icons.stop, const Color(0xFFFF453A), 'Stop ride'),
     };
     return Icon(icon,
         key: Key('rideState_${state.name}'),
@@ -683,7 +686,7 @@ class MapStat extends StatelessWidget {
     required this.unit,
     this.emphasized = false,
     this.valueColor,
-    this.leading,
+    this.trailing,
     this.onTap,
     this.onLongPress,
   });
@@ -693,8 +696,8 @@ class MapStat extends StatelessWidget {
   final String unit;
   final bool emphasized;
 
-  /// Shown before the value (TIME's ride state).
-  final Widget? leading;
+  /// Shown after the value (TIME's start/stop icon).
+  final Widget? trailing;
 
   /// Overrides the value colour (e.g. to show the speed source). Falls back to
   /// the emphasized/normal default.
@@ -735,10 +738,6 @@ class MapStat extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                if (leading != null) ...[
-                  leading!,
-                  const SizedBox(width: 2),
-                ],
                 Text(
                   value,
                   style: (emphasized
@@ -759,6 +758,10 @@ class MapStat extends StatelessWidget {
                       color: Colors.white38,
                     ),
                   ),
+                ],
+                if (trailing != null) ...[
+                  const SizedBox(width: 4),
+                  trailing!,
                 ],
               ],
             ),

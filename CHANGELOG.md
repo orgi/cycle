@@ -8,6 +8,15 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-04
+
+### Changed
+- The TIME tile's icon now shows what a tap does, like a button: a green triangle to start
+  a ride, a red square to stop it. It used to show where the ride stood (a red square while
+  stopped), which read the wrong way round. While auto-paused the icon is the red square
+  too, since a tap stops the ride; the amber PAUSED shows that it's paused.
+- The TIME tile's icon is now right of the time instead of before it.
+
 ## [0.12.0] - 2026-11-01
 
 ### Changed
@@ -724,7 +733,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/orgi/cycle/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/orgi/cycle/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/orgi/cycle/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/orgi/cycle/compare/v0.10.0...v0.10.1

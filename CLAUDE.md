@@ -763,9 +763,14 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   channel.
   **No Start/Stop button (0.12.0): tap TIME.** The TIME tile is the on-screen start/stop
   (`HomeOverlay._tile` → `RecordingController.toggle`, i.e. a manual start that may continue a
-  ride; long-press still edits the layout, and editing taps never toggle). Its icon is the
-  ride's state (`RideState` from `timeStat`): red square stopped, green triangle recording,
-  yellow bars auto-paused; none during a battery test. It replaced a full-width button that
+  ride; long-press still edits the layout, and editing taps never toggle). Its icon
+  (`RideActionIcon`, from `timeStat`'s `RideState`) is **what a tap does**, like a button's:
+  green triangle = start while stopped, red square = stop while recording **and** while
+  auto-paused (a tap stops; the ride resumes by itself on moving, and the amber PAUSED label
+  shows the state); none during a battery test. 0.12.0 showed the state instead (red square
+  while stopped, yellow bars paused), which the user found read the wrong way round. The
+  icon keys stay per state (`rideState_<name>`) for tests. It sits right of the time
+  (`MapStat.trailing`; 0.12.0 had it before the time). It replaced a full-width button that
   was hidden while a hands-free control that can stop was on (`showStartStopButton` /
   `startStopButtonVisible`, removed; the stored pref is ignored) — which forced the iOS
   proximity hold on to get rid of it, though that hold is what caused accidental stops.

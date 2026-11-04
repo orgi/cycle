@@ -43,11 +43,25 @@ void main() {
     // The map's required OpenStreetMap credit is on screen.
     expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
 
-    // Start recording: tap TIME (there is no Start/Stop button).
+    // Start recording: tap TIME (there is no Start/Stop button). Its icon is
+    // what a tap does: start, then stop.
+    Finder timeIcon(IconData icon) => find.descendant(
+        of: find.byKey(const Key('rideTimeTile')), matching: find.byIcon(icon));
     expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
+    expect(timeIcon(Icons.play_arrow), findsOneWidget);
+    // …right of the time.
+    expect(
+        tester.getRect(timeIcon(Icons.play_arrow)).left,
+        greaterThanOrEqualTo(tester
+            .getRect(find.descendant(
+                of: find.byKey(const Key('rideTimeTile')),
+                matching: find.text('0:00:00')))
+            .right));
     await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
+    expect(timeIcon(Icons.stop), findsOneWidget);
+    expect(timeIcon(Icons.play_arrow), findsNothing);
 
     // Feed two fixes ~100 m apart.
     final t0 = DateTime.now().toUtc();
@@ -66,6 +80,7 @@ void main() {
     await tester.tap(find.byKey(const Key('rideTimeTile')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('rideState_stopped')), findsOneWidget);
+    expect(timeIcon(Icons.play_arrow), findsOneWidget);
 
     // Open Rides and confirm the recorded ride is listed.
     await tester.tap(find.byKey(const Key('openTracksButton')));

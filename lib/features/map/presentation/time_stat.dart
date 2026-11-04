@@ -1,8 +1,8 @@
 import '../../../core/utils/format.dart';
 
-/// Where the ride stands, shown by the TIME box's icon (tap the box to start
-/// or stop a ride): stopped (red square), recording (green triangle), or
-/// auto-paused (yellow bars).
+/// Where the ride stands. The TIME box (tap it to start or stop a ride) shows
+/// what a tap does: a green triangle (start) while stopped, a red square (stop)
+/// while recording or auto-paused.
 enum RideState { stopped, recording, paused }
 
 /// What the map's TIME box shows: the ride time (amber "PAUSED" while
