@@ -218,6 +218,20 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     live recording and `track_repair.dart`'s replay (same accumulator) — existing
     rides recorded under either earlier approach can be corrected via Settings →
     Data → "Recalculate ride distances".
+    **Turning back** (0.10.1): the "within 5 m" test measures to the *infinite* line,
+    so a ride back along the same road (a dead end, an out-and-back) never broke the
+    run and counted as the straight distance from the anchor to the newest fix
+    (1.5 km out and back read 450 m). A buffered point more than `_turnBackMeters`
+    (30 m) beyond either end of the anchor→newest line is a turn-back: the run is
+    committed **up to that point** (not to the last still-valid one) and the points
+    since start the next run. **Not 5 m** (plain distance to the segment): on the
+    A33's June/July 2026 rides, along-road GPS noise then counted as tiny turn-backs
+    (+3-4%; rides 44/45 of the A33 backup, most likely the two Komoot reference rides,
+    moved to +1.6%/+3.7%). At 30 m, replaying every ride of a full A33 backup
+    (`~/cycle-backups/a33_20261014_post_upgrade.sqlite`, ~830 rides, old vs new
+    accumulator over the saved points) changed only rides with real turn-backs:
+    total +0.03 %, max +1.75 km, none shorter. Re-run such a replay after touching
+    the simplifier — synthetic tests can't show what noise real rides carry.
 * **BLE sensors:** `universal_ble` (BSD-3, Navideck; pinned to 2.x) using the standard
   Bluetooth SIG GATT profiles (HR `0x180D`, CSC `0x1816`, Power `0x1818`); modern Garmin
   dual-band sensors work over BLE with no special code. Parsers + CSC speed/cadence + GPS/BLE
@@ -394,6 +408,10 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     no remote file already has exactly its signature → delete other copies the merged state
     `covers`, with `If-Match` so a copy changed meanwhile survives. Steady state is one file per
     ride. Unfinished rides (`endedAt == null`) and anything during recording are never synced.
+    A remote copy of a ride that is **open** locally (a continued ride — finished and synced,
+    then reopened — interrupted before it stops again) is skipped without caching its ETag
+    (`LocalRideStore.openKeys`): `rides()` doesn't list open rides, so applying the copy
+    would insert the ride a second time.
   * **When:** only while the app is open (no background scheduler, by decision): startup (after
     `SyncController.startupDelay`, behind GPS), native network-change events (`cycle/network`
     EventChannel — `ConnectivityManager.registerDefaultNetworkCallback` in `MainActivity.kt`,
@@ -739,17 +757,38 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   pin the media volume at 0.5 via an off-screen `MPVolumeView` and KVO-observe
   `AVAudioSession.outputVolume` — worked, but **was removed because it breaks App Store
   guideline 2.5.9** (apps must not alter the volume buttons). Don't bring it back for store
-  builds. `volumeKeysSupported` (Android only) gates the settings switches, the
-  `setEnabled` call (`HardwareButtonController` never sends it on iOS) and
-  `AppSettings.startStopButtonVisible`: the button may be hidden only while a hands-free control
-  that can both start AND stop is on — volume keys (Android) or the proximity hold (iOS);
-  auto-start doesn't count (it can't stop). iOS's `HardwareButtons` in `AppDelegate.swift` now only serves the
-  proximity half of the `cycle/hardware_buttons` channel.
+  builds. `volumeKeysSupported` (Android only) gates the settings switch and the
+  `setEnabled` call (`HardwareButtonController` never sends it on iOS). iOS's `HardwareButtons`
+  in `AppDelegate.swift` now only serves the proximity half of the `cycle/hardware_buttons`
+  channel.
+  **No Start/Stop button (0.12.0): tap TIME.** The TIME tile is the on-screen start/stop
+  (`HomeOverlay._tile` → `RecordingController.toggle`, i.e. a manual start that may continue a
+  ride; long-press still edits the layout, and editing taps never toggle). Its icon
+  (`RideActionIcon`, from `timeStat`'s `RideState`) is **what a tap does**, like a button's:
+  green triangle = start while stopped, red square = stop while recording **and** while
+  auto-paused (a tap stops; the ride resumes by itself on moving, and the amber PAUSED label
+  shows the state); none during a battery test. 0.12.0 showed the state instead (red square
+  while stopped, yellow bars paused), which the user found read the wrong way round. The
+  icon keys stay per state (`rideState_<name>`) for tests. It sits right of the time
+  (`MapStat.trailing`; 0.12.0 had it before the time). It replaced a full-width button that
+  was hidden while a hands-free control that can stop was on (`showStartStopButton` /
+  `startStopButtonVisible`, removed; the stored pref is ignored) — which forced the iOS
+  proximity hold on to get rid of it, though that hold is what caused accidental stops.
+  Because TIME is now the only touch control, **the last TIME tile can't be removed or
+  replaced** (`HomeLayout.canRemove`; the bin says "TIME stays", a tap in the editor explains)
+  and `HomeLayout.fromJson` puts it back into a layout saved without it (before 0.12).
   **Glove-friendly extras (both opt-in, `AppSettings`):** (1) **proximity hold** (iOS only,
   `proximityHoldSupported`): native forwards raw covered/uncovered edges as `onProximity` over
   the same channel (`UIDevice.isProximityMonitoringEnabled`, active only while foreground +
   enabled); the "covered ≥2s, once per cover" rule is Dart (`lib/core/controls/
-  proximity_hold_detector.dart`), and `HardwareButtonController` toggles recording on a hold.
+  proximity_hold_detector.dart`). A hold starts a ride; **stopping takes two holds** (0.12.0,
+  `ProximityStop` in `hardware_button_providers.dart`): the first arms the stop (one buzz,
+  `RideFeedback.stopArmed`, plus a countdown snackbar on the home screen), and only a
+  second hold within 6 s (`proximityStopWindowProvider`) stops — "once per cover" makes the
+  rider take the hand away in between. A single hold used to stop the ride, and hovering
+  over the phone did that by accident; an unconfirmed stop just runs out. A stop by any
+  other way disarms it. `integration_test/hand_over_screen_test.dart` runs the gesture on
+  the emulator with `debugDefaultTargetPlatformOverride = iOS` and the fake sensor.
   (2) **auto-start** (`lib/core/controls/auto_start_detector.dart` + `AutoStartController` in
   `features/dashboard/application/auto_start_providers.dart`, watched by the map screen):
   ≥8 km/h (the active bike's start speed since 0.8.0) sustained 5s on the shared GPS
@@ -762,7 +801,7 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `cycleBikeProfile` = 3 — at the *start* of `start()`/`stop()` (unawaited, after the
   already-recording guard), so it's felt instantly for every trigger (volume, proximity hold —
   where it's the "you can take your hand away" cue, since the screen is dark — auto-start, the
-  on-screen button). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
+  TIME tile). Not on `resume()` (automatic crash recovery). Native `cycle/haptics`
   `vibrate(n)`: Android `VibrationEffect.createWaveform` (350 ms on / 250 ms off, `VIBRATE`
   permission); iOS repeats `kSystemSoundID_Vibrate` every 0.6 s — the strongest buzz an app can
   trigger (a Taptic impact or Flutter's `HapticFeedback` is too subtle to feel through a
@@ -795,9 +834,9 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     sensors **auto-reconnect** on launch (`paired_sensors_store` + `SensorConnectionController`,
     read at startup from the home screen). CSC **cadence** holds through brief gaps (a 1 Hz
     notification with no new crank rev returns null → consumer keeps the last value; only drops
-    to 0 after a few empty intervals) to stop the 0-flicker. The on-screen **Start/Stop button
-    is hidden by default** (volume keys; `showStartStopButton` setting, and always shown when
-    volume keys are off). Recording keeps the screen on (wakelock enabled in `RecordingController.start`).
+    to 0 after a few empty intervals) to stop the 0-flicker. Rides start/stop on the **TIME
+    tile** (no button since 0.12.0, see M7). Recording keeps the screen on (wakelock enabled in
+    `RecordingController.start`).
   * **Ride detail** (`track_detail_screen`) shows the ride on the **real offline map**
     (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
@@ -1094,6 +1133,65 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   `ElevationProfileStrip` (a `CustomPainter`, a 20 m minimum height range so a flat ride
   doesn't look mountainous). `integration_test/home_layout_test.dart` edits the layout on
   the real home screen and rides a hill.
+* **Start/stop places, keep screen on, continue a stopped ride** (0.10.0; prompted by
+  accidental stops from the iOS hand-over-screen hold). All three in Settings → Controls.
+  * **Places** (`RidePlace`, `lib/core/models/ride_place.dart`; `/places`,
+    `RidePlacesScreen`; prefs JSON via `RidePlacesStore`, **local, not synced**; master
+    switch `AppSettings.placesEnabled`). A point + radius (25-200 m), `PlaceTrigger`
+    start / stop / both, added at the current fix (≤20 m accuracy). Rule
+    (`PlaceTriggerDetector`, `lib/core/controls/`, pure + unit-tested): a ride **starts on
+    leaving** a start place and **stops after staying 20 s at** a stop place
+    (`placeStopAfterProvider`; a wall-clock timer, so a garage that loses the GPS still
+    stops it; riding past doesn't). Both are *transitions*: inside must have been seen
+    before leaving counts, and outside (during the ride) before arriving counts — a ride
+    started by hand inside a stop place isn't stopped there. **Pass through**
+    (`RidePlace.passThrough`, 0.11.0, only offered for stop/both places): a point on the way
+    (end of the street, a crossing) stops the ride **on leaving**, without the stay, if the
+    rider got into it during this ride (`_enteredRiding`, cleared whenever not recording —
+    so a ride started inside isn't stopped on the way out); staying there stops nothing.
+    Starting is on leaving for every place, however the rider got in (passing through
+    included), so the option changes nothing for starts — the same exit that stops a ride
+    never starts one (`recording` is per fix). Defined that way by the user: start and
+    pass-through stop on leaving, an ordinary stop on entering. Only `isAccurateEnough` fixes;
+    outside = beyond radius + 20 m (edge band changes nothing). `PlaceTriggerController`
+    (watched by the home screen like auto-start, places/setting read per fix) calls the
+    ordinary `start()`/`stop()` and posts a `RideNotice` (home-screen snackbar). Leaving
+    needs the GPS, i.e. the app in the foreground — hence the next setting.
+  * **Keep screen on without a ride** (`AppSettings.keepScreenOnMinutes`, 0 = off default,
+    5-60): `KeepScreenOnController` (`keep_screen_on_providers.dart`, listened from `main()`)
+    holds wakelock owner `ownerKeepOn` while the app is open, released once the phone hasn't
+    moved (accurate fix > 50 m from the last move) for that long, re-held on a move, a ride
+    stop and app resume. The timeout is the point: otherwise a phone left on a desk keeps
+    screen **and GPS** (held while foreground) on until the battery is empty.
+  * **Continue a stopped ride** (`AppSettings.continueRideWithinMinutes`, default 30, 0 =
+    off). `start({manual: true})` — a tap on TIME (`toggle`), volume-up, the
+    proximity hold; **not** auto-start or places, and plain `start()` defaults to
+    `manual: false` — continues the ride stopped last (`SyncMeta` `last_stopped_ride`, so
+    only a ride stopped on *this* phone, never a synced one) if `shouldContinueRide`
+    (`ride_continuation.dart`, pure): stopped ≤ window ago and a **current** fix (≤30 s old,
+    ≤50 m accuracy — iOS hands out a cached position first) within 200 m of its last point.
+    Without a current fix it waits up to `continueFixWaitProvider` (15 s; `_starting` guards
+    a second start meanwhile), then starts a new ride. A continuation reuses `resume()`'s
+    path, which now **reopens** the track (`AppDatabase.reopenTrack`, `endedAt = null`, no
+    clock) so it's unfinished while recording (crash recovery + sync guard above). Its
+    notice offers **NEW RIDE** (`startNewRideInstead`: drops the points since, restores the
+    old row from the snapshot, starts a new ride). The continuation check must never break
+    a start: any error there means a new ride.
+  * **Apple Health waits until a ride can't be continued** (`settleStoppedRide`): at stop it
+    schedules the save for the end of the window; a new ride's start saves the previous one
+    at once (`force`); `stoppedRideSettlerProvider` (from `main()`) re-checks at launch and on
+    every app resume, since iOS suspends the app and its timer. `saveIfEnabled` returns false
+    on a failed save, which keeps the meta for a retry. Reason: a workout can't be extended
+    later and Strava imports it right away, so saving at the stop would split a continued ride.
+  * Tests: unit (`place_trigger_detector_test`, `place_trigger_controller_test`,
+    `ride_continuation_test`, `keep_screen_on_test`, continuation group in
+    `recording_controller_test`, deferred saves in `apple_health_test`, the sync guard in
+    `sync_service_test` — mutation-checked), widget (`ride_places_screen_test`,
+    `settings_screen_test`), GUI `integration_test/ride_places_test.dart` (set up in
+    Settings, leave → start, return → stop, manual start → continue, NEW RIDE). **Not yet
+    verified on a real phone** — check there: a start on leaving home with the screen kept
+    on, the stop on arrival with the screen off (A33 `dumpsys location` still one continuous
+    request), and the iOS deferred Apple Health save.
 * **Battery runtime test** (`lib/features/battery_test/`, Settings → Data, `/battery-test`):
   answers "how long does the phone last on a ride" without riding. While running, the app's
   `locationServiceProvider` returns a `SimulatedRideLocationService`: a `SimulatedZigzag`
@@ -1122,7 +1220,7 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   reads, and tests keep overriding that. `locationPowerControlProvider` unwraps the simulation
   to reach the real service's gate. **`RecordingController.start()` refuses while a test runs**
   (`simulatedRideProvider != null`), so simulated positions can never become a ride (volume
-  keys, auto-start and the button all go through it). Results are **not in the ride DB**
+  keys, auto-start and the TIME tile all go through it). Results are **not in the ride DB**
   (deliberately, which also avoids a schema bump): one JSON-lines file per test in
   `<appSupport>/battery_tests/` (`BatteryTestLog`), appended with a flush every minute, so it
   survives the phone dying. No `stop` line means the phone switched off, and the last sample is
@@ -1139,6 +1237,13 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   logcat (only `flutter attach` showed "Another exception was thrown: …
   `!_debugDoingThisLayout`"). Widget tests always have a size, so they can't see it — clamp
   computed sizes, and look at a debug build on the emulator after layout changes.
+
+* **`tester.pump()` doesn't run Riverpod's rebuilds.** A listened provider whose dependency
+  changed is rebuilt on a zero-length `Timer` (Riverpod's default vsync in a bare
+  `ProviderContainer`); in `testWidgets` a `pump()` without a duration only flushes
+  microtasks, so the rebuild never happens — use `pump(Duration.zero)`. Also: drift work
+  (the real `RecordingController`) inside `testWidgets`' fake clock can hang; stub the
+  controller there (`keep_screen_on_test.dart`) or use a plain `test()`.
 
 * **Riverpod 3 pauses what only a covered screen listens to.** A `ref.watch` from a widget
   under another route (TickerMode off — e.g. the home map while Settings is open) is paused,

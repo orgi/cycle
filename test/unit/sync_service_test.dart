@@ -275,6 +275,38 @@ void main() {
     expect(server.filesIn('Cycle/rides/'), isEmpty);
   });
 
+  test('a synced ride reopened to continue it is left alone until it stops',
+      () async {
+    final a = newPhone(), b = newPhone();
+    final id = await a.ride(start);
+    await a.sync.sync(config);
+    await b.sync.sync(config);
+    // A manual start on A continues the ride (and the app dies before it
+    // stops again) while B renames it: B's copy must not come back to A as a
+    // second ride meanwhile.
+    await a.db.reopenTrack(id);
+    await b.db.renameTrack((await b.only()).id, 'Renamed on B');
+    await b.sync.sync(config);
+    final r = await a.sync.sync(config);
+    expect(r.downloaded, 0);
+    expect(await a.db.allTracksIncludingDeleted(), hasLength(1));
+
+    // Finished again (stopped, or recovered at the next launch): B's rename
+    // arrives, still one ride, and A's longer ride reaches B.
+    await a.db.finalizeTrack(id,
+        endedAt: start.add(const Duration(minutes: 5)),
+        distanceMeters: 900,
+        durationSeconds: 300,
+        avgSpeedMps: 3,
+        maxSpeedMps: 9);
+    await a.sync.sync(config);
+    final ra = await a.only();
+    expect(ra.name, 'Renamed on B');
+    expect(ra.distanceMeters, 900);
+    await b.sync.sync(config);
+    expect((await b.only()).distanceMeters, 900);
+  });
+
   test('a fresh phone adopts the existing bikes instead of adding "Bike 1"', () async {
     final a = newPhone(), b = newPhone();
     a.profiles = const BikeProfilesState(

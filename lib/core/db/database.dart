@@ -315,6 +315,15 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  /// Opens a finished ride again for recording into (continuing it): it is
+  /// unfinished until the next [finalizeTrack], like a ride being recorded —
+  /// so sync leaves it alone meanwhile, and a crash meanwhile is recovered
+  /// from its points at the next launch. No clock: nothing syncs until it is
+  /// finalised, which stamps the geometry.
+  Future<void> reopenTrack(int trackId) =>
+      (update(tracks)..where((t) => t.id.equals(trackId)))
+          .write(const TracksCompanion(endedAt: Value(null)));
+
   /// Marks a ride's points/stats as edited (for sync) after a direct point
   /// edit that doesn't go through [finalizeTrack]/[updateTrackStats], e.g. the
   /// OruxMaps sensor backfill.
@@ -453,6 +462,24 @@ class AppDatabase extends _$AppDatabase {
         ..where((p) => p.trackId.equals(trackId))
         ..orderBy([(p) => OrderingTerm.asc(p.time)]))
       .get();
+
+  /// The ride's last recorded point (by time, then the later insert: times
+  /// are stored to the second), or null without points.
+  Future<TrackPoint?> lastPoint(int trackId) => (select(trackPoints)
+        ..where((p) => p.trackId.equals(trackId))
+        ..orderBy([
+          (p) => OrderingTerm.desc(p.time),
+          (p) => OrderingTerm.desc(p.id),
+        ])
+        ..limit(1))
+      .getSingleOrNull();
+
+  /// Drops the ride's points recorded after [time] (undoing a continuation).
+  Future<void> deletePointsAfter(int trackId, DateTime time) =>
+      (delete(trackPoints)
+            ..where(
+                (p) => p.trackId.equals(trackId) & p.time.isBiggerThanValue(time)))
+          .go();
 
   /// Moves a ride to the trash (see [Tracks.deletedAt]). Nothing is erased:
   /// it can be restored with [restoreTrack] until the retention period ends

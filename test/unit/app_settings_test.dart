@@ -10,7 +10,6 @@ void main() {
     const s = AppSettings(
       units: UnitSystem.imperial,
       hardwareButtonsEnabled: false,
-      showStartStopButton: true,
       selectedMapFileName: 'Bayern.map',
       colorScheme: AppColorScheme.bw,
       mapZoom: 14,
@@ -21,7 +20,6 @@ void main() {
     expect(back, s);
     expect(back.proximityHoldEnabled, isTrue);
     expect(back.colorScheme, AppColorScheme.bw);
-    expect(back.showStartStopButton, isTrue);
     expect(back.mapZoom, 14);
   });
 
@@ -70,6 +68,29 @@ void main() {
     final s = AppSettings.fromJson({'units': 'nonsense'});
     expect(s.units, UnitSystem.metric);
     expect(s.hardwareButtonsEnabled, isTrue);
+  });
+
+  test('keep screen on, continue a ride and places: defaults and round trip',
+      () {
+    const d = AppSettings();
+    expect(d.keepScreenOnMinutes, 0); // off: only a ride holds the screen
+    expect(d.continueRideWithinMinutes, 30);
+    expect(d.continueRideWindow, const Duration(minutes: 30));
+    expect(d.placesEnabled, isTrue);
+    // An older build's settings have none of them: the same defaults.
+    expect(AppSettings.fromJson(const {'units': 'metric'}), d);
+
+    final s = d.copyWith(
+        keepScreenOnMinutes: 15,
+        continueRideWithinMinutes: 0,
+        placesEnabled: false);
+    expect(s.continueRideWindow, isNull);
+    expect(AppSettings.fromJson(s.toJson()), s);
+    expect(
+        AppSettings.fromJson(
+                {'keep_screen_on_min': -3, 'continue_ride_min': 'x'})
+            .copyWith(),
+        d);
   });
 
   group('legacy (pre per-bike) wheel / auto-pause / auto-start', () {
@@ -144,49 +165,13 @@ void main() {
     });
   });
 
-  group('startStopButtonVisible', () {
-    const defaults = AppSettings();
-
-    test('hidden by default where the volume keys work (Android)', () {
-      expect(defaults.startStopButtonVisible(volumeKeysSupported: true),
-          isFalse);
+  test('a stored Start/Stop button choice (before 0.12) is ignored', () {
+    // The button is gone: rides start and stop on the TIME tile.
+    final s = AppSettings.fromJson(const {
+      'show_start_stop_button': true,
+      'hardware_buttons': false,
     });
-
-    test('iOS: hidden only while the hand-over-screen hold is on', () {
-      expect(
-          defaults.startStopButtonVisible(
-              volumeKeysSupported: false, proximityHoldSupported: true),
-          isTrue);
-      final hold = defaults.copyWith(proximityHoldEnabled: true);
-      expect(
-          hold.startStopButtonVisible(
-              volumeKeysSupported: false, proximityHoldSupported: true),
-          isFalse);
-      expect(
-          hold
-              .copyWith(showStartStopButton: true)
-              .startStopButtonVisible(
-                  volumeKeysSupported: false, proximityHoldSupported: true),
-          isTrue);
-    });
-
-    test('always shown where the volume keys cannot start a ride (iOS)', () {
-      // Otherwise a fresh iOS install has no way at all to start a ride.
-      expect(defaults.startStopButtonVisible(volumeKeysSupported: false),
-          isTrue);
-    });
-
-    test('shown when requested or when the volume keys are switched off', () {
-      expect(
-          defaults
-              .copyWith(showStartStopButton: true)
-              .startStopButtonVisible(volumeKeysSupported: true),
-          isTrue);
-      expect(
-          defaults
-              .copyWith(hardwareButtonsEnabled: false)
-              .startStopButtonVisible(volumeKeysSupported: true),
-          isTrue);
-    });
+    expect(s, const AppSettings(hardwareButtonsEnabled: false));
+    expect(s.toJson().containsKey('show_start_stop_button'), isFalse);
   });
 }

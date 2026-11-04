@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 enum RideFeedback {
   started(1),
   stopped(2),
+
+  /// The first of the two holds that stop a ride by the hand over the screen.
+  stopArmed(1),
   bikeProfileChanged(3);
 
   const RideFeedback(this.pulses);

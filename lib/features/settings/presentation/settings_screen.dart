@@ -9,6 +9,7 @@ import '../../../core/services/settings/app_settings.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../map/presentation/osm_attribution.dart';
+import '../../places/application/ride_places_providers.dart';
 import '../../tracks/application/track_providers.dart';
 import '../../tracks/application/track_repair.dart';
 import '../application/bike_profile_providers.dart';
@@ -123,24 +124,74 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Hand over screen start/stop'),
               subtitle: const Text(
                 'Hold a hand over the top of the screen for 2 seconds to start '
-                'or stop a ride. Works with gloves. The screen goes dark while '
-                'covered.',
+                'a ride. To stop it: hold until it buzzes, take the hand away '
+                'and hold again within 6 seconds. Works with gloves. The '
+                'screen goes dark while covered.',
               ),
               value: settings.proximityHoldEnabled,
               onChanged: controller.setProximityHoldEnabled,
             ),
-          if (volumeKeysSupported || proximityHoldSupported)
-            SwitchListTile(
-              key: const Key('showStartStopSwitch'),
-              title: const Text('Show Start/Stop button'),
-              subtitle: Text(volumeKeysSupported
-                  ? 'Off by default: use the volume keys. Always shown while '
-                      'the volume keys are off.'
-                  : 'Can be hidden while "Hand over screen start/stop" is on. '
-                      'Always shown otherwise, so you can stop a ride.'),
-              value: settings.showStartStopButton,
-              onChanged: controller.setShowStartStopButton,
+          Consumer(builder: (context, ref, _) {
+            final places = ref.watch(ridePlacesProvider);
+            return ListTile(
+              key: const Key('placesTile'),
+              leading: const Icon(Icons.place_outlined),
+              title: const Text('Start/stop places'),
+              subtitle: Text(places.isEmpty
+                  ? 'Start a ride by leaving home, stop it on arrival'
+                  : '${places.length} place${places.length == 1 ? '' : 's'}'
+                      '${settings.placesEnabled ? '' : ' • off'}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/places'),
+            );
+          }),
+          ListTile(
+            key: const Key('keepScreenOnTile'),
+            leading: const Icon(Icons.light_mode_outlined),
+            title: const Text('Keep screen on without a ride'),
+            subtitle: Text(settings.keepScreenOnMinutes == 0
+                ? 'Off: only while a ride records'
+                : 'While Radl is open, until the phone hasn\'t moved for '
+                    '${settings.keepScreenOnMinutes} min'),
+            onTap: () => _pickMinutes(
+              context,
+              title: 'Keep screen on without a ride',
+              help: 'So Radl is open when you set off — to start a ride by '
+                  'leaving a place, or by auto-start. Goes off once the phone '
+                  'hasn\'t moved for this long, so a phone left lying around '
+                  'still turns its screen and GPS off.',
+              keyPrefix: 'keepScreenOn',
+              choices: AppSettings.keepScreenOnChoices,
+              current: settings.keepScreenOnMinutes,
+              onChosen: controller.setKeepScreenOnMinutes,
             ),
+          ),
+          ListTile(
+            key: const Key('continueRideTile'),
+            leading: const Icon(Icons.replay),
+            title: const Text('Continue a stopped ride'),
+            subtitle: Text(settings.continueRideWithinMinutes == 0
+                ? 'Off: starting again is always a new ride'
+                : 'Starting by hand within '
+                    '${settings.continueRideWithinMinutes} min, where it '
+                    'stopped, continues the ride'),
+            onTap: () => _pickMinutes(
+              context,
+              title: 'Continue a stopped ride',
+              help: 'Starting a ride by hand (tapping TIME, a volume key, a '
+                  'hand over the screen) soon after stopping one, still at '
+                  'the same place, continues it — an accidental stop or a '
+                  'short break '
+                  'stays one ride. A notice then offers a new ride instead. '
+                  'Rides started by a place or by auto-start are always new. '
+                  'Apple Health gets a ride once it can no longer be '
+                  'continued.',
+              keyPrefix: 'continueRide',
+              choices: AppSettings.continueRideChoices,
+              current: settings.continueRideWithinMinutes,
+              onChosen: controller.setContinueRideWithinMinutes,
+            ),
+          ),
           SwitchListTile(
             key: const Key('vibrateStartStopSwitch'),
             title: const Text('Vibrate on start/stop'),
@@ -244,6 +295,51 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Picks one of [choices] (minutes; 0 = off) in a dialog.
+  Future<void> _pickMinutes(
+    BuildContext context, {
+    required String title,
+    required String help,
+    required String keyPrefix,
+    required List<int> choices,
+    required int current,
+    required Future<void> Function(int) onChosen,
+  }) async {
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        scrollable: true,
+        content: RadioGroup<int>(
+          groupValue: current,
+          onChanged: (m) => Navigator.pop(ctx, m),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(help, style: Theme.of(ctx).textTheme.bodySmall),
+              const SizedBox(height: 8),
+              for (final m in choices)
+                RadioListTile<int>(
+                  key: Key('${keyPrefix}_$m'),
+                  value: m,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(m == 0 ? 'Off' : '$m min'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (chosen != null) await onChosen(chosen);
   }
 
   Future<void> _recalculateDistances(

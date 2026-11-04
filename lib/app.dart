@@ -8,6 +8,7 @@ import 'features/battery_test/presentation/battery_test_screen.dart';
 import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
+import 'features/places/presentation/ride_places_screen.dart';
 import 'features/routing/presentation/saved_routes_screen.dart';
 import 'features/sensors/presentation/sensors_screen.dart';
 import 'features/settings/presentation/bike_profiles_screen.dart';
@@ -32,6 +33,10 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/routes',
       builder: (context, state) => const SavedRoutesScreen(),
+    ),
+    GoRoute(
+      path: '/places',
+      builder: (context, state) => const RidePlacesScreen(),
     ),
     GoRoute(
       path: '/sensors',

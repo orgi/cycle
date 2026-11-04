@@ -28,9 +28,16 @@ abstract class ScreenWakeService {
   /// Owner key for a running battery runtime test.
   static const String ownerBatteryTest = 'battery-test';
 
+  /// Owner key for "Keep screen on without a ride" (`KeepScreenOnController`).
+  static const String ownerKeepOn = 'keep-on';
+
   /// Whether any owner currently holds keep-awake.
   @visibleForTesting
   bool get isHeld => _owners.isNotEmpty;
+
+  /// Whether [owner] holds keep-awake.
+  @visibleForTesting
+  bool holds(String owner) => _owners.contains(owner);
 
   Future<void> enable(String owner) async {
     final wasHeld = _owners.isNotEmpty;

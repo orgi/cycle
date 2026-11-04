@@ -130,7 +130,31 @@ void main() {
       expect(l.top, [
         [time]
       ]);
-      expect(l.remove(const TilePos(top, 0, 0)).top, isEmpty);
+      final b = std.remove(const TilePos(bottom, 1, 0));
+      expect(b.bottom[1], [avg, max]);
+      expect(b.remove(const TilePos(bottom, 1, 0)).bottom[1], [max]);
+    });
+
+    test('the last TIME stays: it starts and stops a ride', () {
+      const t = TilePos(top, 0, 1);
+      expect(std.canRemove(t), isFalse);
+      expect(std.remove(t), std);
+      expect(std.replace(t, climb), std);
+      expect(std.replace(t, ride), std);
+      expect(std.replace(t, time), std);
+      // Moving it is fine.
+      expect(std.moveToNewRow(t, bottom, 2).bottom.last, [time]);
+      expect(std.swap(t, const TilePos(bottom, 1, 0)).bottom[1].first, time);
+      // One of two can go, either way.
+      final two = std.addToRow(top, 0, time);
+      expect(two.canRemove(const TilePos(top, 0, 2)), isTrue);
+      expect(two.remove(t).top, [
+        [speed, time]
+      ]);
+      expect(two.replace(t, climb).top, [
+        [speed, climb, time]
+      ]);
+      expect(two.remove(t).canRemove(t), isFalse);
     });
 
     test('edits leave the original alone', () {
@@ -145,6 +169,49 @@ void main() {
           .addRow(bottom, 0, ride)
           .replace(const TilePos(bottom, 2, 2), climb);
       expect(HomeLayout.fromJson(l.toJson()), l);
+    });
+
+    test(
+        'a layout without TIME (from before 0.12) gets it back: in the '
+        'first top row with room, else in a new row at the top', () {
+      HomeLayout read(Object top) =>
+          HomeLayout.fromJson({'top': top, 'bottom': const [
+            ['dist']
+          ]});
+      expect(
+          read(const [
+            ['route_profile'],
+            ['speed', 'avg', 'max'],
+            ['climb'],
+          ]).top,
+          [
+            [route],
+            [speed, avg, max],
+            [climb, time],
+          ]);
+      expect(
+          read(const [
+            ['speed', 'avg', 'max'],
+          ]).top,
+          [
+            [time],
+            [speed, avg, max],
+          ]);
+      expect(read(const []).top, [
+        [time]
+      ]);
+      // TIME in the bottom area counts too.
+      final l = HomeLayout.fromJson(const {
+        'top': [
+          ['speed']
+        ],
+        'bottom': [
+          ['time']
+        ],
+      });
+      expect(l.top, [
+        [speed]
+      ]);
     });
 
     test('unknown tiles are left out, overfull rows cut, wide tiles alone', () {

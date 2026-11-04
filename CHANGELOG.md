@@ -8,6 +8,84 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-04
+
+### Changed
+- The TIME tile's icon now shows what a tap does, like a button: a green triangle to start
+  a ride, a red square to stop it. It used to show where the ride stood (a red square while
+  stopped), which read the wrong way round. While auto-paused the icon is the red square
+  too, since a tap stops the ride; the amber PAUSED shows that it's paused.
+- The TIME tile's icon is now right of the time instead of before it.
+
+## [0.12.0] - 2026-11-01
+
+### Changed
+- Rides start and stop with a tap on the TIME tile. An icon next to the time shows where
+  the ride stands: a red square (stopped), a green triangle (recording) or yellow bars
+  (auto-paused). A tap starts a ride as the button did, so it can continue one stopped a
+  moment ago; a long press still edits the home screen.
+- The last TIME tile can't be removed from the home screen any more (it can be moved). A
+  layout saved without TIME gets it back at the top.
+- iOS, hand over the screen: stopping a ride now takes two holds. Hold until it buzzes,
+  take the hand away, then hold again within 6 seconds; a countdown shows how long is
+  left. One hold — a hand passing over the phone — no longer stops a ride; the stop just
+  runs out. Starting is still one hold.
+
+### Removed
+- The Start/Stop button and the "Show Start/Stop button" setting. On iOS the button could
+  only be hidden by turning on "Hand over screen start/stop"; now start/stop places or
+  auto-start can be used with neither.
+
+## [0.11.0] - 2026-10-29
+
+### Added
+- Pass-through places (Settings → Controls → Start/stop places, edit a place, "Pass
+  through"): for a point on the way — the end of your street, a crossing — instead of a
+  place where you stay. A stop place (or both-way place) set to pass through stops the ride
+  once you've ridden through it, without stopping there; waiting there doesn't stop it.
+  Starting is as before: on leaving a start place, which already includes riding straight
+  through one.
+
+## [0.10.1] - 2026-10-29
+
+### Fixed
+- Riding back the way you came — to a dead end and back, an out-and-back, turning round
+  after a missed turn — counted only the straight line from the start of that stretch of
+  road to where you were, not the way there and back (1.5 km out and back read 450 m).
+  Both ways count now. Turning round within about 30 m still isn't counted, so GPS noise
+  along the road doesn't add distance. For rides recorded before: Settings → Data →
+  "Recalculate ride distances" (on 830 real rides this changed only those with a
+  turn-back, by up to 1.75 km).
+
+## [0.10.0] - 2026-10-29
+
+### Added
+- Start/stop places (Settings → Controls): rides start when you leave a place and stop
+  when you arrive at one — home, work, the café at the end of the loop. Each place is a
+  start place, a stop place or both, with a radius of 25–200 m, and is added where you
+  stand ("Add this place"). A ride stops only once you've been at the place for 20 seconds,
+  so riding past doesn't end it, and a ride started inside a stop place isn't stopped
+  there. Places stay on the phone (not synced).
+- Keep screen on without a ride (Settings → Controls): the screen stays on while Radl is
+  open, also before a ride starts — so the phone can wait on the handlebar for a ride to
+  start by leaving a place, or by auto-start. It goes off once the phone hasn't moved for
+  5–60 minutes (your choice), so a phone left lying around doesn't keep its screen and GPS
+  on until the battery is empty. Off by default.
+- Continue a stopped ride (Settings → Controls, on by default, 30 minutes): starting a ride
+  by hand — button, volume key, hand over the screen — soon after stopping one, still at
+  the same place (within 200 m), continues that ride instead of starting a new one. An
+  accidental stop or a short break stays one ride. A notice then offers "New ride" in case
+  it should have been a new one. Rides started by a place or by auto-start are always new.
+
+### Changed
+- With "Continue a stopped ride" on, a ride is saved to Apple Health once it can no longer
+  be continued (when the time is up, or when the next ride starts) instead of right at the
+  stop — a workout can't be extended afterwards, and Strava imports it right away.
+
+### Fixed
+- A ride resumed after a crash is unfinished again while it records, so a second crash
+  during it is recovered at the next launch too (it used to keep its old stats).
+
 ## [0.9.0] - 2026-10-27
 
 ### Added
@@ -655,7 +733,12 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/orgi/cycle/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/orgi/cycle/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/orgi/cycle/compare/v0.10.1...v0.11.0
+[0.10.1]: https://github.com/orgi/cycle/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/orgi/cycle/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/orgi/cycle/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/orgi/cycle/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/orgi/cycle/compare/v0.7.0...v0.7.1

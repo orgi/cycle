@@ -14,20 +14,21 @@ import '../../../core/models/home_layout.dart';
 import '../../../core/sensors/gatt.dart';
 import '../../../core/sensors/sensor_visibility.dart';
 import '../../../core/services/bike_profiles/bike_profiles_state.dart';
-import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/route_import_service.dart';
 import '../../../core/theme.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
+import '../../../core/widgets/every_second.dart';
 import '../../backup/application/backup_providers.dart';
 import '../../battery_test/application/battery_test_providers.dart';
 import '../../battery_test/presentation/battery_test_screen.dart';
 import '../../dashboard/application/auto_start_providers.dart';
+import '../../dashboard/application/keep_screen_on_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../places/application/ride_places_providers.dart';
 import '../../tracks/application/oruxmaps_import_service.dart';
 import '../../tracks/application/oruxmaps_providers.dart';
-import '../../dashboard/presentation/widgets/start_stop_button.dart';
 import '../../routing/application/follow_route_providers.dart';
 import '../../routing/domain/follow_route.dart';
 import '../../routing/domain/gpx_route_parser.dart';
@@ -85,6 +86,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
   // off (so you can scout routes) until you tap the recenter button.
   bool _follow = true;
   LatLong? _lastFix;
+
+  /// The "hand over the screen again to stop" countdown, while it shows.
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _stopArmedSnack;
   StreamSubscription<Object>? _manualMoveSub;
   MapModel? _manualMoveModel;
 
@@ -521,19 +525,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final route = ref.watch(followRouteProvider);
     final progress = ref.watch(routeProgressProvider);
     final ghost = ref.watch(ghostProvider);
-    final settings = ref.watch(settingsProvider);
     final editing = ref.watch(homeLayoutEditingProvider);
-    // Hidden while a hands-free start/stop is on (volume keys, or the
-    // hand-over-screen hold on iOS) unless requested; otherwise always shown,
-    // so there is a way to start and stop a ride.
-    final showStartStop = settings.startStopButtonVisible(
-        volumeKeysSupported: volumeKeysSupported,
-        proximityHoldSupported: proximityHoldSupported);
     // Bottom stats with the OpenStreetMap credit below them, clear of the
-    // system bar (see osmCreditLayout). The Start/Stop button's SafeArea
-    // clears the bar itself when it is shown.
+    // system bar (see osmCreditLayout). Rides start and stop on the TIME tile
+    // (see HomeOverlay); there is no Start/Stop button below.
     final bottomLayout = osmCreditLayout(
-      inset: showStartStop ? 0.0 : MediaQuery.of(context).viewPadding.bottom,
+      inset: MediaQuery.of(context).viewPadding.bottom,
       insetIsSeeThrough: defaultTargetPlatform == TargetPlatform.iOS,
     );
     final statsBottom = bottomLayout.statsBottom;
@@ -541,6 +538,52 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // alive while the home screen is mounted.
     ref.watch(hardwareButtonControllerProvider);
     ref.watch(autoStartControllerProvider);
+    ref.watch(placeTriggerControllerProvider);
+    ref.watch(keepScreenOnProvider);
+    // A ride a place started/stopped, or a manual start that continued the
+    // last ride (offering a new ride instead).
+    ref.listen(rideNoticeProvider, (_, notice) {
+      if (notice == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          key: const Key('rideNoticeSnack'),
+          duration: const Duration(seconds: 8),
+          behavior: SnackBarBehavior.floating,
+          content: Text(notice.message),
+          action: notice.offerNewRide
+              ? SnackBarAction(
+                  key: const Key('rideNoticeNewRide'),
+                  label: 'NEW RIDE',
+                  onPressed: () => ref
+                      .read(recordingProvider.notifier)
+                      .startNewRideInstead(),
+                )
+              : null,
+        ));
+    });
+    // The first hold of a stop by the hand over the screen: how long the
+    // second may take (the screen is dark while covered, so this shows in
+    // between).
+    ref.listen(proximityStopProvider, (_, until) {
+      _stopArmedSnack?.close();
+      _stopArmedSnack = null;
+      if (until == null) return;
+      final left = until.difference(DateTime.now());
+      if (left <= Duration.zero) return;
+      _stopArmedSnack = (ScaffoldMessenger.of(context)..clearSnackBars())
+          .showSnackBar(SnackBar(
+        key: const Key('proximityStopArmed'),
+        duration: left,
+        behavior: SnackBarBehavior.floating,
+        content: EverySecond(builder: (context) {
+          final s = (until.difference(DateTime.now()).inMilliseconds / 1000)
+              .ceil()
+              .clamp(0, 99);
+          return Text('Stop the ride? Hand over the screen again · $s s');
+        }),
+      ));
+    });
     final batteryTest = ref.watch(batteryTestProvider);
     // A battery test that ended with the phone switching off: announce the
     // result once, the first time the home screen is up again.
@@ -711,153 +754,136 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
         ],
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: mapModelAsync.when(
-                    loading: () =>
-                        const Center(child: CircularProgressIndicator()),
-                    error: (error, stack) =>
-                        ErrorhelperWidget(error: error, stackTrace: stack),
-                    data: (loaded) {
-                      final model = loaded.model;
-                      _ensureInitialCenter(model, loaded.center);
-                      _watchManualMove(model);
-                      return MapsforgeView(
-                        // Keyed on the model so swapping the active map (e.g. a
-                        // GPS fix selects a more-local map) recreates the view
-                        // instead of updating it — mapsforge's TileView throws
-                        // "MapModel cannot be changed" if its model is swapped
-                        // in place, which blanked the map.
-                        key: ObjectKey(model),
-                        mapModel: model,
-                        children: [
-                          MarkerDatastoreOverlay(
-                            mapModel: model,
-                            datastore: _markers,
-                            zoomlevelRange: kZoomRange,
-                          ),
-                        ],
-                      );
-                    },
+          Positioned.fill(
+            child: mapModelAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (error, stack) =>
+                  ErrorhelperWidget(error: error, stackTrace: stack),
+              data: (loaded) {
+                final model = loaded.model;
+                _ensureInitialCenter(model, loaded.center);
+                _watchManualMove(model);
+                return MapsforgeView(
+                  // Keyed on the model so swapping the active map (e.g. a
+                  // GPS fix selects a more-local map) recreates the view
+                  // instead of updating it — mapsforge's TileView throws
+                  // "MapModel cannot be changed" if its model is swapped
+                  // in place, which blanked the map.
+                  key: ObjectKey(model),
+                  mapModel: model,
+                  children: [
+                    MarkerDatastoreOverlay(
+                      mapModel: model,
+                      datastore: _markers,
+                      zoomlevelRange: kZoomRange,
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          // The bike's stat tiles (see HomeOverlay; long-press one to
+          // edit the layout), with the route/battery-test banners and
+          // the recenter button below the top rows.
+          Positioned.fill(
+            child: HomeOverlay(
+              // Clear of the system inset (Android nav bar, iPhone
+              // home indicator).
+              bottomInset: statsBottom,
+              visibleSensors: visibleSensors,
+              onTileTap: (tile) => switch (tile) {
+                // A speed sensor's data lands in SPEED, which has no
+                // tile of its own: tap it to reconnect the sensor.
+                HomeTile.speed => canReconnectSpeed
+                    ? () => _runReconnect(
+                        () => ref
+                            .read(sensorConnectionProvider.notifier)
+                            .reconnectCsc(wantSpeed: true),
+                        'speed')
+                    : null,
+                HomeTile.heartRate => () => _runReconnect(
+                    () => ref
+                        .read(sensorConnectionProvider.notifier)
+                        .reconnectKind(SensorKind.heartRate),
+                    'HR'),
+                HomeTile.cadence => () => _runReconnect(
+                    () => ref
+                        .read(sensorConnectionProvider.notifier)
+                        .reconnectCsc(wantSpeed: false),
+                    'cadence'),
+                HomeTile.power => () => _runReconnect(
+                    () => ref
+                        .read(sensorConnectionProvider.notifier)
+                        .reconnectKind(SensorKind.power),
+                    'power'),
+                _ => null,
+              },
+              belowTop: [
+                // Follow-route navigation banner (only while following
+                // a route).
+                if (route != null)
+                  Center(
+                    child: _RouteBanner(
+                      route: route,
+                      progress: progress,
+                      ghost: ghost,
+                    ),
                   ),
-                ),
-                // The bike's stat tiles (see HomeOverlay; long-press one to
-                // edit the layout), with the route/battery-test banners and
-                // the recenter button below the top rows.
-                Positioned.fill(
-                  child: HomeOverlay(
-                    // Clear the system inset (Android nav bar, iPhone home
-                    // indicator) when there's no Start/Stop button (with its
-                    // SafeArea) below to push the stats up.
-                    bottomInset: statsBottom,
-                    visibleSensors: visibleSensors,
-                    onTileTap: (tile) => switch (tile) {
-                      // A speed sensor's data lands in SPEED, which has no
-                      // tile of its own: tap it to reconnect the sensor.
-                      HomeTile.speed => canReconnectSpeed
-                          ? () => _runReconnect(
-                              () => ref
-                                  .read(sensorConnectionProvider.notifier)
-                                  .reconnectCsc(wantSpeed: true),
-                              'speed')
-                          : null,
-                      HomeTile.heartRate => () => _runReconnect(
-                          () => ref
-                              .read(sensorConnectionProvider.notifier)
-                              .reconnectKind(SensorKind.heartRate),
-                          'HR'),
-                      HomeTile.cadence => () => _runReconnect(
-                          () => ref
-                              .read(sensorConnectionProvider.notifier)
-                              .reconnectCsc(wantSpeed: false),
-                          'cadence'),
-                      HomeTile.power => () => _runReconnect(
-                          () => ref
-                              .read(sensorConnectionProvider.notifier)
-                              .reconnectKind(SensorKind.power),
-                          'power'),
-                      _ => null,
-                    },
-                    belowTop: [
-                      // Follow-route navigation banner (only while following
-                      // a route).
-                      if (route != null)
-                        Center(
-                          child: _RouteBanner(
-                            route: route,
-                            progress: progress,
-                            ghost: ghost,
-                          ),
+                if (route != null && batteryTest != null)
+                  const SizedBox(height: 6),
+                if (batteryTest != null)
+                  Center(
+                    child: GestureDetector(
+                      onTap: () => context.push('/battery-test'),
+                      child: Container(
+                        key: const Key('batteryTestBanner'),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.62),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                      if (route != null && batteryTest != null)
-                        const SizedBox(height: 6),
-                      if (batteryTest != null)
-                        Center(
-                          child: GestureDetector(
-                            onTap: () => context.push('/battery-test'),
-                            child: Container(
-                              key: const Key('batteryTestBanner'),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 7),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.62),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                'BATTERY TEST · simulated ride · '
-                                '${batteryTest.currentLevel == null ? '' : '${batteryTest.currentLevel} %'}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
-                                    ?.copyWith(color: Colors.orangeAccent),
-                              ),
-                            ),
-                          ),
+                        child: Text(
+                          'BATTERY TEST · simulated ride · '
+                          '${batteryTest.currentLevel == null ? '' : '${batteryTest.currentLevel} %'}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(color: Colors.orangeAccent),
                         ),
-                      // Recenter button: shown once you've panned away
-                      // (follow paused). Tap to recentre on your location and
-                      // resume following.
-                      if (!_follow)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: Padding(
-                            padding: const EdgeInsets.only(top: 6, right: 6),
-                            child: FloatingActionButton.small(
-                              heroTag: 'recenter',
-                              tooltip: 'Recenter & follow',
-                              onPressed: _recenter,
-                              child: const Icon(Icons.my_location),
-                            ),
-                          ),
-                        ),
-                    ],
+                      ),
+                    ),
                   ),
-                ),
-                // Required map-data credit (ODbL), below the stats: in the
-                // iPhone's home-indicator strip, or just above Android's
-                // navigation bar (see osmCreditLayout).
-                Positioned(
-                  right: 8,
-                  bottom: bottomLayout.creditBottom,
-                  child: const OsmAttribution(),
-                ),
+                // Recenter button: shown once you've panned away
+                // (follow paused). Tap to recentre on your location and
+                // resume following.
+                if (!_follow)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 6),
+                      child: FloatingActionButton.small(
+                        heroTag: 'recenter',
+                        tooltip: 'Recenter & follow',
+                        onPressed: _recenter,
+                        child: const Icon(Icons.my_location),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
-          // Keep the Start/Stop button clear of the system navigation bar
-          // (3-button / gesture) so it is always tappable.
-          if (showStartStop)
-            const SafeArea(
-              top: false,
-              child: Padding(
-                padding: EdgeInsets.all(8),
-                child: StartStopButton(),
-              ),
-            ),
+          // Required map-data credit (ODbL), below the stats: in the
+          // iPhone's home-indicator strip, or just above Android's
+          // navigation bar (see osmCreditLayout).
+          Positioned(
+            right: 8,
+            bottom: bottomLayout.creditBottom,
+            child: const OsmAttribution(),
+          ),
         ],
       ),
     );

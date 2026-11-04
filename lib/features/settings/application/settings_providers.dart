@@ -31,9 +31,6 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setHardwareButtons(bool enabled) =>
       update(state.copyWith(hardwareButtonsEnabled: enabled));
 
-  Future<void> setShowStartStopButton(bool show) =>
-      update(state.copyWith(showStartStopButton: show));
-
   Future<void> setProximityHoldEnabled(bool enabled) =>
       update(state.copyWith(proximityHoldEnabled: enabled));
 
@@ -42,6 +39,15 @@ class SettingsController extends Notifier<AppSettings> {
 
   Future<void> setSaveToAppleHealth(bool enabled) =>
       update(state.copyWith(saveToAppleHealth: enabled));
+
+  Future<void> setKeepScreenOnMinutes(int minutes) =>
+      update(state.copyWith(keepScreenOnMinutes: minutes));
+
+  Future<void> setContinueRideWithinMinutes(int minutes) =>
+      update(state.copyWith(continueRideWithinMinutes: minutes));
+
+  Future<void> setPlacesEnabled(bool enabled) =>
+      update(state.copyWith(placesEnabled: enabled));
 
   Future<void> setRetentionDays(int days) =>
       update(state.copyWith(retentionDays: days.clamp(1, 365)));

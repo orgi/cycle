@@ -189,6 +189,7 @@ class SyncService {
     ]..sort((a, b) => a.name.compareTo(b.name));
 
     var local = await _store.rides();
+    final open = await _store.openKeys();
     var downloaded = 0;
     var backedUp = false;
     for (var i = 0; i < changed.length; i++) {
@@ -202,6 +203,9 @@ class SyncService {
         continue; // newer app version / corrupt: leave it, never prune it
       }
       final mine = local[remote.key];
+      // A ride open on this phone (continued, then interrupted) waits until
+      // it's finished; its ETag isn't cached, so a later round reads it again.
+      if (mine == null && open.contains(remote.key)) continue;
       final merged = mine == null ? remote : RideDoc.merge(mine.doc, remote);
       if (mine == null || merged.signature != mine.doc.signature) {
         if (!backedUp && LocalRideStore.isDestructive(mine, merged)) {

@@ -180,8 +180,8 @@ void main() {
       expect(health.saved, hasLength(1));
     });
 
-    test('stopping a ride saves it to Apple Health (iOS, setting on)',
-        () async {
+    /// A container that records rides on "iOS" with Apple Health on.
+    Future<RecordingController> recorder(AppSettings settings) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       final location = FakeLocationService();
       final sensors = FakeSensorService();
@@ -196,8 +196,7 @@ void main() {
       container = ProviderContainer(overrides: [
         appDatabaseProvider.overrideWithValue(db),
         appleHealthServiceProvider.overrideWithValue(health),
-        settingsStoreProvider.overrideWithValue(
-            FakeSettingsStore(const AppSettings(saveToAppleHealth: true))),
+        settingsStoreProvider.overrideWithValue(FakeSettingsStore(settings)),
         locationServiceProvider.overrideWithValue(location),
         screenWakeServiceProvider.overrideWithValue(RecordingScreenWakeService()),
         sensorServiceProvider.overrideWithValue(sensors),
@@ -212,15 +211,90 @@ void main() {
             .overrideWithValue(RecordingLocationPowerControl()),
       ]);
       await loadSettings(container);
-      final recording = container.read(recordingProvider.notifier);
+      return container.read(recordingProvider.notifier);
+    }
 
+    Future<int> ride(RecordingController recording) async {
       await recording.start();
+      final id = recording.currentTrackId!;
       // Ride times are stored to the second; a ride needs a time span.
       await Future<void>.delayed(const Duration(milliseconds: 1100));
       await recording.stop();
       await Future<void>.delayed(const Duration(milliseconds: 50));
+      return id;
+    }
 
+    /// Pretends ride [id] (a minute long) stopped [ago].
+    Future<void> stoppedAgo(int id, Duration ago) {
+      final end = DateTime.now().subtract(ago);
+      return (db.update(db.tracks)..where((t) => t.id.equals(id))).write(
+          TracksCompanion(
+              startedAt: Value(end.subtract(const Duration(minutes: 1))),
+              endedAt: Value(end)));
+    }
+
+    test('stopping a ride saves it to Apple Health (iOS, setting on)',
+        () async {
+      final recording = await recorder(const AppSettings(
+          saveToAppleHealth: true, continueRideWithinMinutes: 0));
+      await ride(recording);
       expect(health.saved, hasLength(1));
+    });
+
+    test('a ride that may still be continued is saved once it cannot be',
+        () async {
+      final recording = await recorder(const AppSettings(
+          saveToAppleHealth: true, continueRideWithinMinutes: 30));
+      final id = await ride(recording);
+      expect(health.saved, isEmpty);
+
+      // Launch / back in the foreground, still within the window: waits.
+      await recording.settleStoppedRide();
+      expect(health.saved, isEmpty);
+
+      // The window is over (the timer didn't run: the app was suspended).
+      await stoppedAgo(id, const Duration(minutes: 31));
+      await recording.settleStoppedRide();
+      expect(health.saved, hasLength(1));
+      expect(await db.meta(RecordingController.lastStoppedRideKey), isNull);
+    });
+
+    test('starting a new ride saves the one stopped before at once', () async {
+      final recording = await recorder(const AppSettings(
+          saveToAppleHealth: true, continueRideWithinMinutes: 30));
+      await ride(recording);
+      expect(health.saved, isEmpty);
+      await recording.start(); // not manual: never a continuation
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(health.saved, hasLength(1));
+      await recording.stop();
+    });
+
+    test('a failed deferred save is tried again next time', () async {
+      final recording = await recorder(const AppSettings(
+          saveToAppleHealth: true, continueRideWithinMinutes: 30));
+      final id = await ride(recording);
+      await stoppedAgo(id, const Duration(minutes: 31));
+      health.failWith = 'database locked'; // iPhone locked
+      await recording.settleStoppedRide();
+      expect(health.saved, isEmpty);
+      expect(await db.meta(RecordingController.lastStoppedRideKey), '$id');
+      health.failWith = null;
+      await recording.settleStoppedRide();
+      expect(health.saved, hasLength(1));
+    });
+
+    test('saveIfEnabled reports a failed save', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      container = build();
+      await loadSettings(container);
+      final id = await addRide(db);
+      final exporter = container.read(appleHealthExporterProvider);
+      health.failWith = 'boom';
+      expect(await exporter.saveIfEnabled(id), isFalse);
+      health.failWith = null;
+      expect(await exporter.saveIfEnabled(id), isTrue);
+      expect(await exporter.saveIfEnabled(id), isTrue); // already saved
     });
 
     test('saveIfEnabled never throws, even when saving fails', () async {

@@ -44,6 +44,9 @@ String formatDateTime(DateTime t) {
       '${two(l.hour)}:${two(l.minute)}';
 }
 
+/// `HH:MM` in local time.
+String formatClock(DateTime t) => formatDateTime(t).substring(11);
+
 /// Human-readable byte size, e.g. 27 MB, 1.2 GB.
 String formatBytes(int bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

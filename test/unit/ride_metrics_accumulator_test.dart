@@ -142,6 +142,60 @@ void main() {
     expect(m.distanceMeters, closeTo(9, 0.5));
   });
 
+  group('turning back along the same road', () {
+    // ~1 m east / north at the equator.
+    const m = 0.0000089932;
+    late RideMetrics last;
+    var second = 0;
+    void ride(RideMetricsAccumulator acc, double east, double north) {
+      last = acc.add(sampleAt(t0.add(Duration(seconds: second++)),
+          lat: north * m, lon: east * m, speed: 5));
+    }
+
+    test('an out-and-back counts the way out and the way back', () {
+      // Every point lies on one line: measured against the infinite line
+      // through the start and the newest fix, nothing ever broke the run, and
+      // the ride came to the 100 m between start and finish.
+      final acc = RideMetricsAccumulator();
+      for (var e = 0.0; e <= 1000; e += 10) {
+        ride(acc, e, 0);
+      }
+      for (var e = 990.0; e >= 100; e -= 10) {
+        ride(acc, e, 0);
+      }
+      expect(last.distanceMeters, closeTo(1900, 5));
+    });
+
+    test('a dead end off the route counts both ways', () {
+      final acc = RideMetricsAccumulator();
+      for (var e = 0.0; e <= 500; e += 10) {
+        ride(acc, e, 0);
+      }
+      for (var n = 10.0; n <= 300; n += 10) {
+        ride(acc, 500, n);
+      }
+      for (var n = 290.0; n >= 0; n -= 10) {
+        ride(acc, 500, n);
+      }
+      for (var e = 510.0; e <= 1000; e += 10) {
+        ride(acc, e, 0);
+      }
+      expect(last.distanceMeters, closeTo(1600, 5));
+    });
+
+    test('GPS noise back and forth along the road is not a turn', () {
+      // Slow riding (1 m/s) with the fixes alternately 8 m ahead and behind:
+      // each fix lies 15 m behind the one before it. Counting every step
+      // back as a turn (anything beyond the simplifier's 5 m) added 3-4% to
+      // real rides with noisy GPS.
+      final acc = RideMetricsAccumulator();
+      for (var i = 0; i <= 60; i++) {
+        ride(acc, i + (i.isEven ? 8.0 : -8.0), 0);
+      }
+      expect(last.distanceMeters, closeTo(60, 1));
+    });
+  });
+
   test('reset clears all running totals', () {
     final acc = RideMetricsAccumulator();
     acc.add(sampleAt(t0, lat: 0, lon: 0, speed: 5));

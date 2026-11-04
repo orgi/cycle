@@ -312,4 +312,65 @@ void main() {
       expect(result.first.startedAt.isAfter(result.last.startedAt), isTrue);
     });
   });
+
+  group('continuing a ride', () {
+    final start = DateTime.utc(2026, 10, 29, 8);
+
+    Future<int> ride() async {
+      final id = await db.createTrack(start);
+      for (var i = 0; i < 3; i++) {
+        await db.addPoint(TrackPointsCompanion.insert(
+          trackId: id,
+          time: start.add(Duration(seconds: 10 * i)),
+          latitude: 47 + i / 1000,
+          longitude: 11,
+        ));
+      }
+      await db.finalizeTrack(id,
+          endedAt: start.add(const Duration(minutes: 1)),
+          distanceMeters: 222,
+          durationSeconds: 20,
+          avgSpeedMps: 11,
+          maxSpeedMps: 12);
+      return id;
+    }
+
+    test('lastPoint is the latest by time', () async {
+      final id = await ride();
+      final last = (await db.lastPoint(id))!;
+      expect(last.time.toUtc(), start.add(const Duration(seconds: 20)));
+      expect(await db.lastPoint(id + 1), isNull);
+    });
+
+    test('lastPoint: of two in the same second, the one recorded later',
+        () async {
+      final id = await ride();
+      final t = start.add(const Duration(seconds: 30));
+      for (final lat in [48.0, 49.0]) {
+        await db.addPoint(TrackPointsCompanion.insert(
+            trackId: id, time: t, latitude: lat, longitude: 11));
+      }
+      expect((await db.lastPoint(id))!.latitude, 49.0);
+    });
+
+    test('reopenTrack makes the ride unfinished again, keeping the rest',
+        () async {
+      final id = await ride();
+      final clock = (await db.track(id))!.geometryClock;
+      await db.reopenTrack(id);
+      final t = (await db.track(id))!;
+      expect(t.endedAt, isNull);
+      expect(t.distanceMeters, 222);
+      expect(t.geometryClock, clock); // no edit until it's finished again
+    });
+
+    test('deletePointsAfter drops only later points of that ride', () async {
+      final id = await ride();
+      final other = await ride();
+      await db.deletePointsAfter(id, start.add(const Duration(seconds: 10)));
+      expect(await db.pointsFor(id), hasLength(2));
+      expect(await db.pointsFor(other), hasLength(3));
+    });
+  });
 }
+

@@ -1,0 +1,244 @@
+import 'dart:math' as math;
+
+import 'package:cycle/app.dart';
+import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/models/geo_sample.dart';
+import 'package:cycle/core/services/recording_foreground_service.dart';
+import 'package:cycle/core/services/screen_wake_service.dart';
+import 'package:cycle/features/dashboard/application/keep_screen_on_providers.dart';
+import 'package:cycle/features/dashboard/application/ride_providers.dart';
+import 'package:cycle/features/places/application/ride_places_providers.dart';
+import 'package:cycle/features/sensors/application/sensor_providers.dart';
+import 'package:cycle/features/settings/application/bike_profile_providers.dart';
+import 'package:cycle/features/settings/application/settings_providers.dart';
+import 'package:drift/native.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+import '../test/support/fakes.dart';
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  // The emulator screen is small (320×640): bring a widget fully on screen
+  // before tapping it, not just to the edge where scrollUntilVisible stops.
+  Future<void> tapVisible(WidgetTester tester, Finder f) async {
+    await tester.scrollUntilVisible(f, 100);
+    await tester.ensureVisible(f);
+    await tester.pumpAndSettle();
+    await tester.tap(f);
+    await tester.pumpAndSettle();
+  }
+
+  late FakeLocationService location;
+  late AppDatabase db;
+  late RecordingScreenWakeService wake;
+  late FakeRidePlacesStore places;
+  late ProviderContainer container;
+
+  /// The app on its home screen, with fakes for GPS, sensors and storage.
+  Future<void> launch(WidgetTester tester) async {
+    location = FakeLocationService();
+    final sensors = FakeSensorService();
+    db = AppDatabase(NativeDatabase.memory());
+    wake = RecordingScreenWakeService();
+    places = FakeRidePlacesStore();
+    addTearDown(location.dispose);
+    addTearDown(sensors.dispose);
+    addTearDown(db.close);
+    container = ProviderContainer(overrides: [
+      locationServiceProvider.overrideWithValue(location),
+      sensorServiceProvider.overrideWithValue(sensors),
+      screenWakeServiceProvider.overrideWithValue(wake),
+      appDatabaseProvider.overrideWithValue(db),
+      recordingForegroundServiceProvider
+          .overrideWithValue(const NoopRecordingForegroundService()),
+      settingsStoreProvider.overrideWithValue(FakeSettingsStore()),
+      bikeProfilesStoreProvider
+          .overrideWithValue(FakeBikeProfilesStore(oneBike())),
+      ridePlacesStoreProvider.overrideWithValue(places),
+      placeStopAfterProvider.overrideWithValue(const Duration(seconds: 2)),
+    ]);
+    addTearDown(container.dispose);
+    // As main() does.
+    container.listen(keepScreenOnProvider, (_, _) {});
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const CycleApp(),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  /// A fix [east] metres east of 47 N 11 E, where the place is.
+  Future<void> fixAt(WidgetTester tester, double east) async {
+    location.emit(GeoSample(
+      latitude: 47,
+      longitude: 11 + east / (111195 * math.cos(47 * math.pi / 180)),
+      time: DateTime.now(),
+      speedMps: 5,
+      accuracyMeters: 4,
+    ));
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  bool recording() => container.read(recordingProvider);
+
+  testWidgets(
+      'set up home as a place in Settings, keep the screen on; leaving home '
+      'starts a ride, coming back stops it, starting again by hand continues '
+      'it — and "New ride" makes it a new one', (tester) async {
+    await launch(tester);
+    Future<void> at(double east) => fixAt(tester, east);
+    await at(0);
+
+    // Settings: home as a place, and keep the screen on without a ride
+    // (the tile below it).
+    await tester.tap(find.byKey(const Key('openSettingsButton')));
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.byKey(const Key('placesTile')));
+    await at(0);
+    await tester.tap(find.byKey(const Key('addPlaceButton')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Home'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('placeSave')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("You're here"), findsOneWidget);
+    expect(places.places.single.name, 'Home');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    expect(wake.holds(ScreenWakeService.ownerKeepOn), isFalse);
+    // Right below the places tile: built but offstage, which
+    // scrollUntilVisible's finder never sees.
+    final keepOn =
+        find.byKey(const Key('keepScreenOnTile'), skipOffstage: false);
+    await tester.ensureVisible(keepOn);
+    await tester.pumpAndSettle();
+    await tester.tap(keepOn);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('keepScreenOn_15')));
+    await tester.pumpAndSettle();
+    expect(wake.holds(ScreenWakeService.ownerKeepOn), isTrue);
+    expect(recording(), isFalse);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Waiting at home, then riding off: the ride starts at the edge.
+    await at(5);
+    await at(30);
+    expect(recording(), isFalse);
+    await at(90);
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    expect(find.text('Ride started: you left Home'), findsOneWidget);
+    expect(find.byKey(const Key('rideState_recording')), findsOneWidget);
+
+    // To the end of the street and back the same way, then home: stopped
+    // after the stay.
+    for (var m = 150.0; m <= 1500; m += 150) {
+      await at(m);
+    }
+    for (var m = 1350.0; m >= 150; m -= 150) {
+      await at(m);
+    }
+    await at(20);
+    expect(recording(), isTrue);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(recording(), isFalse);
+    expect(find.text('Ride stopped: you arrived at Home'), findsOneWidget);
+    final rides = await db.allTracks();
+    expect(rides, hasLength(1));
+    expect(rides.single.endedAt, isNotNull);
+    // Both ways count: ~1.4 km out, ~1.5 km back (this came to 450 m while
+    // the distance missed turning back along the same road).
+    expect(rides.single.distanceMeters, greaterThan(2800));
+    // The screen stays on without a ride.
+    expect(wake.holds(ScreenWakeService.ownerKeepOn), isTrue);
+
+    // Starting again by hand, still at home: the ride continues.
+    await at(10);
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    expect(find.textContaining('Continued the ride stopped at'),
+        findsOneWidget);
+    expect(await db.allTracks(), hasLength(1));
+    expect(container.read(recordingProvider.notifier).currentTrackId,
+        rides.single.id);
+
+    // …unless the rider says it's a new ride.
+    await tester.tap(find.byKey(const Key('rideNoticeNewRide')));
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    final now = await db.allTracks();
+    expect(now, hasLength(2));
+    expect(now.firstWhere((t) => t.id == rides.single.id).endedAt,
+        rides.single.endedAt);
+
+    await tester.tap(find.byKey(const Key('rideTimeTile')));
+    await tester.pumpAndSettle();
+    expect(recording(), isFalse);
+  });
+
+  testWidgets(
+      'a place set to pass through: riding through it starts a ride, riding '
+      'back through it stops the ride on the way out', (tester) async {
+    await launch(tester);
+    Future<void> at(double east) => fixAt(tester, east);
+
+    await tester.tap(find.byKey(const Key('openSettingsButton')));
+    await tester.pumpAndSettle();
+    await tapVisible(tester, find.byKey(const Key('placesTile')));
+    await at(0);
+    await tester.tap(find.byKey(const Key('addPlaceButton')));
+    await tester.pumpAndSettle();
+    final passThrough = find.byKey(const Key('placePassThrough'));
+    await tester.ensureVisible(passThrough);
+    await tester.pumpAndSettle();
+    await tester.tap(passThrough);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('placeSave')));
+    await tester.pumpAndSettle();
+    expect(places.places.single.passThrough, isTrue);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('openSettingsButton')), findsOneWidget);
+
+    // Riding up to the corner and through it: the ride starts on the way
+    // out, without stopping there.
+    await at(-500);
+    await at(-30);
+    expect(recording(), isFalse);
+    await at(150);
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    expect(find.text('Ride started: you passed Home'), findsOneWidget);
+
+    // Out and back through it again: stopped on the way out, at once.
+    for (var m = 300.0; m <= 1500; m += 150) {
+      await at(m);
+    }
+    for (var m = 1350.0; m >= 150; m -= 150) {
+      await at(m);
+    }
+    await at(30);
+    expect(recording(), isTrue);
+    await at(-150);
+    await tester.pumpAndSettle();
+    expect(recording(), isFalse);
+    expect(find.text('Ride stopped: you passed Home'), findsOneWidget);
+
+    // Riding on: no new ride from that same exit.
+    await at(-500);
+    await tester.pumpAndSettle();
+    expect(recording(), isFalse);
+    final rides = await db.allTracks();
+    expect(rides, hasLength(1));
+    expect(rides.single.distanceMeters, greaterThan(2800));
+  });
+}
