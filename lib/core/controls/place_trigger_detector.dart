@@ -24,6 +24,14 @@ import 'proximity_hold_detector.dart' show HoldTimerFactory;
 /// is the same as anywhere (on leaving); a both-way point passed during a
 /// ride stops it, and the same exit doesn't start a new one.
 ///
+/// **No place stops a ride in its first [stopGrace]** (10 minutes), counted
+/// from when it started or was continued: on the way out the rider passes
+/// places too — the point at the end of their street, or a big stop place
+/// they need longer than the stay to ride through (200 m across is over a
+/// minute at 20 km/h). Leaving a pass-through place in that time stops
+/// nothing; a stay that would end in it ends when it's over instead, if the
+/// rider is still there (a café five minutes from home still stops the ride).
+///
 /// Only accurate fixes count (`isAccurateEnough`, like the ride itself).
 /// Inside is within the radius; outside is beyond the radius plus
 /// [exitMarginMeters] — in between nothing changes, so a fix jittering on the
@@ -33,9 +41,12 @@ class PlaceTriggerDetector {
     required this.onStart,
     required this.onStop,
     this.stopAfter = const Duration(seconds: 20),
+    this.stopGrace = const Duration(minutes: 10),
     this.exitMarginMeters = 20,
     HoldTimerFactory? timer,
-  }) : _timer = timer ?? Timer.new;
+    DateTime Function()? clock,
+  }) : _timer = timer ?? Timer.new,
+       _clock = clock ?? DateTime.now;
 
   /// A ride should start: the rider has left [place].
   final void Function(RidePlace place) onStart;
@@ -45,8 +56,15 @@ class PlaceTriggerDetector {
   final void Function(RidePlace place) onStop;
 
   final Duration stopAfter;
+
+  /// How long after a ride's start (or continuation) no place stops it.
+  final Duration stopGrace;
   final double exitMarginMeters;
   final HoldTimerFactory _timer;
+  final DateTime Function() _clock;
+
+  /// When the ride now recording was first seen recording; null without one.
+  DateTime? _recordingSince;
 
   /// Place id → whether the rider is inside it. Absent = not known yet.
   final Map<String, bool> _inside = {};
@@ -68,7 +86,12 @@ class PlaceTriggerDetector {
   }) {
     _inside.removeWhere((id, _) => !places.any((p) => p.id == id));
     _enteredRiding.removeWhere((id) => !_inside.containsKey(id));
-    if (!recording) _enteredRiding.clear();
+    if (!recording) {
+      _enteredRiding.clear();
+      _recordingSince = null;
+    } else {
+      _recordingSince ??= _clock();
+    }
     final pending = _pendingPlaceId;
     if (pending != null &&
         (!recording || !places.any((p) => p.id == pending))) {
@@ -76,6 +99,10 @@ class PlaceTriggerDetector {
     }
     if (!isAccurateEnough(sample)) return;
 
+    // What's left of the ride's first minutes, in which no place stops it.
+    final graceLeft = recording
+        ? _recordingSince!.add(stopGrace).difference(_clock())
+        : Duration.zero;
     var started = false, stopped = false;
     for (final place in places) {
       final d = haversineMeters(
@@ -107,7 +134,8 @@ class PlaceTriggerDetector {
         } else if (passed &&
             !stopped &&
             place.passThrough &&
-            place.trigger.stopsRides) {
+            place.trigger.stopsRides &&
+            graceLeft <= Duration.zero) {
           stopped = true;
           _cancelPending();
           onStop(place);
@@ -121,7 +149,7 @@ class PlaceTriggerDetector {
           place.trigger.stopsRides &&
           !stopPending) {
         _pendingPlaceId = place.id;
-        _pendingStop = _timer(stopAfter, () {
+        _pendingStop = _timer(graceLeft > stopAfter ? graceLeft : stopAfter, () {
           _pendingStop = null;
           _pendingPlaceId = null;
           onStop(place);

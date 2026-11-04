@@ -1152,7 +1152,15 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     Starting is on leaving for every place, however the rider got in (passing through
     included), so the option changes nothing for starts — the same exit that stops a ride
     never starts one (`recording` is per fix). Defined that way by the user: start and
-    pass-through stop on leaving, an ordinary stop on entering. Only `isAccurateEnough` fixes;
+    pass-through stop on leaving, an ordinary stop on entering.
+    **No place stops a ride in its first 10 minutes** (0.12.2, `stopGrace` /
+    `placeStopGraceProvider`, counted per detector from the first fix seen recording, so
+    from a start *or* a continuation): two real stops a few minutes into a ride, on the way
+    out — a pass-through point, and a 200 m stop place (up to 400 m across, over a minute
+    at 20 km/h, so the 20 s stay ran out while riding through it). Leaving a pass-through
+    place in that time stops nothing; a stay that would end in it is stretched to its end
+    (the timer is `max(stopAfter, grace left)`), so arriving somewhere close and staying
+    still stops the ride. Only `isAccurateEnough` fixes;
     outside = beyond radius + 20 m (edge band changes nothing). `PlaceTriggerController`
     (watched by the home screen like auto-start, places/setting read per fix) calls the
     ordinary `start()`/`stop()` and posts a `RideNotice` (home-screen snackbar). Leaving

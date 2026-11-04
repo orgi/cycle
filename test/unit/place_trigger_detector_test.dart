@@ -56,6 +56,9 @@ void main() {
     detector = PlaceTriggerDetector(
       onStart: (p) => started.add(p.id),
       onStop: (p) => stopped.add(p.id),
+      // The rules below are those of a ride past its first minutes; those
+      // have their own group.
+      stopGrace: Duration.zero,
       timer: (d, f) {
         final t = _ManualTimer(d, f);
         timers.add(t);
@@ -269,6 +272,79 @@ void main() {
       feed([-100], places: [home, corner], recording: true);
       expect(stopped, ['home']);
       expect(detector.stopPending, isFalse);
+    });
+  });
+
+  group('the first 10 minutes of a ride: no place stops it', () {
+    late DateTime now;
+    final corner = _home.copyWith(passThrough: true);
+    // Big enough to need more than the stay to ride through.
+    final park = _home.copyWith(radiusMeters: 200);
+
+    setUp(() {
+      now = DateTime(2026, 11, 4, 8);
+      detector = PlaceTriggerDetector(
+        onStart: (p) => started.add(p.id),
+        onStop: (p) => stopped.add(p.id),
+        clock: () => now,
+        timer: (d, f) {
+          final t = _ManualTimer(d, f);
+          timers.add(t);
+          return t;
+        },
+      );
+    });
+
+    test('a point passed on the way out stops nothing; on the way back, it '
+        'does', () {
+      feed([-500], places: [corner], recording: true); // the ride starts
+      now = now.add(const Duration(minutes: 3));
+      feed([-30, 200], places: [corner], recording: true);
+      expect(stopped, isEmpty);
+      now = now.add(const Duration(hours: 1));
+      feed([30, -200], places: [corner], recording: true);
+      expect(stopped, ['home']);
+    });
+
+    test('riding through a big stop place on the way out stops nothing', () {
+      feed([-600], places: [park], recording: true);
+      now = now.add(const Duration(minutes: 2));
+      feed([-150], places: [park], recording: true);
+      // The stay can't end before the 10 minutes are over…
+      expect(timers.single.duration, const Duration(minutes: 8));
+      // …and the rider is through long before that.
+      now = now.add(const Duration(seconds: 60));
+      feed([0, 150, 250], places: [park], recording: true);
+      expect(detector.stopPending, isFalse);
+      timers.single.fire();
+      expect(stopped, isEmpty);
+    });
+
+    test('arriving in them and staying stops the ride once they are over', () {
+      feed([-600], places: [park], recording: true);
+      now = now.add(const Duration(minutes: 5));
+      feed([-100], places: [park], recording: true);
+      expect(timers.single.duration, const Duration(minutes: 5));
+      timers.single.fire();
+      expect(stopped, ['home']);
+    });
+
+    test('after them, the stay is the usual 20 seconds', () {
+      feed([-600], places: [park], recording: true);
+      now = now.add(const Duration(minutes: 12));
+      feed([-100], places: [park], recording: true);
+      expect(timers.single.duration, const Duration(seconds: 20));
+    });
+
+    test('they count from each start: a ride stopped and started (or '
+        'continued) again has them again', () {
+      feed([-500], places: [corner], recording: true);
+      now = now.add(const Duration(minutes: 30));
+      feed([-500], places: [corner]); // stopped by hand
+      feed([-500], places: [corner], recording: true); // and again
+      now = now.add(const Duration(minutes: 1));
+      feed([-30, 200], places: [corner], recording: true);
+      expect(stopped, isEmpty);
     });
   });
 

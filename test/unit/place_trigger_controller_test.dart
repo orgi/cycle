@@ -38,6 +38,7 @@ void main() {
   Future<void> build({
     AppSettings settings = const AppSettings(),
     RidePlace place = _home,
+    Duration stopGrace = Duration.zero,
   }) async {
     location = FakeLocationService();
     sensors = FakeSensorService();
@@ -50,6 +51,7 @@ void main() {
         placeStopAfterProvider.overrideWithValue(
           const Duration(milliseconds: 100),
         ),
+        placeStopGraceProvider.overrideWithValue(stopGrace),
         locationServiceProvider.overrideWithValue(location),
         screenWakeServiceProvider.overrideWithValue(
           RecordingScreenWakeService(),
@@ -112,6 +114,20 @@ void main() {
     expect(container.read(recordingProvider), isFalse);
     expect(notices.last!.message, 'Ride stopped: you arrived at Home');
     expect(await db.allTracks(), hasLength(1));
+  });
+
+  test('back home in the ride\'s first minutes: stopped once they are over',
+      () async {
+    await build(stopGrace: const Duration(milliseconds: 500));
+    await at(0);
+    await at(150);
+    expect(container.read(recordingProvider), isTrue);
+    await at(20); // back right away, and staying
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(container.read(recordingProvider), isTrue); // past the stay…
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    expect(container.read(recordingProvider), isFalse); // …and the grace
+    expect(notices.last!.message, 'Ride stopped: you arrived at Home');
   });
 
   test('passing a point starts a ride, passing it again stops it — no stay',

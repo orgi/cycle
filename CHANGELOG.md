@@ -8,6 +8,15 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-04
+
+### Fixed
+- Start/stop places stopped a ride a few minutes after it started, on the way out: at a
+  pass-through point, and at a big stop place that takes longer than the 20-second stay to
+  ride through (200 m across is over a minute at 20 km/h). No place stops a ride in its
+  first 10 minutes now, counted from its start or continuation. Arriving at a stop place
+  in that time and staying stops the ride once the 10 minutes are over.
+
 ## [0.12.1] - 2026-11-04
 
 ### Changed
@@ -733,7 +742,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/orgi/cycle/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/orgi/cycle/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/orgi/cycle/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/orgi/cycle/compare/v0.10.1...v0.11.0

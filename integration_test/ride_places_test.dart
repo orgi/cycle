@@ -60,6 +60,8 @@ void main() {
           .overrideWithValue(FakeBikeProfilesStore(oneBike())),
       ridePlacesStoreProvider.overrideWithValue(places),
       placeStopAfterProvider.overrideWithValue(const Duration(seconds: 2)),
+      // No place stops a ride in its first minutes (10 in the app).
+      placeStopGraceProvider.overrideWithValue(const Duration(seconds: 3)),
     ]);
     addTearDown(container.dispose);
     // As main() does.
@@ -184,8 +186,9 @@ void main() {
   });
 
   testWidgets(
-      'a place set to pass through: riding through it starts a ride, riding '
-      'back through it stops the ride on the way out', (tester) async {
+      'a place set to pass through: riding through it starts a ride; back '
+      'through it right away stops nothing (the first minutes), later it '
+      'stops the ride on the way out', (tester) async {
     await launch(tester);
     Future<void> at(double east) => fixAt(tester, east);
 
@@ -219,7 +222,19 @@ void main() {
     expect(recording(), isTrue);
     expect(find.text('Ride started: you passed Home'), findsOneWidget);
 
-    // Out and back through it again: stopped on the way out, at once.
+    // Turning round at once, back through it: in the ride's first minutes,
+    // so not stopped.
+    await at(30);
+    await at(-150);
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    await at(-30);
+    await at(150);
+    await tester.pumpAndSettle();
+    expect(recording(), isTrue);
+    await tester.pump(const Duration(seconds: 3));
+
+    // Out and back through it again later: stopped on the way out, at once.
     for (var m = 300.0; m <= 1500; m += 150) {
       await at(m);
     }

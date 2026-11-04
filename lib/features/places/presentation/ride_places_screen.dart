@@ -50,7 +50,10 @@ class RidePlacesScreen extends ConsumerWidget {
               '${ref.watch(placeStopAfterProvider).inSeconds} seconds — '
               "riding past doesn't stop it. A stop place set to pass through "
               '— a point on the way, like the end of your street — stops the '
-              "ride once you've passed through it instead. Starting needs "
+              "ride once you've passed through it instead. No place stops a "
+              'ride in its first '
+              '${ref.watch(placeStopGraceProvider).inMinutes} minutes, so the '
+              "places you pass on the way out don't end it. Starting needs "
               'Radl open with GPS; stopping always works during a ride.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
