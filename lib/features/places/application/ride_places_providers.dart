@@ -63,6 +63,12 @@ final placeStopAfterProvider = Provider<Duration>(
   (ref) => const Duration(seconds: 20),
 );
 
+/// How long after a ride's start (or continuation) no place stops it — places
+/// on the way out don't end it. Overridable so tests needn't wait.
+final placeStopGraceProvider = Provider<Duration>(
+  (ref) => const Duration(minutes: 10),
+);
+
 /// Starts and stops rides at the places (see [PlaceTriggerDetector]) and says
 /// so on the home screen ([rideNoticeProvider]). Like auto-start it uses the
 /// shared GPS stream, so it only sees fixes while the app is in the
@@ -84,6 +90,7 @@ class PlaceTriggerController extends Notifier<bool> {
       onStart: _start,
       onStop: _stop,
       stopAfter: ref.watch(placeStopAfterProvider),
+      stopGrace: ref.watch(placeStopGraceProvider),
     );
     final sub = ref.watch(locationServiceProvider).positions().listen((sample) {
       final places = ref.read(settingsProvider).placesEnabled
