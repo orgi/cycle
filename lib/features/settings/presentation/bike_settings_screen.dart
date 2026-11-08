@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/models/bike_settings.dart';
 import '../../../core/models/home_layout.dart';
+import '../../chains/presentation/chains_screen.dart';
 import '../../map/application/home_layout_providers.dart';
 import '../application/bike_profile_providers.dart';
 import 'widgets/bike_color_dot.dart';
@@ -24,8 +25,8 @@ String bikeSettingsSummary(BikeSettings s) => [
     ].join(' · ');
 
 /// Everything that belongs to one bike rather than to the rider or phone:
-/// which sensors it uses, its wheel size, auto-pause and auto-start, and the
-/// home screen's tiles while riding it. The
+/// which sensors it uses, its wheel size, its chains, auto-pause and
+/// auto-start, and the home screen's tiles while riding it. The
 /// active bike's settings apply while riding; editing them syncs to the same
 /// bike on other phones. `/bike-profiles/:id`.
 class BikeSettingsScreen extends ConsumerWidget {
@@ -159,6 +160,8 @@ class BikeSettingsScreen extends ConsumerWidget {
               onTap: () =>
                   save(settings.copyWith(homeLayout: HomeLayout.standard)),
             ),
+          const SettingsHeader('Chain'),
+          ChainsTile(key: const Key('bikeChainsTile'), bikeId: bike.id),
         ],
       ),
     );

@@ -12,6 +12,7 @@ import '../../../core/sync/nextcloud_login_flow.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../../core/sync/webdav_client.dart';
 import '../../backup/application/backup_providers.dart';
+import '../../chains/application/chain_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
@@ -48,6 +49,8 @@ final syncServiceProvider = Provider<SyncService>((ref) {
         ref.read(sensorCatalogProvider.notifier).ensureLoaded(),
     saveSensors: (c) =>
         ref.read(sensorCatalogProvider.notifier).replaceFromSync(c),
+    loadChains: () => ref.read(chainLogProvider.notifier).ensureLoaded(),
+    saveChains: (c) => ref.read(chainLogProvider.notifier).replaceFromSync(c),
     clientFactory: ref.watch(webDavClientFactoryProvider),
   );
 });

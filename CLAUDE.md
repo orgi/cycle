@@ -465,6 +465,12 @@ When installing the app using adb, NEVER uninstall the existing app to avoid dat
     GPX transfers. List and sync read `SavedRouteInfo` (no GPX column — they're often several
     hundred KB each); the GPX is loaded by id only to follow or upload one.
     Backup import also adds saved routes the phone doesn't know (never revives a deleted one).
+  * **Chains** (0.13.0) travel **inside the profiles file** (`ProfilesDoc.chains`, a
+    `ChainLog`, key `chains`, written only when non-empty — an older app ignores it and keeps
+    writing its file without it, which loses nothing since every phone merges all files).
+    Loaded/saved through `SyncService.loadChains/saveChains`; `ChainLogController.replaceFromSync`
+    **merges** the result over the current log (an edit made during the round survives).
+    A chain's `bikeId` is read through the bikes' aliases like a ride's. See "Chains" below.
   * Tests: `test/support/fake_webdav_server.dart` (real sockets, ETag/If-Match) drives
     multi-phone convergence (`sync_service_test.dart`), widget tests and the emulator GUI test
     (`integration_test/sync_test.dart`). Widget tests must set `HttpOverrides.global = null` —
@@ -1235,6 +1241,51 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
   the time of death (±1 sample). The map screen announces an unseen shutdown result once
   (`unseenShutdownResultProvider`, then a `seen` line). On iOS the levels are 5 % steps, so the
   **runtime** is the reliable number and %/h is only shown from 10 min on.
+
+* **Chains** (0.13.0; `lib/features/chains/`, `lib/core/models/chain_log.dart`,
+  `lib/core/metrics/chain_distance.dart` + `chain_wax_stats.dart`, all pure + unit-tested).
+  Per bike: chains (name, `type`, `startMeters` ridden before, `remindAfterMeters`, `used`)
+  and a log of `ChainEvent`s — `waxed` (with an optional free-text `wax`) or `mounted` (put
+  on the bike) — each with a time the rider can correct. `/bike-profiles/:id/chains`
+  (`ChainsScreen`; tiles in Settings → Bikes and at the end of the bike's settings) and
+  `/chain-stats?bike=` (`ChainStatsScreen`).
+  * **Stored in prefs** (`bike.chains`, `SharedPrefsChainLogStore`, next to the bike
+    profiles — not the ride DB, no schema bump), synced with the profiles (see sync above).
+    Every chain and every entry is one record, newest `clock` wins as a whole (a removal
+    beats a same-clock live copy); deletions are markers. `ChainLogController._stamp` is
+    strictly increasing so two quick edits never tie.
+  * **Distances are derived, never stored.** `attributeRides`: a ride counts for the chain
+    of its bike (resolved through aliases) **put on last before the ride started**; rides
+    with no bike or before any chain count for none; only finished, non-trashed rides
+    (`chainRidesOf`). Total = `startMeters` + those rides; "since waxing" = those after the
+    chain's last waxing (never waxed: all of them). So a recalculated, reassigned, deleted
+    or synced ride counts at once — don't add per-ride counters. **A deleted chain keeps the
+    bike for the time it was on** (its mount events stay in the timeline), otherwise its
+    rides would move to the chain before it; deleting a wrong *mount entry* is how a wrong
+    swap is undone.
+  * **Wax stats** (`waxStints`): each waxing's distance = the chain's rides after it and up
+    to its next waxing (the last one runs on). `WaxSummary.avgMetersPerWaxing` averages
+    only *finished* waxings that were ridden (a redo before riding isn't one). Grouped by
+    wax / chain type ignoring case (`ChainLog.waxKey`), named as spelled last. **Used
+    chains** (`Chain.used`: ridden before, e.g. oiled) keep their distance and reminder but
+    are left out of every sum and average on the stats screen.
+  * **Reminder:** `RecordingController.stop()` → after finalising, unawaited
+    `remindChainCheckAfterRide` (never throws) → `dueChainCheck` for the ride's bike's
+    chain on the bike → a `RideNotice(reminder: true, actionRoute: …/chains)`. The home
+    screen shows notices through `RideNoticePresenter`
+    (`lib/features/dashboard/presentation/`): a reminder queues behind a notice showing,
+    and one posted after it (a place's "Ride stopped" comes right after the stop) doesn't
+    drop it — it shows again afterwards. **Flutter 3.44 snackbars with an action persist**
+    (`SnackBar.persist` defaults to `action != null`); the reminder relies on that on
+    purpose and is dropped when the next ride starts (`dismissReminder`, from the map
+    screen's `recordingProvider` listener) so it never covers the stats while riding. The
+    "NEW RIDE" notice persists too, since it has an action.
+  * Tests: unit (`chain_log_test`, `chain_distance_test`, `chain_wax_stats_test`,
+    `chain_log_controller_test` incl. the reminder after a stop, a multi-phone case in
+    `sync_service_test` — mutation-checked), widget (`chains_screen_test`,
+    `chain_stats_screen_test`, `ride_notice_presenter_test`), GUI
+    `integration_test/chains_test.dart` (add a chain in Settings, wax it, ride, the reminder
+    on stop opens the chains and the stats).
 
 ## Known gotchas
 

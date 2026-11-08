@@ -33,6 +33,11 @@ String formatSpeed(double kmh, UnitSystem units) =>
 String formatDistance(double km, UnitSystem units) =>
     distanceInUnits(km, units).toStringAsFixed(2);
 
+/// A distance in metres as whole km/mi with its unit, e.g. "1234 km" — for
+/// totals where decimals are noise (a chain's distance).
+String formatWholeDistance(double meters, UnitSystem units) =>
+    '${distanceInUnits(meters / 1000, units).round()} ${units.distanceLabel}';
+
 /// `YYYY-MM-DD` in local time.
 String formatDate(DateTime t) => formatDateTime(t).substring(0, 10);
 

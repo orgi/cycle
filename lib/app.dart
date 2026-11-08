@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'core/theme.dart';
 import 'features/backup/presentation/backup_screen.dart';
 import 'features/battery_test/presentation/battery_test_screen.dart';
+import 'features/chains/presentation/chain_stats_screen.dart';
+import 'features/chains/presentation/chains_screen.dart';
 import 'features/settings/application/settings_providers.dart';
 import 'features/map/presentation/manage_maps_screen.dart';
 import 'features/map/presentation/map_screen.dart';
@@ -60,6 +62,16 @@ final GoRouter appRouter = GoRouter(
       path: '/bike-profiles/:id',
       builder: (context, state) =>
           BikeSettingsScreen(bikeId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/bike-profiles/:id/chains',
+      builder: (context, state) =>
+          ChainsScreen(bikeId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/chain-stats',
+      builder: (context, state) =>
+          ChainStatsScreen(bikeId: state.uri.queryParameters['bike']),
     ),
     GoRoute(
       path: '/classify-rides',
