@@ -6,6 +6,7 @@ import '../../../core/app_version.dart';
 import '../../../core/services/apple_health_service.dart';
 import '../../../core/services/hardware_button_service.dart';
 import '../../../core/services/settings/app_settings.dart';
+import '../../chains/presentation/chains_screen.dart';
 import '../../dashboard/application/ride_providers.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../map/presentation/osm_attribution.dart';
@@ -99,6 +100,12 @@ class SettingsScreen extends ConsumerWidget {
                         ref.watch(activeBikeSettingsProvider))),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.push('/bike-profiles/${active.id}'),
+                  ),
+                if (active != null)
+                  ChainsTile(
+                    key: const Key('activeBikeChainsTile'),
+                    bikeId: active.id,
+                    title: 'Chains for ${active.name}',
                   ),
               ],
             );

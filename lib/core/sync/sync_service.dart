@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../db/database.dart';
+import '../models/chain_log.dart';
 import '../sensors/sensor_catalog.dart';
 import '../services/backup_service.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
@@ -79,12 +80,16 @@ class SyncService {
     required this.saveProfiles,
     Future<SensorCatalog> Function()? loadSensors,
     Future<void> Function(SensorCatalog)? saveSensors,
+    Future<ChainLog> Function()? loadChains,
+    Future<void> Function(ChainLog)? saveChains,
     WebDavClientFactory? clientFactory,
     this.probeTimeout = const Duration(seconds: 3),
   })  : _db = db,
         _store = LocalRideStore(db),
         loadSensors = loadSensors ?? (() async => SensorCatalog.empty),
         saveSensors = saveSensors ?? ((_) async {}),
+        loadChains = loadChains ?? (() async => ChainLog.empty),
+        saveChains = saveChains ?? ((_) async {}),
         _clientFactory = clientFactory ?? _defaultClient;
 
   // The app's former name. Kept on purpose: renaming the folder would split
@@ -107,6 +112,10 @@ class SyncService {
   /// The sensor catalog travels in the same profiles file.
   final Future<SensorCatalog> Function() loadSensors;
   final Future<void> Function(SensorCatalog) saveSensors;
+
+  /// The bikes' chains and waxing log, synced inside the profiles file.
+  final Future<ChainLog> Function() loadChains;
+  final Future<void> Function(ChainLog) saveChains;
   final WebDavClientFactory _clientFactory;
   final Duration probeTimeout;
 
@@ -343,7 +352,8 @@ class SyncService {
     }
     final localState = await loadProfiles();
     final localSensors = await loadSensors();
-    var mine = ProfilesDoc.of(localState, localSensors);
+    final localChains = await loadChains();
+    var mine = ProfilesDoc.of(localState, localSensors, localChains);
     final others = remote.entries.where((e) => e.key != ownName).map((e) => e.value);
 
     // A fresh install's untouched "Bike 1" would otherwise sit next to the
@@ -355,7 +365,11 @@ class SyncService {
         localState.deleted.isEmpty &&
         others.any((d) => d.profiles.isNotEmpty) &&
         !rides.values.any((r) => r.doc.bikeProfileId == localState.profiles.single.id)) {
-      mine = ProfilesDoc(profiles: const {}, deleted: const {}, sensors: localSensors);
+      mine = ProfilesDoc(
+          profiles: const {},
+          deleted: const {},
+          sensors: localSensors,
+          chains: localChains);
     }
 
     var merged = mine;
@@ -365,6 +379,7 @@ class SyncService {
     final next = merged.applyTo(localState);
     if (next != localState && next.profiles.isNotEmpty) await saveProfiles(next);
     if (merged.sensors != localSensors) await saveSensors(merged.sensors);
+    if (merged.chains != localChains) await saveChains(merged.chains);
     if (remote[ownName]?.signature != merged.signature) {
       await client.put('$_profilesDir/$ownName', merged.encode(),
           contentType: 'application/json');

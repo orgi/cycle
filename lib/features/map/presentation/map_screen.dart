@@ -26,6 +26,7 @@ import '../../battery_test/presentation/battery_test_screen.dart';
 import '../../dashboard/application/auto_start_providers.dart';
 import '../../dashboard/application/keep_screen_on_providers.dart';
 import '../../dashboard/application/ride_providers.dart';
+import '../../dashboard/presentation/ride_notice_presenter.dart';
 import '../../places/application/ride_places_providers.dart';
 import '../../tracks/application/oruxmaps_import_service.dart';
 import '../../tracks/application/oruxmaps_providers.dart';
@@ -89,6 +90,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   /// The "hand over the screen again to stop" countdown, while it shows.
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _stopArmedSnack;
+
+  /// Ride notices as snackbars (a reminder isn't dropped by a newer one).
+  late final _notices = RideNoticePresenter(
+    onNewRide: () =>
+        ref.read(recordingProvider.notifier).startNewRideInstead(),
+    onOpen: (route) => context.push(route),
+  );
   StreamSubscription<Object>? _manualMoveSub;
   MapModel? _manualMoveModel;
 
@@ -540,27 +548,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
     ref.watch(autoStartControllerProvider);
     ref.watch(placeTriggerControllerProvider);
     ref.watch(keepScreenOnProvider);
-    // A ride a place started/stopped, or a manual start that continued the
-    // last ride (offering a new ride instead).
+    // A ride a place started/stopped, a manual start that continued the
+    // last ride (offering a new ride instead), or the chain check due after
+    // a ride.
     ref.listen(rideNoticeProvider, (_, notice) {
-      if (notice == null) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          key: const Key('rideNoticeSnack'),
-          duration: const Duration(seconds: 8),
-          behavior: SnackBarBehavior.floating,
-          content: Text(notice.message),
-          action: notice.offerNewRide
-              ? SnackBarAction(
-                  key: const Key('rideNoticeNewRide'),
-                  label: 'NEW RIDE',
-                  onPressed: () => ref
-                      .read(recordingProvider.notifier)
-                      .startNewRideInstead(),
-                )
-              : null,
-        ));
+      if (notice != null) _notices.show(ScaffoldMessenger.of(context), notice);
+    });
+    // The chain reminder stays until dismissed — or the next ride starts.
+    ref.listen(recordingProvider, (was, recording) {
+      if (recording && was != true) {
+        _notices.dismissReminder(ScaffoldMessenger.of(context));
+      }
     });
     // The first hold of a stop by the hand over the screen: how long the
     // second may take (the screen is dark while covered, so this shows in

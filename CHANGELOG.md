@@ -8,6 +8,26 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-08
+
+### Added
+- Chains, per bike (Settings → Bikes → "Chains for …", or at the end of a bike's
+  settings): add the chains you ride on it — name, type (e.g. KMC X11SL) and how far each
+  was ridden before — and log which one is on the bike and when each was waxed, with which
+  wax. Every ride on the bike counts for the chain that was on it, so each chain shows how
+  far it has gone in total and since its last waxing. Rides recalculated, moved to another
+  bike, deleted or synced in from another phone count right away. A log entry can be
+  changed (date, time, wax) or deleted, with Undo.
+- A reminder to check the chain: each chain can have a distance (since waxing) after which
+  stopping a ride shows "Check the chain: … since waxing" with a CHAINS button. It stays
+  until you tap it, swipe it away or start the next ride. A new chain copies the bike's
+  other chains' distance; the first one starts at 300 km. Empty = no reminder.
+- Chain stats (the chart button on the chains screen): per bike, per wax and per chain
+  type, for all bikes or one — how many waxings, how far a waxing lasts on average, and
+  the distance ridden. A chain marked "Used chain" (ridden before, e.g. oiled) still counts
+  its distance and reminds you, but is left out of the stats.
+- Chains and their log sync between phones, inside the bike profiles.
+
 ## [0.12.2] - 2026-11-04
 
 ### Fixed
@@ -742,7 +762,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/orgi/cycle/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/orgi/cycle/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/orgi/cycle/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/orgi/cycle/compare/v0.11.0...v0.12.0

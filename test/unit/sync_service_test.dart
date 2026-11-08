@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:cycle/core/db/database.dart';
+import 'package:cycle/core/metrics/chain_distance.dart';
 import 'package:cycle/core/models/bike_profile.dart';
+import 'package:cycle/core/models/chain_log.dart';
 import 'package:cycle/core/sensors/gatt.dart';
 import 'package:cycle/core/sensors/sensor_catalog.dart';
 import 'package:cycle/core/services/backup_service.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
 import 'package:cycle/core/services/sync/sync_store.dart';
+import 'package:cycle/core/sync/profile_sync.dart';
 import 'package:cycle/core/sync/ride_doc.dart';
 import 'package:cycle/core/sync/sync_service.dart';
 import 'package:cycle/core/sync/webdav_client.dart';
@@ -32,6 +35,8 @@ class Phone {
       saveProfiles: (s) async => profiles = s,
       loadSensors: () async => sensors,
       saveSensors: (c) async => sensors = c,
+      loadChains: () async => chains,
+      saveChains: (c) async => chains = c,
       probeTimeout: const Duration(seconds: 2),
     );
   }
@@ -41,6 +46,7 @@ class Phone {
   late final BackupService backups;
   late final SyncService sync;
   SensorCatalog sensors = SensorCatalog.empty;
+  ChainLog chains = ChainLog.empty;
   BikeProfilesState profiles = const BikeProfilesState(
     profiles: [BikeProfile(id: 'seed', name: 'Bike 1', colorArgb: 1)],
     activeId: 'seed',
@@ -448,6 +454,58 @@ void main() {
       expect(road.sensorKeys, {'hrm-pro:123456', 'spd-77'});
     }
     expect(b.sensors['hrm-pro:123456']!.address, 'AA:BB:CC:00:00:01');
+  });
+
+  test('chains and their log reach the other phone; edits on both phones '
+      'converge, on the merged bike', () async {
+    final a = newPhone(), b = newPhone();
+    a.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: 'road', name: 'Road', colorArgb: 1, clock: '000000000000005@a'),
+    ], activeId: 'road');
+    // The same bike, created separately on B: merged into A's id.
+    b.profiles = const BikeProfilesState(profiles: [
+      BikeProfile(id: 'road2', name: 'Road', colorArgb: 2, clock: '000000000000004@b'),
+    ], activeId: 'road2');
+    final mounted = DateTime(2026, 5, 1);
+    a.chains = ChainLog(
+      chains: const {
+        'c1': Chain(id: 'c1', bikeId: 'road', name: 'Chain A',
+            remindAfterMeters: 300000, clock: '000000000000006@chain'),
+      },
+      events: {
+        'e1': ChainEvent(id: 'e1', chainId: 'c1', kind: ChainEventKind.mounted,
+            at: mounted, clock: '000000000000006@chain'),
+      },
+    );
+    await a.sync.sync(config);
+    await b.sync.sync(config);
+    expect(b.chains, a.chains);
+
+    // Meanwhile: A renames the chain, B logs a waxing and adds a spare.
+    a.chains = a.chains.putChain(a.chains.chains['c1']!
+        .copyWith(name: 'Blue', clock: '000000000000009@chain'));
+    b.chains = b.chains
+        .putEvent(ChainEvent(id: 'e2', chainId: 'c1', kind: ChainEventKind.waxed,
+            at: DateTime(2026, 5, 20), clock: '000000000000008@chain'))
+        .putChain(const Chain(id: 'c2', bikeId: 'road2', name: 'Spare',
+            clock: '000000000000008@chain'));
+    for (final p in [a, b, a]) {
+      await p.sync.sync(config);
+    }
+    expect(b.chains, a.chains);
+    expect(a.chains.chains['c1']!.name, 'Blue');
+    expect(a.chains.events.keys, unorderedEquals(['e1', 'e2']));
+
+    // B's bike id is an alias now: its chain and its rides count on 'road'.
+    String? resolve(String? id) => ProfilesDoc.resolve(a.profiles.aliases, id);
+    expect(a.chains.chainsOf('road', resolveBike: resolve).map((c) => c.name),
+        ['Blue', 'Spare']);
+    final stats = computeChainStats(a.chains, [
+      ChainRide(bikeId: 'road2', startedAt: DateTime(2026, 5, 10), meters: 40000),
+      ChainRide(bikeId: 'road', startedAt: DateTime(2026, 5, 25), meters: 30000),
+    ], resolveBike: resolve);
+    expect(stats['c1']!.totalMeters, 70000);
+    expect(stats['c1']!.sinceWaxMeters, 30000);
   });
 
   group('saved routes', () {

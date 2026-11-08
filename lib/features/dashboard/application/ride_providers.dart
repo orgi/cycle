@@ -27,6 +27,7 @@ import '../../../core/services/screen_wake_service.dart';
 import '../../../core/services/simulated_ride_location_service.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/gps_accuracy_filter.dart';
+import '../../chains/application/chain_providers.dart';
 import '../../health/application/apple_health_providers.dart';
 import '../../sensors/application/sensor_providers.dart';
 import '../../settings/application/bike_profile_providers.dart';
@@ -131,14 +132,30 @@ final continueFixWaitProvider =
     Provider<Duration>((ref) => const Duration(seconds: 15));
 
 /// A message about a ride for the home screen to show once: a ride a place
-/// started or stopped, or a manual start that continued the last ride.
+/// started or stopped, a manual start that continued the last ride, or the
+/// chain check due after a ride.
 class RideNotice {
-  const RideNotice(this.message, {this.offerNewRide = false});
+  const RideNotice(
+    this.message, {
+    this.offerNewRide = false,
+    this.actionLabel,
+    this.actionRoute,
+    this.reminder = false,
+  });
   final String message;
 
   /// Offers "New ride", which undoes a continuation
   /// ([RecordingController.startNewRideInstead]).
   final bool offerNewRide;
+
+  /// An action that opens [actionRoute] (e.g. the bike's chains).
+  final String? actionLabel;
+  final String? actionRoute;
+
+  /// A reminder (the chain check): it waits behind a notice already showing
+  /// and isn't dropped by one that comes after it — it shows again after
+  /// that one.
+  final bool reminder;
 }
 
 /// The latest [RideNotice], or null. Each notice is a new object, so the same
@@ -399,6 +416,8 @@ class RecordingController extends Notifier<bool> {
       // can't be continued any more.
       await ref.read(appDatabaseProvider).setMeta(lastStoppedRideKey, '$id');
       unawaited(settleStoppedRide());
+      // Time to check the chain? Shown on the home screen, never in the way.
+      unawaited(remindChainCheckAfterRide(ref, id));
     }
     await ref.read(recordingForegroundServiceProvider).stop();
     // No ride: the GPS request may now be dropped whenever the app goes to the

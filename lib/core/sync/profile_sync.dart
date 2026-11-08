@@ -2,21 +2,23 @@ import 'dart:convert';
 
 import '../models/bike_profile.dart';
 import '../models/bike_settings.dart';
+import '../models/chain_log.dart';
 import '../sensors/sensor_catalog.dart';
 import '../services/bike_profiles/bike_profiles_state.dart';
 import 'sync_clock.dart';
 
 /// The synced part of the bike profiles: names/colours, each bike's sensor
 /// choice (by sensor name) and its settings (wheel size, auto-pause,
-/// auto-start), each with its own clock; deletions; merge aliases; and the
-/// [sensors] catalog. The active profile and this phone's sensor *ids*
-/// stay local.
+/// auto-start), each with its own clock; deletions; merge aliases; the
+/// [sensors] catalog; and the bikes' [chains] with their waxing log. The
+/// active profile and this phone's sensor *ids* stay local.
 class ProfilesDoc {
   const ProfilesDoc({
     required this.profiles,
     required this.deleted,
     this.aliases = const {},
     this.sensors = SensorCatalog.empty,
+    this.chains = ChainLog.empty,
   });
 
   final Map<String, BikeProfile> profiles;
@@ -27,13 +29,19 @@ class ProfilesDoc {
 
   final SensorCatalog sensors;
 
+  /// Every bike's chains and their log. A chain names its bike by id, read
+  /// through [aliases] like a ride's.
+  final ChainLog chains;
+
   factory ProfilesDoc.of(BikeProfilesState s,
-          [SensorCatalog sensors = SensorCatalog.empty]) =>
+          [SensorCatalog sensors = SensorCatalog.empty,
+          ChainLog chains = ChainLog.empty]) =>
       ProfilesDoc(
         profiles: {for (final p in s.profiles) p.id: p},
         deleted: s.deleted,
         aliases: s.aliases,
         sensors: sensors,
+        chains: chains,
       );
 
   /// Newest edit wins per profile; a deletion wins over edits older than it.
@@ -96,6 +104,7 @@ class ProfilesDoc {
       deleted: deleted,
       aliases: aliases,
       sensors: SensorCatalog.merge(a.sensors, b.sensors),
+      chains: ChainLog.merge(a.chains, b.chains),
     );
   }
 
@@ -218,6 +227,7 @@ class ProfilesDoc {
       for (final id in del) '$id=${deleted[id]}',
       for (final id in (aliases.keys.toList()..sort())) '$id>${aliases[id]}',
       sensors.signature,
+      chains.signature,
     ]);
   }
 
@@ -237,6 +247,10 @@ class ProfilesDoc {
             },
         ],
         'sensors': sensors.toJson(),
+        // An older app ignores this and keeps writing its file without it;
+        // nothing is lost, every phone merges all the files.
+        if (chains.chains.isNotEmpty || chains.events.isNotEmpty)
+          'chains': chains.toJson(),
         'deleted': deleted,
         'aliases': aliases,
       }));
@@ -263,6 +277,7 @@ class ProfilesDoc {
           ),
       },
       sensors: SensorCatalog.fromJson(j['sensors'] as List?),
+      chains: ChainLog.fromJson(j['chains']),
       deleted: {
         for (final e in ((j['deleted'] as Map?) ?? const {}).entries)
           e.key as String: e.value as String,
