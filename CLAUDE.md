@@ -1419,6 +1419,13 @@ On each release:
    the release-key certificate before `adb install -r`; iPhones get the tag's CI `.ipa`
    (artifacts expire after 30 days — wait for CI to finish before installing a fresh tag).
 
+**Always delete a feature branch once its PR is merged**, on GitHub and locally:
+`gh pr merge <n> --merge --delete-branch` (or `git push origin --delete <branch>`), then
+`git checkout main && git pull --ff-only && git branch -d <branch>` and
+`git fetch --prune`. Nothing is lost: the merge commit keeps the branch's commits on `main`,
+and release tags (`vX.Y.Z`) stay valid without the branch. Use `-d`, not `-D`, so git
+refuses to drop a branch that isn't fully merged.
+
 Keep `CHANGELOG.md` in [Keep a Changelog] form. History note: builds `0.1.0+2` … `0.1.0+2048`
 added features while only the build number went up; they were rolled up into **0.2.0** (+2049).
 Don't repeat that.
