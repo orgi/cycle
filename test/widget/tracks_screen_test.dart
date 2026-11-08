@@ -68,12 +68,11 @@ void main() {
     await db.close();
   });
 
-  testWidgets('track detail shows stats, route and elevation', (tester) async {
+  testWidgets('track detail: stats, map and elevation in tabs; no swiping '
+      'between them', (tester) async {
     final (db, id) = await _seed();
     addTearDown(db.close);
 
-    // Tall surface so the whole (scrolling) detail list is built, including the
-    // elevation section near the bottom.
     tester.view.physicalSize = const Size(1000, 2200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -100,11 +99,60 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Stats first: the numbers, no map.
     expect(find.text('12.00'), findsOneWidget); // distance km
     expect(find.text('0:30:00'), findsOneWidget); // duration
-    expect(find.textContaining('MAP'), findsOneWidget);
+    expect(find.byType(RideMap), findsNothing);
+
+    // A sideways drag doesn't switch tabs (it would steal the map's pans).
+    await tester.fling(find.text('12.00'), const Offset(-600, 0), 2000);
+    await tester.pumpAndSettle();
+    expect(find.text('12.00'), findsOneWidget);
+    expect(find.byType(RideMap), findsNothing);
+
+    // The map has its own tab, the whole of it.
+    await tester.tap(find.byKey(const Key('rideTabMap')));
+    await tester.pumpAndSettle();
     expect(find.byType(RideMap), findsOneWidget);
-    expect(find.textContaining('ELEVATION'), findsOneWidget);
+    expect(tester.getSize(find.byType(RideMap)).height, greaterThan(1500));
+
+    // So has the elevation chart.
+    await tester.tap(find.byKey(const Key('rideTabElevation')));
+    await tester.pumpAndSettle();
+    expect(find.text('Climb 0 m · lowest 100 m · highest 110 m'),
+        findsOneWidget);
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+  });
+
+  testWidgets('track detail: a ride without heights says so on its tab',
+      (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final start = DateTime.utc(2026, 6, 1, 8);
+    final id = await db.createTrack(start);
+    for (var i = 0; i < 2; i++) {
+      await db.addPoint(TrackPointsCompanion.insert(
+          trackId: id,
+          time: start.add(Duration(seconds: i)),
+          latitude: 43.0 + i / 1000,
+          longitude: 7.0));
+    }
+    final track = await db.track(id);
+    final points = await db.pointsFor(id);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        appDatabaseProvider.overrideWithValue(db),
+        trackProvider(id).overrideWith((ref) => track),
+        trackPointsProvider(id).overrideWith((ref) => points),
+        rideMapProvider.overrideWith((ref) async =>
+            throw StateError('no offline map in widget test')),
+      ],
+      child: MaterialApp(home: TrackDetailScreen(trackId: id)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rideTabElevation')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('noElevation')), findsOneWidget);
   });
 
   testWidgets(

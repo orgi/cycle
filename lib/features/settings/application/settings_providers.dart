@@ -59,6 +59,10 @@ class SettingsController extends Notifier<AppSettings> {
   Future<void> setColorScheme(AppColorScheme scheme) =>
       update(state.copyWith(colorScheme: scheme));
 
+  /// The map style of ride maps; null = the same as the app's.
+  Future<void> setRideMapStyle(AppColorScheme? style) =>
+      update(state.copyWith(rideMapStyle: style));
+
   /// Persists the current map zoom (restored on next launch). No-op if unchanged.
   Future<void> setMapZoom(int zoom) async {
     if (zoom == state.mapZoom) return;

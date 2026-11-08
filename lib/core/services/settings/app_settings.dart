@@ -61,6 +61,7 @@ class AppSettings {
     this.hardwareButtonsEnabled = true,
     this.selectedMapFileName,
     this.colorScheme = AppColorScheme.dark,
+    this.rideMapStyle,
     this.mapZoom = 16,
     this.proximityHoldEnabled = false,
     this.vibrateOnStartStop = true,
@@ -91,6 +92,15 @@ class AppSettings {
 
   /// App + map colour scheme.
   final AppColorScheme colorScheme;
+
+  /// The map style of a ride's map (ride details), when it should differ
+  /// from the home screen's — e.g. a detailed map to look a ride over, the
+  /// minimal dark one to ride with. Null = the same as [colorScheme]. Only
+  /// its render theme is used.
+  final AppColorScheme? rideMapStyle;
+
+  /// The scheme whose map style a ride's map uses.
+  AppColorScheme get rideMapScheme => rideMapStyle ?? colorScheme;
 
   /// Last map zoom level, restored on the next launch.
   final int mapZoom;
@@ -145,6 +155,7 @@ class AppSettings {
     bool? hardwareButtonsEnabled,
     Object? selectedMapFileName = _unset,
     AppColorScheme? colorScheme,
+    Object? rideMapStyle = _unset,
     int? mapZoom,
     bool? proximityHoldEnabled,
     bool? vibrateOnStartStop,
@@ -162,6 +173,9 @@ class AppSettings {
             ? this.selectedMapFileName
             : selectedMapFileName as String?,
         colorScheme: colorScheme ?? this.colorScheme,
+        rideMapStyle: identical(rideMapStyle, _unset)
+            ? this.rideMapStyle
+            : rideMapStyle as AppColorScheme?,
         mapZoom: mapZoom ?? this.mapZoom,
         proximityHoldEnabled: proximityHoldEnabled ?? this.proximityHoldEnabled,
         vibrateOnStartStop: vibrateOnStartStop ?? this.vibrateOnStartStop,
@@ -179,6 +193,7 @@ class AppSettings {
         'hardware_buttons': hardwareButtonsEnabled,
         if (selectedMapFileName != null) 'selected_map': selectedMapFileName,
         'color_scheme': colorScheme.name,
+        if (rideMapStyle != null) 'ride_map_style': rideMapStyle!.name,
         'map_zoom': mapZoom,
         'proximity_hold': proximityHoldEnabled,
         'vibrate_start_stop': vibrateOnStartStop,
@@ -198,6 +213,9 @@ class AppSettings {
         hardwareButtonsEnabled: json['hardware_buttons'] as bool? ?? true,
         selectedMapFileName: json['selected_map'] as String?,
         colorScheme: _colorSchemeFromName(json['color_scheme']),
+        rideMapStyle: json['ride_map_style'] == null
+            ? null
+            : _colorSchemeFromName(json['ride_map_style']),
         mapZoom: (json['map_zoom'] as num?)?.toInt() ?? 16,
         proximityHoldEnabled: json['proximity_hold'] as bool? ?? false,
         vibrateOnStartStop: json['vibrate_start_stop'] as bool? ?? true,
@@ -228,6 +246,7 @@ class AppSettings {
       other.hardwareButtonsEnabled == hardwareButtonsEnabled &&
       other.selectedMapFileName == selectedMapFileName &&
       other.colorScheme == colorScheme &&
+      other.rideMapStyle == rideMapStyle &&
       other.mapZoom == mapZoom &&
       other.proximityHoldEnabled == proximityHoldEnabled &&
       other.vibrateOnStartStop == vibrateOnStartStop &&
@@ -244,6 +263,7 @@ class AppSettings {
       hardwareButtonsEnabled,
       selectedMapFileName,
       colorScheme,
+      rideMapStyle,
       mapZoom,
       proximityHoldEnabled,
       vibrateOnStartStop,

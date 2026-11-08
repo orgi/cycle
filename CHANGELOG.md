@@ -8,6 +8,27 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-09
+
+### Changed
+- Ride details are now three tabs: Stats, Map and Elevation. The map and the elevation
+  chart each fill their tab, so dragging and pinch-to-zoom move only the map (or chart) —
+  on the old single scrolling page they fought with the page scroll. Tabs change by tapping,
+  not swiping, so a sideways drag on the map never switches tabs.
+- The ride map opens showing the whole ride, and a button shows the whole ride again after
+  panning or zooming. The speed legend is on the map.
+
+### Added
+- A map style for ride maps of its own (Settings → Appearance → "Map style for ride
+  details", or the layers button on a ride's map) — e.g. Detailed to look a ride over while
+  riding with the minimal Dark map. "As the app" keeps them the same, as before.
+
+### Fixed
+- The ride map could open zoomed in too far and cut off the ends of a ride, mostly
+  north–south ones (the fit ignored that the map stretches latitude).
+- After "Clean GPS spikes" the ride map kept showing the old track until the ride was opened
+  again.
+
 ## [0.13.0] - 2026-11-08
 
 ### Added
@@ -762,7 +783,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/orgi/cycle/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/orgi/cycle/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/orgi/cycle/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/orgi/cycle/compare/v0.12.0...v0.12.1

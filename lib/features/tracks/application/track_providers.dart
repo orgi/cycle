@@ -59,11 +59,14 @@ final gpxExportServiceProvider = Provider<GpxExportService>(
 );
 
 /// An offline map model for the ride-detail map (the installed/active region, or
-/// the bundled demo). autoDispose so it is released when the screen closes.
+/// the bundled demo), in the ride map's own style (`AppSettings.rideMapScheme`,
+/// which may differ from the home screen's). autoDispose so it is released
+/// when the screen closes; a new style loads a new model.
 final rideMapProvider = FutureProvider.autoDispose<LoadedMap>((ref) async {
   final path = ref.watch(chosenMapPathProvider);
-  final renderTheme =
-      ref.watch(settingsProvider.select((s) => s.colorScheme)).renderThemeAsset;
+  final renderTheme = ref
+      .watch(settingsProvider.select((s) => s.rideMapScheme))
+      .renderThemeAsset;
   final service = ref.watch(mapRenderServiceProvider);
   final loaded = path != null
       ? await service.createFromFile(path, renderTheme: renderTheme)
