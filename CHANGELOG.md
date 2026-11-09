@@ -8,6 +8,22 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-09
+
+### Changed
+- Ride details: the map and the elevation profile are on one tab again ("Map"), the map
+  above the profile — still without a page scroll in the way. The profile is drawn over the
+  ride's distance (it used to be over the number of GPS points, which stretched stops).
+
+### Added
+- The map and the profile point at the same place: tap or drag along the profile and the
+  map marks that point (moving to it if it's off screen); tap the track on the map and the
+  profile marks it. Distance, height, speed and time of the point show above the profile.
+  A tap beside the track clears it.
+
+### Removed
+- Pinch-to-zoom on the elevation profile: a drag along it now picks a point.
+
 ## [0.14.0] - 2026-11-09
 
 ### Changed
@@ -783,7 +799,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/orgi/cycle/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/orgi/cycle/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/orgi/cycle/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/orgi/cycle/compare/v0.12.1...v0.12.2

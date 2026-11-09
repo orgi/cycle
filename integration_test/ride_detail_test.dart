@@ -6,6 +6,7 @@ import 'package:cycle/features/dashboard/application/ride_providers.dart';
 import 'package:cycle/features/sensors/application/sensor_providers.dart';
 import 'package:cycle/features/settings/application/bike_profile_providers.dart';
 import 'package:cycle/features/settings/application/settings_providers.dart';
+import 'package:cycle/features/tracks/application/track_providers.dart';
 import 'package:cycle/features/tracks/presentation/widgets/ride_map.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mapsforge_flutter/mapsforge.dart';
+import 'package:mapsforge_flutter_core/model.dart';
 
 import '../test/support/fakes.dart';
 
@@ -29,8 +31,9 @@ void main() {
   }
 
   testWidgets(
-      'ride details: stats, map and elevation tabs; the map pans without '
-      'switching tabs and takes a style of its own', (tester) async {
+      'ride details: stats, and the map with the elevation profile linked; '
+      'the map pans without switching tabs and takes a style of its own',
+      (tester) async {
     final db = AppDatabase(NativeDatabase.memory());
     final location = FakeLocationService();
     final sensors = FakeSensorService();
@@ -86,11 +89,40 @@ void main() {
     TabController tabs() =>
         DefaultTabController.of(tester.element(find.byType(TabBarView)));
 
-    // The map tab: the real offline map, the whole tab.
+    // The map tab: the real offline map, the elevation profile under it.
     await tester.tap(find.byKey(const Key('rideTabMap')));
     await tester.pumpAndSettle();
     await waitFor(tester, find.byType(MapsforgeView));
     expect(find.byKey(const Key('rideSpeedLegend')), findsOneWidget);
+    expect(find.byKey(const Key('rideElevationChart')), findsOneWidget);
+    RideMap rideMap() => tester.widget<RideMap>(find.byType(RideMap));
+
+    // A point picked on the profile shows on the map.
+    await tester.tapAt(
+        tester.getCenter(find.byKey(const Key('rideElevationChart'))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rideSelectionInfo')), findsOneWidget);
+    expect(rideMap().selected, isNotNull);
+
+    // A tap on the map right on a track point (the 30th) shows it on the
+    // profile: find where that point is on screen.
+    await tester.pump(const Duration(seconds: 1)); // the map has settled
+    final model = container.read(rideMapProvider).value!.model;
+    final pos = model.lastPosition!;
+    final centerPx = pos.getCenter();
+    final pointPx =
+        pos.projection.latLonToPixel(const LatLong(43.728 + 29 * 0.00015, 7.414 + 29 * 0.0001));
+    final mapCenter = tester.getCenter(find.byType(MapsforgeView));
+    await tester.tapAt(mapCenter +
+        Offset(pointPx.x - centerPx.x, pointPx.y - centerPx.y));
+    await tester.pump(const Duration(milliseconds: 600)); // single, not double
+    await tester.pumpAndSettle();
+    final picked = rideMap().selected!;
+    expect(picked.latitude, closeTo(43.728 + 29 * 0.00015, 0.0004));
+    expect(picked.longitude, closeTo(7.414 + 29 * 0.0001, 0.0003));
+    // No coordinates popup (mapsforge's default context menu).
+    expect(find.textContaining(RegExp(r'^-?\d+\.\d+ / -?\d+\.\d+$')),
+        findsNothing);
 
     // Dragging and pinching move the map, never the tabs.
     await tester.drag(find.byType(MapsforgeView), const Offset(-250, 0));
@@ -114,11 +146,9 @@ void main() {
     await tester.pump(const Duration(seconds: 2)); // tiles in the new style
     expect(tester.takeException(), isNull);
 
-    // The elevation tab; back on the map, it's still there (kept, not
-    // reloaded).
-    await tester.tap(find.byKey(const Key('rideTabElevation')));
+    // Stats and back: the map is still there (kept, not reloaded).
+    await tester.tap(find.byKey(const Key('rideTabStats')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('elevationSummary')), findsOneWidget);
     await tester.tap(find.byKey(const Key('rideTabMap')));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(MapsforgeView), findsOneWidget);

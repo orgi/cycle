@@ -1,10 +1,10 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/db/database.dart';
 import '../../../core/metrics/elevation.dart';
+import '../../../core/metrics/ride_profile.dart';
 import '../../../core/services/apple_health_service.dart';
 import '../../../core/utils/format.dart';
 import '../../dashboard/application/ride_providers.dart';
@@ -14,6 +14,7 @@ import '../../settings/application/bike_profile_providers.dart';
 import '../../settings/presentation/widgets/bike_profile_picker.dart';
 import '../application/track_providers.dart';
 import '../application/track_repair.dart';
+import 'widgets/ride_elevation_chart.dart';
 import 'widgets/ride_map.dart';
 
 class TrackDetailScreen extends ConsumerWidget {
@@ -27,17 +28,16 @@ class TrackDetailScreen extends ConsumerWidget {
     final pointsAsync = ref.watch(trackPointsProvider(trackId));
 
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Ride'),
-          // Tabs, so the map and the chart get the whole screen and their
-          // gestures never fight a page scroll.
+          // Tabs, so the map and the elevation profile get the whole screen
+          // and their gestures never fight a page scroll.
           bottom: const TabBar(
             tabs: [
               Tab(key: Key('rideTabStats'), text: 'Stats'),
               Tab(key: Key('rideTabMap'), text: 'Map'),
-              Tab(key: Key('rideTabElevation'), text: 'Elevation'),
             ],
           ),
           actions: [
@@ -92,12 +92,7 @@ class TrackDetailScreen extends ConsumerWidget {
                       ? loading
                       : points.length < 2
                           ? const Center(child: Text('No track recorded'))
-                          : RideMap(points: points),
-                ),
-                _KeepAlive(
-                  child: !pointsLoaded
-                      ? loading
-                      : _ElevationTab(points: points),
+                          : _MapTab(points: points),
                 ),
               ],
             );
@@ -367,61 +362,110 @@ class _StatsTab extends StatelessWidget {
   }
 }
 
-/// The height profile, filling the tab: pinch to zoom in, drag to pan.
-class _ElevationTab extends StatelessWidget {
-  const _ElevationTab({required this.points});
+/// The map with the elevation profile under it, linked: a point picked on
+/// either — a tap near the track on the map, a tap or drag on the profile —
+/// shows on both, with its distance, height, speed and time. Without heights
+/// the map has the tab to itself.
+class _MapTab extends StatefulWidget {
+  const _MapTab({required this.points});
 
   final List<TrackPoint> points;
 
   @override
+  State<_MapTab> createState() => _MapTabState();
+}
+
+class _MapTabState extends State<_MapTab> {
+  late RideProfile _profile = _profileOf(widget.points);
+  int? _selected;
+
+  static RideProfile _profileOf(List<TrackPoint> points) => RideProfile([
+        for (final p in points)
+          (latitude: p.latitude, longitude: p.longitude, altitude: p.altitude),
+      ]);
+
+  @override
+  void didUpdateWidget(_MapTab old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.points, widget.points)) {
+      // Cleaned of spikes: other points, the old index means nothing.
+      _profile = _profileOf(widget.points);
+      _selected = null;
+    }
+  }
+
+  /// A tap on the map selects the track point there — within about a
+  /// fingertip (30 px) of it; a tap beside the track clears the selection.
+  void _onMapTap(double latitude, double longitude, double metersPerPixel) {
+    final i = _profile.nearest(latitude, longitude,
+        maxMeters: 30 * metersPerPixel);
+    setState(() => _selected = i);
+  }
+
+  void _select(int i) {
+    if (i != _selected) setState(() => _selected = i);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final heights = [
-      for (final p in points)
-        if (p.altitude != null) p.altitude!,
-    ];
-    if (heights.isEmpty) {
-      return const Center(
-        key: Key('noElevation'),
-        child: Text('No heights recorded for this ride'),
-      );
-    }
-    var low = heights.first, high = heights.first;
-    for (final h in heights) {
-      if (h < low) low = h;
-      if (h > high) high = h;
-    }
-    final climb = rideClimbMeters(
-      points.map((p) => (altitude: p.altitude, speedMps: p.speedMps)),
+    final i = _selected;
+    final map = RideMap(
+      points: widget.points,
+      selected: i == null
+          ? null
+          : (latitude: _profile.latitudes[i], longitude: _profile.longitudes[i]),
+      onMapTap: _onMapTap,
     );
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Climb ${climb.round()} m · lowest ${low.round()} m · '
-            'highest ${high.round()} m',
-            key: const Key('elevationSummary'),
-            style: const TextStyle(color: Colors.white70),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Pinch to zoom, drag to pan',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: InteractiveViewer(
-              panEnabled: true,
-              scaleEnabled: true,
-              minScale: 1,
-              maxScale: 8,
-              child: _ElevationChart(points: points),
+    final range = _profile.altitudeRange;
+    if (range == null) return map;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 3, child: map),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: i == null
+              ? Text(
+                  'Climb ${_climb().round()} m · lowest ${range.low.round()} m'
+                  ' · highest ${range.high.round()} m',
+                  key: const Key('elevationSummary'),
+                  style: const TextStyle(color: Colors.white70),
+                )
+              : Text(
+                  _pointInfo(i),
+                  key: const Key('rideSelectionInfo'),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+        ),
+        Expanded(
+          flex: 2,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: RideElevationChart(
+              profile: _profile,
+              selected: i,
+              onSelect: _select,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  /// Counted like the live CLIMB (smoothed, with a threshold), so both agree.
+  double _climb() => rideClimbMeters(widget.points
+      .map((p) => (altitude: p.altitude, speedMps: p.speedMps)));
+
+  /// "12.40 km · 456 m · 23 km/h · 08:42" for point [i].
+  String _pointInfo(int i) {
+    final p = widget.points[i];
+    return [
+      '${formatDistanceKm(_profile.distances[i] / 1000)} km',
+      if (p.altitude != null) '${p.altitude!.round()} m',
+      if (p.speedMps != null) '${(p.speedMps! * 3.6).round()} km/h',
+      formatClock(p.time),
+    ].join(' · ');
   }
 }
 
@@ -444,48 +488,5 @@ class _KeepAliveState extends State<_KeepAlive>
   Widget build(BuildContext context) {
     super.build(context);
     return widget.child;
-  }
-}
-
-class _ElevationChart extends StatelessWidget {
-  const _ElevationChart({required this.points});
-
-  final List<TrackPoint> points;
-
-  @override
-  Widget build(BuildContext context) {
-    final spots = <FlSpot>[];
-    for (var i = 0; i < points.length; i++) {
-      final alt = points[i].altitude;
-      if (alt != null) spots.add(FlSpot(i.toDouble(), alt));
-    }
-    return LineChart(
-      duration:
-          Duration.zero, // no implicit animation (keeps tests deterministic)
-      LineChartData(
-        lineBarsData: [
-          LineChartBarData(
-            spots: spots,
-            isCurved: true,
-            color: Theme.of(context).colorScheme.primary,
-            barWidth: 2,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.15),
-            ),
-          ),
-        ],
-        titlesData: const FlTitlesData(show: false),
-        gridData: const FlGridData(show: false),
-        borderData: FlBorderData(show: false),
-        // Disabled: fl_chart's own touch handling otherwise wins the gesture
-        // arena against the enclosing InteractiveViewer, so pinch-zoom/pan
-        // never reached it.
-        lineTouchData: const LineTouchData(enabled: false),
-      ),
-    );
   }
 }

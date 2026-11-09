@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapsforge_flutter/mapsforge.dart';
 import 'package:mapsforge_flutter/marker.dart';
 import 'package:mapsforge_flutter/overlay.dart';
 import 'package:mapsforge_flutter_core/model.dart';
+import 'package:mapsforge_flutter_core/utils.dart';
 
 import '../../../../core/db/database.dart';
 import '../../../../core/services/settings/app_settings.dart';
 import '../../../../core/utils/geo.dart';
+import '../../../map/presentation/live_track_marker.dart';
 import '../../../map/presentation/osm_attribution.dart';
 import '../../../map/application/map_render_service.dart';
 import '../../../settings/application/settings_providers.dart';
@@ -20,10 +24,27 @@ import 'track_segments.dart';
 /// is a full mapsforge view, so it pans and pinch-zooms; it opens fitted to the
 /// whole ride, and a button fits it again. Drawn in the ride map's own style
 /// (`AppSettings.rideMapScheme`), which the layers button changes.
+///
+/// The [selected] point (from the elevation profile) shows as a dot, and the
+/// map pans to it when it's off screen; a tap on the map reports where
+/// ([onMapTap]), so the profile can select the track point there.
 class RideMap extends ConsumerStatefulWidget {
-  const RideMap({super.key, required this.points});
+  const RideMap({
+    super.key,
+    required this.points,
+    this.selected,
+    this.onMapTap,
+  });
 
   final List<TrackPoint> points;
+
+  /// The point to mark, or null.
+  final ({double latitude, double longitude})? selected;
+
+  /// A tap on the map: where, and how many metres a screen pixel is there
+  /// (to tell a tap on the track from one beside it).
+  final void Function(double latitude, double longitude, double metersPerPixel)?
+      onMapTap;
 
   @override
   ConsumerState<RideMap> createState() => _RideMapState();
@@ -37,6 +58,31 @@ class _RideMapState extends ConsumerState<RideMap> {
   MapModel? _markersFor;
   bool _centered = false;
   Size _size = Size.zero;
+  StreamSubscription<TapEvent?>? _taps;
+
+  /// The selected point: one long-lived dot moved in place (a drag along the
+  /// profile moves it every frame), drawn over the track.
+  final LivePositionMarker _selection = LivePositionMarker(
+    fillColor: 0xFFFFFFFF,
+    strokeColor: 0xFF000000,
+    radius: 4.5,
+    strokeWidth: 1.5,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _selection.position = _latLong(widget.selected);
+  }
+
+  @override
+  void dispose() {
+    _taps?.cancel();
+    super.dispose();
+  }
+
+  static LatLong? _latLong(({double latitude, double longitude})? p) =>
+      p == null ? null : LatLong(p.latitude, p.longitude);
 
   @override
   void didUpdateWidget(RideMap old) {
@@ -47,6 +93,30 @@ class _RideMapState extends ConsumerState<RideMap> {
       markers.clearMarkers();
       _addMarkers(markers);
     }
+    if (old.selected != widget.selected) {
+      _selection.position = _latLong(widget.selected);
+      markers?.requestRepaint();
+      final model = _markersFor;
+      final at = widget.selected;
+      if (model != null && at != null) _reveal(model, at);
+    }
+  }
+
+  /// Pans the map to [at] if it's outside the visible part (with a margin):
+  /// the point picked on the profile is always on screen.
+  void _reveal(MapModel model, ({double latitude, double longitude}) at) {
+    final position = model.lastPosition;
+    if (position == null || _size.isEmpty) return;
+    final center = position.getCenter();
+    final p = position.projection.latLonToPixel(LatLong(at.latitude, at.longitude));
+    // Map pixels are screen pixels × mapsforge's device scale factor (1 in
+    // this app, which never sets it).
+    final scale = MapsforgeSettingsMgr().getDeviceScaleFactor();
+    const margin = 40.0;
+    if ((p.x - center.x).abs() / scale > _size.width / 2 - margin ||
+        (p.y - center.y).abs() / scale > _size.height / 2 - margin) {
+      model.moveTo(at.latitude, at.longitude);
+    }
   }
 
   DefaultMarkerDatastore _markersOf(MapModel model) {
@@ -55,6 +125,12 @@ class _RideMapState extends ConsumerState<RideMap> {
       _markersFor = model;
       _centered = false;
       _addMarkers(_markers!);
+      _taps?.cancel();
+      _taps = model.tapStream.listen((e) {
+        if (e == null) return;
+        widget.onMapTap?.call(e.latitude, e.longitude,
+            e.projection.meterPerPixel(LatLong(e.latitude, e.longitude)));
+      });
     }
     return _markers!;
   }
@@ -123,6 +199,8 @@ class _RideMapState extends ConsumerState<RideMap> {
       strokeColor: 0xFFFFFFFF,
       strokeWidth: 1,
     ));
+    // Last, so it's drawn on top.
+    markers.addMarker(_selection);
   }
 
   /// Speed (km/h) at point [i] — recorded value if present, else derived from
@@ -156,6 +234,9 @@ class _RideMapState extends ConsumerState<RideMap> {
       maxLon: maxLon,
       width: _size.width,
       height: _size.height,
+      // A tile's size on screen (see [_reveal] on the scale factor).
+      tileSize: MapsforgeSettingsMgr().tileSize /
+          MapsforgeSettingsMgr().getDeviceScaleFactor(),
       // The legend and the buttons cover the top edge.
       paddingPx: 40,
     );
@@ -194,6 +275,9 @@ class _RideMapState extends ConsumerState<RideMap> {
                   child: MapsforgeView(
                     key: ObjectKey(model),
                     mapModel: model,
+                    // A tap picks a point of the ride ([RideMap.onMapTap]);
+                    // no coordinates popup.
+                    contextMenuBuilder: (_) => const SizedBox.shrink(),
                     children: [
                       MarkerDatastoreOverlay(
                         mapModel: model,
