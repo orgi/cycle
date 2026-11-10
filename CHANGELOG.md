@@ -8,6 +8,17 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-10
+
+### Changed
+- Ride details: the elevation profile under the map is half as tall (a fifth of the tab),
+  leaving more room for the map.
+
+### Fixed
+- A two-finger gesture (pinch) on the elevation profile made the picked point jump between
+  the two fingers, which showed as two dots on the profile and on the map. Only the first
+  finger picks a point now; others are ignored.
+
 ## [0.15.0] - 2026-11-09
 
 ### Changed
@@ -799,7 +810,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/orgi/cycle/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/orgi/cycle/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/orgi/cycle/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/orgi/cycle/compare/v0.12.2...v0.13.0

@@ -853,10 +853,13 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     **Map and profile are linked** (`_MapTab`): one selected point index into a
     `RideProfile` (`core/metrics/ride_profile.dart`, pure + unit-tested: distance from the
     start per point, `indexAt(metres)`, `nearest(lat, lon, maxMeters)`, thinned
-    `elevationSamples`). The profile (`RideElevationChart`) is height over **distance**; a
-    tap/drag on it (a `GestureDetector` — fl_chart's own touch stays **disabled**, it would
-    compete) selects the point at that distance; the selection is a `CustomPaint` over the
-    chart, which is built once per ride, so dragging doesn't redraw fl_chart. A map tap
+    `elevationSamples`). The profile (`RideElevationChart`, a fifth of the tab under the map
+    since 0.15.1) is height over **distance**; a tap/drag on it selects the point at that
+    distance — through a `Listener` that follows **only the first finger** (0.15.1): with a
+    pan recogniser, a pinch made the selection alternate between the two fingers every frame
+    on iOS ("two dots"; `ride_elevation_chart_test` replays it). fl_chart's own touch stays
+    **disabled**, it would compete. The selection is a `CustomPaint` over the chart, which is
+    built once per ride, so dragging doesn't redraw fl_chart. A map tap
     (`model.tapStream`) selects the nearest track point within 30 px (`meterPerPixel` of the
     tap's projection), beside the track clears. On the map the selection is the in-place
     `LivePositionMarker` (moved every frame while dragging; a removed/re-added marker goes

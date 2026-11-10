@@ -421,7 +421,8 @@ class _MapTabState extends State<_MapTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(flex: 3, child: map),
+        // The profile takes a fifth, the map the rest.
+        Expanded(flex: 4, child: map),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: i == null
@@ -439,7 +440,7 @@ class _MapTabState extends State<_MapTab> {
                 ),
         ),
         Expanded(
-          flex: 2,
+          flex: 1,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: RideElevationChart(

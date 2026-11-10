@@ -143,8 +143,13 @@ void main() {
     expect(find.byKey(const Key('rideElevationChart')), findsOneWidget);
     expect(find.text('Climb 0 m · lowest 100 m · highest 110 m'),
         findsOneWidget);
-    expect(tester.getSize(find.byType(RideMap)).height,
-        greaterThan(tester.getSize(find.byKey(const Key('rideElevationChart'))).height));
+    // The profile is a small strip under the map: about a quarter of the
+    // map's height.
+    final mapHeight = tester.getSize(find.byType(RideMap)).height;
+    final chartHeight =
+        tester.getSize(find.byKey(const Key('rideElevationChart'))).height;
+    expect(chartHeight, lessThan(mapHeight / 3.5));
+    expect(chartHeight, greaterThan(mapHeight / 6));
   });
 
   testWidgets('a point picked on the profile shows on the map, one tapped on '

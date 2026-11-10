@@ -9,6 +9,10 @@ import '../../../../core/metrics/ride_profile.dart';
 /// the point at that distance ([onSelect]); the [selected] point shows as a
 /// line and a dot. The line itself is drawn once per ride — the selection is
 /// painted over it, so dragging doesn't redraw the chart.
+///
+/// Only the first finger counts: with a drag recogniser a pinch made the
+/// selection jump between the two fingers on every frame (on iOS), which
+/// looked like two dots on the profile and on the map.
 class RideElevationChart extends StatefulWidget {
   const RideElevationChart({
     super.key,
@@ -32,6 +36,9 @@ class _RideElevationChartState extends State<RideElevationChart> {
   Widget? _line;
   RideProfile? _lineFor;
   Color? _lineColor;
+
+  /// The finger that selects, while it's down; any other is ignored.
+  int? _finger;
 
   /// The chart's bounds: the ride's length, its heights with some room above
   /// and below (at least 20 m in all, so a flat ride doesn't look hilly).
@@ -102,12 +109,23 @@ class _RideElevationChartState extends State<RideElevationChart> {
     final selected = widget.selected;
     return LayoutBuilder(builder: (context, constraints) {
       final width = constraints.maxWidth;
-      return GestureDetector(
+      return Listener(
         key: const Key('rideElevationChart'),
         behavior: HitTestBehavior.opaque,
-        onTapDown: (d) => _selectAt(d.localPosition.dx, width),
-        onPanStart: (d) => _selectAt(d.localPosition.dx, width),
-        onPanUpdate: (d) => _selectAt(d.localPosition.dx, width),
+        onPointerDown: (e) {
+          if (_finger != null) return; // a second finger: ignored
+          _finger = e.pointer;
+          _selectAt(e.localPosition.dx, width);
+        },
+        onPointerMove: (e) {
+          if (e.pointer == _finger) _selectAt(e.localPosition.dx, width);
+        },
+        onPointerUp: (e) {
+          if (e.pointer == _finger) _finger = null;
+        },
+        onPointerCancel: (e) {
+          if (e.pointer == _finger) _finger = null;
+        },
         child: Stack(
           fit: StackFit.expand,
           children: [
