@@ -49,6 +49,16 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
+          ListTile(
+            key: const Key('rideMapStyleTile'),
+            leading: const Icon(Icons.layers_outlined),
+            title: const Text('Map style for ride details'),
+            subtitle: Text(settings.rideMapStyle == null
+                ? 'As above (${settings.colorScheme.label})'
+                : settings.rideMapStyle!.label),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _pickRideMapStyle(context, ref),
+          ),
           const Divider(),
           const SettingsHeader('Units'),
           RadioGroup<UnitSystem>(
@@ -512,5 +522,35 @@ class _AppleHealthSwitch extends ConsumerWidget {
         }
       },
     );
+  }
+}
+
+/// Lets the rider give ride maps (ride details) a style of their own — e.g.
+/// a detailed map to look a ride over while riding with a minimal one.
+Future<void> _pickRideMapStyle(BuildContext context, WidgetRef ref) async {
+  final settings = ref.read(settingsProvider);
+  Widget option(Key key, String label, bool selected, AppColorScheme? value) =>
+      ListTile(
+        key: key,
+        title: Text(label),
+        trailing: selected ? const Icon(Icons.check) : null,
+        onTap: () => Navigator.pop(context, (value,)),
+      );
+  final picked = await showDialog<(AppColorScheme?,)>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      title: const Text('Map style for ride details'),
+      children: [
+        option(const Key('rideMapStyleOption_app'),
+            'As the app (${settings.colorScheme.label})',
+            settings.rideMapStyle == null, null),
+        for (final s in AppColorScheme.values)
+          option(Key('rideMapStyleOption_${s.name}'), s.label,
+              settings.rideMapStyle == s, s),
+      ],
+    ),
+  );
+  if (picked != null) {
+    await ref.read(settingsProvider.notifier).setRideMapStyle(picked.$1);
   }
 }

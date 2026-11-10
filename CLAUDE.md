@@ -843,17 +843,49 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     to 0 after a few empty intervals) to stop the 0-flicker. Rides start/stop on the **TIME
     tile** (no button since 0.12.0, see M7). Recording keeps the screen on (wakelock enabled in
     `RecordingController.start`).
-  * **Ride detail** (`track_detail_screen`) shows the ride on the **real offline map**
-    (`rideMapProvider`, an autoDispose mapsforge model fitted to the track) with the track
+  * **Ride detail** (`track_detail_screen`) is **two tabs** — **Stats** and **Map** (the
+    map above the elevation profile) — since 0.15.0 (0.14.0 had a third, Elevation tab).
+    They used to sit in one scrolling page, where the page scroll, the map's drag and
+    pinch-to-zoom fought each other even with `Listener`-based "isolated regions" (removed).
+    **The `TabBarView` must keep `NeverScrollableScrollPhysics`** — swiping between tabs
+    would steal the map's sideways pans (tabs change by tapping); the Map tab is kept alive
+    (`_KeepAlive`), so going back doesn't reload the map.
+    **Map and profile are linked** (`_MapTab`): one selected point index into a
+    `RideProfile` (`core/metrics/ride_profile.dart`, pure + unit-tested: distance from the
+    start per point, `indexAt(metres)`, `nearest(lat, lon, maxMeters)`, thinned
+    `elevationSamples`). The profile (`RideElevationChart`, a fifth of the tab under the map
+    since 0.15.1) is height over **distance**; a tap/drag on it selects the point at that
+    distance — through a `Listener` that follows **only the first finger** (0.15.1): with a
+    pan recogniser, a pinch made the selection alternate between the two fingers every frame
+    on iOS ("two dots"; `ride_elevation_chart_test` replays it). fl_chart's own touch stays
+    **disabled**, it would compete. The selection is a `CustomPaint` over the chart, which is
+    built once per ride, so dragging doesn't redraw fl_chart. **The profile has the map's
+    speed colours** (0.16.0): `RideSpeedTrack.of(points)` (`track_segments.dart`, pure +
+    unit-tested — dedupe of repeated fixes, speed per point, `buildTrackRuns`) is the one
+    source for both — `RideMap` draws its `runs`, the profile paints its `bands` as a
+    hard-edged gradient over distance (`LineChartGradientArea.wholeChart` for the line, so
+    stops are metres / chart width; the area's gradient spans first…last height). Change the
+    colouring there, not in one view. The selection dot is white/black on both. A map tap
+    (`model.tapStream`) selects the nearest track point within 30 px (`meterPerPixel` of the
+    tap's projection), beside the track clears. On the map the selection is the in-place
+    `LivePositionMarker` (moved every frame while dragging; a removed/re-added marker goes
+    through the datastore's async init and lags), added last so it's on top; the map pans to
+    it when it's off screen (`_reveal`). The ride map passes an empty `contextMenuBuilder`:
+    mapsforge's default shows a "lat / lon" popup on every tap. Mapsforge's map pixels are
+    screen pixels × `MapsforgeSettingsMgr().getDeviceScaleFactor()` — 1 in this app (never
+    set), but `_reveal` and the fit divide by it anyway.
+    The map (`RideMap`, `rideMapProvider`, an autoDispose mapsforge model) shows the track
     **coloured by speed** (red ≤10 → violet ≥60 km/h, `speed_color.dart`, segments merged by
-    colour bucket) + legend; the map pinch-zooms natively and the elevation chart is wrapped in
-    an `InteractiveViewer` (its `LineChartData.lineTouchData` must stay **disabled** — fl_chart's
-    own touch handling otherwise wins the gesture arena and the pinch/pan never reaches the
-    viewer). The map and elevation sections each sit in a `Listener`-based "isolated region"
-    (`_BodyState._isolate`) that disables the outer page's scroll physics for as long as any
-    finger is down on them, so a one-finger drag or pinch on the map/chart never fights the
-    page scroll for the gesture (scoped per-widget, not the whole page, so the rest of the ride
-    detail still scrolls normally). Stats include distance/time/avg/max + ascent + avg HR/cadence/power
+    colour bucket) with a legend, a "show the whole ride" button and a **map-style button**.
+    It opens fitted with `fitMapView` (`core/utils/geo.dart`): the largest *whole* zoom
+    (mapsforge has no fractional zoom) at which the box fits, with **Mercator** latitude —
+    the old fit treated degrees of latitude like longitude and rounded the zoom, cutting off
+    north–south rides. **Ride map style** (`AppSettings.rideMapStyle`, null = the app's;
+    `rideMapScheme`): its own render theme, from Settings → Appearance or the button on the
+    map — tile caches are per view (`TileJobQueue`), so it never shows the home map's cached
+    tiles. A new style is a new `MapModel`, and disposing the old one disposes its marker
+    datastores, so `RideMap` makes a new datastore per model (`_markersOf`); new points
+    (after "Clean GPS spikes") are redrawn in place. Stats include distance/time/avg/max + ascent + avg HR/cadence/power
     + **battery used** (`tracks.batteryStart/EndPercent`, schema v2; read via the native
     `cycle/battery` channel → `BatteryService` at recording start/stop; Android exposes whole-%
     only; iOS (`AppDelegate.swift`, `UIDevice.batteryLevel`) is rounded to **5 %** by iOS since

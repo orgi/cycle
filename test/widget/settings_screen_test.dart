@@ -38,6 +38,43 @@ void main() {
     expect((await store.load()).units, UnitSystem.imperial);
   });
 
+  testWidgets('ride details get a map style of their own, or the app\'s again',
+      (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(store),
+          bikeProfilesStoreProvider.overrideWithValue(FakeBikeProfilesStore()),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    String subtitle() => (tester
+            .widget<ListTile>(find.byKey(const Key('rideMapStyleTile')))
+            .subtitle! as Text)
+        .data!;
+    expect(subtitle(), 'As above (Dark)');
+
+    await tester.ensureVisible(find.byKey(const Key('rideMapStyleTile')));
+    await tester.tap(find.byKey(const Key('rideMapStyleTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rideMapStyleOption_detailed')));
+    await tester.pumpAndSettle();
+    expect(subtitle(), 'Detailed');
+    expect((await store.load()).rideMapStyle, AppColorScheme.detailed);
+    // The app's own scheme is untouched.
+    expect((await store.load()).colorScheme, AppColorScheme.dark);
+
+    await tester.tap(find.byKey(const Key('rideMapStyleTile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rideMapStyleOption_app')));
+    await tester.pumpAndSettle();
+    expect(subtitle(), 'As above (Dark)');
+    expect((await store.load()).rideMapStyle, isNull);
+  });
+
   testWidgets('toggles the volume-keys switch', (tester) async {
     final store = FakeSettingsStore();
     await tester.pumpWidget(
@@ -57,6 +94,9 @@ void main() {
       find.byKey(const Key('hardwareButtonsSwitch')),
       200,
     );
+    // Fully on screen, not just at the edge where scrolling stopped.
+    await tester.ensureVisible(find.byKey(const Key('hardwareButtonsSwitch')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('hardwareButtonsSwitch')));
     await tester.pumpAndSettle();
     expect((await store.load()).hardwareButtonsEnabled, isFalse);

@@ -23,6 +23,26 @@ void main() {
     expect(back.mapZoom, 14);
   });
 
+  test('the ride map style is the app\'s unless set; it round-trips and can '
+      'be cleared', () {
+    const app = AppSettings(colorScheme: AppColorScheme.light);
+    expect(app.rideMapStyle, isNull);
+    expect(app.rideMapScheme, AppColorScheme.light);
+    expect(app.toJson(), isNot(contains('ride_map_style')));
+
+    final own = app.copyWith(rideMapStyle: AppColorScheme.detailed);
+    expect(own.rideMapScheme, AppColorScheme.detailed);
+    final back = AppSettings.fromJson(own.toJson());
+    expect(back, own);
+    expect(back.rideMapStyle, AppColorScheme.detailed);
+    // Other edits keep it; null puts it back to the app's.
+    expect(own.copyWith(mapZoom: 12).rideMapStyle, AppColorScheme.detailed);
+    expect(own.copyWith(rideMapStyle: null).rideMapScheme, AppColorScheme.light);
+    // A removed Elements choice reads like the app's own setting does.
+    expect(AppSettings.fromJson({'ride_map_style': 'elementsDark'}).rideMapStyle,
+        AppColorScheme.detailedDark);
+  });
+
   test('colorScheme defaults to dark and tolerates an unknown value', () {
     expect(const AppSettings().colorScheme, AppColorScheme.dark);
     expect(AppSettings.fromJson({'color_scheme': 'nonsense'}).colorScheme,
