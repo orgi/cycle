@@ -1,3 +1,6 @@
+import 'package:cycle/features/tracks/presentation/widgets/speed_color.dart';
+import 'package:cycle/features/tracks/presentation/widgets/track_segments.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:cycle/core/db/database.dart';
 import 'package:cycle/core/models/bike_profile.dart';
 import 'package:cycle/core/services/bike_profiles/bike_profiles_state.dart';
@@ -166,6 +169,14 @@ void main() {
         .data!;
     expect(map().selected, isNull);
     expect(find.byKey(const Key('rideElevationSelection')), findsNothing);
+
+    // The profile has the map's speed colours (all 20 km/h here: one band),
+    // over the whole chart, like the track on the map.
+    final bar = tester.widget<LineChart>(find.byType(LineChart)).data.lineBarsData.single;
+    final bands = RideSpeedTrack.of(await db.pointsFor(id)).bands;
+    expect(bar.gradientArea, LineChartGradientArea.wholeChart);
+    expect(bar.gradient!.colors.toSet(), {for (final b in bands) Color(b.argb)});
+    expect(bar.gradient!.colors.toSet(), {Color(speedColorArgb(20))});
 
     // Tap the middle of the profile: the 6th point, half way.
     await tester.tapAt(tester.getCenter(chart));

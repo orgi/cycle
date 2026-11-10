@@ -859,7 +859,13 @@ or needs its own exception — list it in `NOTICE.md`'s third-party table.
     pan recogniser, a pinch made the selection alternate between the two fingers every frame
     on iOS ("two dots"; `ride_elevation_chart_test` replays it). fl_chart's own touch stays
     **disabled**, it would compete. The selection is a `CustomPaint` over the chart, which is
-    built once per ride, so dragging doesn't redraw fl_chart. A map tap
+    built once per ride, so dragging doesn't redraw fl_chart. **The profile has the map's
+    speed colours** (0.16.0): `RideSpeedTrack.of(points)` (`track_segments.dart`, pure +
+    unit-tested — dedupe of repeated fixes, speed per point, `buildTrackRuns`) is the one
+    source for both — `RideMap` draws its `runs`, the profile paints its `bands` as a
+    hard-edged gradient over distance (`LineChartGradientArea.wholeChart` for the line, so
+    stops are metres / chart width; the area's gradient spans first…last height). Change the
+    colouring there, not in one view. The selection dot is white/black on both. A map tap
     (`model.tapStream`) selects the nearest track point within 30 px (`meterPerPixel` of the
     tap's projection), beside the track clears. On the map the selection is the in-place
     `LivePositionMarker` (moved every frame while dragging; a removed/re-added marker goes

@@ -16,6 +16,7 @@ import '../application/track_providers.dart';
 import '../application/track_repair.dart';
 import 'widgets/ride_elevation_chart.dart';
 import 'widgets/ride_map.dart';
+import 'widgets/track_segments.dart';
 
 class TrackDetailScreen extends ConsumerWidget {
   const TrackDetailScreen({super.key, required this.trackId});
@@ -377,6 +378,9 @@ class _MapTab extends StatefulWidget {
 
 class _MapTabState extends State<_MapTab> {
   late RideProfile _profile = _profileOf(widget.points);
+  // The map's speed colours, for the profile (the map works out the same).
+  late List<({double fromMeters, double toMeters, int argb})> _bands =
+      RideSpeedTrack.of(widget.points).bands;
   int? _selected;
 
   static RideProfile _profileOf(List<TrackPoint> points) => RideProfile([
@@ -390,6 +394,7 @@ class _MapTabState extends State<_MapTab> {
     if (!identical(old.points, widget.points)) {
       // Cleaned of spikes: other points, the old index means nothing.
       _profile = _profileOf(widget.points);
+      _bands = RideSpeedTrack.of(widget.points).bands;
       _selected = null;
     }
   }
@@ -447,6 +452,7 @@ class _MapTabState extends State<_MapTab> {
               profile: _profile,
               selected: i,
               onSelect: _select,
+              speedBands: _bands,
             ),
           ),
         ),

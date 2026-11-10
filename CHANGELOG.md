@@ -8,6 +8,17 @@ Pre-1.0 (0.x) means the app is under active development and things may still cha
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-10
+
+### Added
+- The elevation profile under a ride's map is coloured by speed, with the same colours in
+  the same places as the track on the map (red slow → violet fast), so climbs and
+  descents can be matched to how fast they were ridden.
+
+### Changed
+- The picked point on the elevation profile is white with a black ring, like the one on
+  the map (it showed in the profile's colour, which a speed colour could hide).
+
 ## [0.15.1] - 2026-11-10
 
 ### Changed
@@ -810,7 +821,8 @@ always-on dark dashboard, offline maps, BLE sensors, ride recording and uploads.
 - Large region maps (multi-GB) download and render without running out of memory
   or freezing.
 
-[Unreleased]: https://github.com/orgi/cycle/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/orgi/cycle/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/orgi/cycle/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/orgi/cycle/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/orgi/cycle/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/orgi/cycle/compare/v0.13.0...v0.14.0

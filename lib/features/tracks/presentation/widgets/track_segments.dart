@@ -10,6 +10,10 @@
 /// side-effect).
 library;
 
+import '../../../../core/db/database.dart';
+import '../../../../core/utils/geo.dart';
+import 'speed_color.dart';
+
 /// A contiguous run of track points drawn in one colour. [start]/[end] are
 /// inclusive indices; consecutive runs share their boundary index so the drawn
 /// line is continuous.
@@ -122,4 +126,70 @@ List<TrackRun> buildTrackRuns(
     for (var i = 0; i < starts.length; i++)
       TrackRun(starts[i], ends[i], avg(i)),
   ];
+}
+
+/// A ride's track as its map draws it: coincident points dropped (a stopped
+/// bike repeats the same fix; a zero-length segment can make the marker
+/// renderer throw), a speed per point, and the speed-coloured [runs] over
+/// them. The map draws the runs; the elevation profile paints the same runs
+/// as [bands] of the ride's distance — so both show the same colours in the
+/// same places.
+class RideSpeedTrack {
+  const RideSpeedTrack._(this.latitudes, this.longitudes, this.meters, this.runs);
+
+  factory RideSpeedTrack.of(List<TrackPoint> raw) {
+    final lat = <double>[], lon = <double>[], kmh = <double>[];
+    for (var i = 0; i < raw.length; i++) {
+      final p = raw[i];
+      if (lat.isNotEmpty &&
+          (p.latitude - lat.last).abs() < 1e-7 &&
+          (p.longitude - lon.last).abs() < 1e-7) {
+        continue;
+      }
+      lat.add(p.latitude);
+      lon.add(p.longitude);
+      kmh.add(_kmhAt(raw, i));
+    }
+    final segMeters = <double>[
+      for (var i = 0; i + 1 < lat.length; i++)
+        haversineMeters(lat[i], lon[i], lat[i + 1], lon[i + 1]),
+    ];
+    final meters = <double>[0];
+    for (final m in segMeters) {
+      meters.add(meters.last + m);
+    }
+    return RideSpeedTrack._(lat, lon, lat.isEmpty ? const [] : meters,
+        lat.length < 2 ? const [] : buildTrackRuns(kmh, segMeters));
+  }
+
+  /// The points kept, in order.
+  final List<double> latitudes;
+  final List<double> longitudes;
+
+  /// Metres from the start, per kept point.
+  final List<double> meters;
+  final List<TrackRun> runs;
+
+  /// Each run as a stretch of the ride's distance with its colour (ARGB),
+  /// in order and touching end to start.
+  List<({double fromMeters, double toMeters, int argb})> get bands => [
+        for (final r in runs)
+          (
+            fromMeters: meters[r.start],
+            toMeters: meters[r.end],
+            argb: speedColorArgb(r.kmh),
+          ),
+      ];
+
+  /// Speed (km/h) at point [i] — recorded if present, else from the previous
+  /// point.
+  static double _kmhAt(List<TrackPoint> pts, int i) {
+    final s = pts[i].speedMps;
+    if (s != null) return s * 3.6;
+    if (i == 0) return 0;
+    final d = haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
+        pts[i].latitude, pts[i].longitude);
+    final dt = pts[i].time.difference(pts[i - 1].time).inMilliseconds / 1000.0;
+    return dt > 0 ? d / dt * 3.6 : 0;
+  }
 }

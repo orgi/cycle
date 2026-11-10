@@ -136,26 +136,12 @@ class _RideMapState extends ConsumerState<RideMap> {
   }
 
   void _addMarkers(DefaultMarkerDatastore markers) {
-    final raw = widget.points;
-    if (raw.length < 2) return;
-
-    // De-duplicate coincident points (a stationary bike emits identical GPS
-    // fixes). That keeps every drawn segment ≥ 2 distinct points, so none is
-    // zero-length — a zero-length segment can make the marker renderer throw,
-    // which aborts the re-init of all the following segments (then the gray
-    // base shows through). Build parallel point/speed lists.
-    final pts = <LatLong>[];
-    final kmh = <double>[];
-    for (var i = 0; i < raw.length; i++) {
-      final ll = LatLong(raw[i].latitude, raw[i].longitude);
-      if (pts.isNotEmpty &&
-          (ll.latitude - pts.last.latitude).abs() < 1e-7 &&
-          (ll.longitude - pts.last.longitude).abs() < 1e-7) {
-        continue;
-      }
-      pts.add(ll);
-      kmh.add(_kmh(raw, i));
-    }
+    // The same runs the elevation profile is coloured with.
+    final track = RideSpeedTrack.of(widget.points);
+    final pts = [
+      for (var i = 0; i < track.latitudes.length; i++)
+        LatLong(track.latitudes[i], track.longitudes[i]),
+    ];
     if (pts.length < 2) return;
 
     // Continuous base line under the coloured segments. It's a single marker, so
@@ -168,15 +154,9 @@ class _RideMapState extends ConsumerState<RideMap> {
       strokeWidth: 2.2,
     ));
 
-    // Track as speed-coloured runs. Runs too short to render at the fitted zoom
-    // are merged by length so the whole track stays coloured (see
-    // track_segments.dart) — distance per step drives that.
-    final segMeters = <double>[
-      for (var i = 0; i + 1 < pts.length; i++)
-        haversineMeters(pts[i].latitude, pts[i].longitude,
-            pts[i + 1].latitude, pts[i + 1].longitude),
-    ];
-    for (final r in buildTrackRuns(kmh, segMeters)) {
+    // Track as speed-coloured runs, merged so each is long enough to show at
+    // the fitted zoom (see track_segments.dart).
+    for (final r in track.runs) {
       markers.addMarker(PolylineMarker(
         path: pts.sublist(r.start, r.end + 1),
         strokeColor: speedColorArgb(r.kmh),
@@ -201,18 +181,6 @@ class _RideMapState extends ConsumerState<RideMap> {
     ));
     // Last, so it's drawn on top.
     markers.addMarker(_selection);
-  }
-
-  /// Speed (km/h) at point [i] — recorded value if present, else derived from
-  /// the previous point.
-  double _kmh(List<TrackPoint> pts, int i) {
-    final s = pts[i].speedMps;
-    if (s != null) return s * 3.6;
-    if (i == 0) return 0;
-    final d = haversineMeters(pts[i - 1].latitude, pts[i - 1].longitude,
-        pts[i].latitude, pts[i].longitude);
-    final dt = pts[i].time.difference(pts[i - 1].time).inMilliseconds / 1000.0;
-    return dt > 0 ? d / dt * 3.6 : 0;
   }
 
   /// Puts the whole ride on screen (see [fitMapView]).

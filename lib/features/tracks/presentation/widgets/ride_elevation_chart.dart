@@ -19,9 +19,15 @@ class RideElevationChart extends StatefulWidget {
     required this.profile,
     required this.selected,
     required this.onSelect,
+    this.speedBands = const [],
   });
 
   final RideProfile profile;
+
+  /// The map's speed colours along the ride (`RideSpeedTrack.bands`): the
+  /// line and the area under it take them, so a stretch has the same colour
+  /// on the profile as on the map. Empty = the theme's colour.
+  final List<({double fromMeters, double toMeters, int argb})> speedBands;
 
   /// Index into the profile's points, or null.
   final int? selected;
@@ -36,6 +42,7 @@ class _RideElevationChartState extends State<RideElevationChart> {
   Widget? _line;
   RideProfile? _lineFor;
   Color? _lineColor;
+  Object? _bandsFor;
 
   /// The finger that selects, while it's down; any other is ignored.
   int? _finger;
@@ -54,12 +61,34 @@ class _RideElevationChartState extends State<RideElevationChart> {
     );
   }
 
+  /// The speed bands as a left-to-right gradient with hard edges, over the
+  /// distance [from]…[to] (fl_chart spreads it over that width).
+  LinearGradient? _bandsGradient(double from, double to, double alpha) {
+    final bands = widget.speedBands;
+    if (bands.isEmpty || to <= from) return null;
+    final colors = <Color>[], stops = <double>[];
+    for (final b in bands) {
+      final c = Color(b.argb).withValues(alpha: alpha);
+      colors
+        ..add(c)
+        ..add(c);
+      stops
+        ..add(((b.fromMeters - from) / (to - from)).clamp(0.0, 1.0))
+        ..add(((b.toMeters - from) / (to - from)).clamp(0.0, 1.0));
+    }
+    return LinearGradient(colors: colors, stops: stops);
+  }
+
   Widget _buildLine(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
-    final spots = [
-      for (final s in widget.profile.elevationSamples())
-        FlSpot(s.meters, s.altitude),
-    ];
+    final samples = widget.profile.elevationSamples();
+    final spots = [for (final s in samples) FlSpot(s.meters, s.altitude)];
+    // The line's gradient spans the whole chart (0…maxX); the area's spans
+    // only from the first to the last height.
+    final lineGradient = _bandsGradient(0, _scale.maxX, 1);
+    final areaGradient = samples.isEmpty
+        ? null
+        : _bandsGradient(samples.first.meters, samples.last.meters, 0.3);
     return RepaintBoundary(
       child: LineChart(
         duration: Duration.zero, // no implicit animation
@@ -72,11 +101,18 @@ class _RideElevationChartState extends State<RideElevationChart> {
             LineChartBarData(
               spots: spots,
               isCurved: false,
-              color: color,
-              barWidth: 2,
+              color: lineGradient == null ? color : null,
+              gradient: lineGradient,
+              gradientArea: LineChartGradientArea.wholeChart,
+              barWidth: 2.5,
               dotData: const FlDotData(show: false),
-              belowBarData:
-                  BarAreaData(show: true, color: color.withValues(alpha: 0.15)),
+              belowBarData: BarAreaData(
+                show: true,
+                color: areaGradient == null
+                    ? color.withValues(alpha: 0.15)
+                    : null,
+                gradient: areaGradient,
+              ),
             ),
           ],
           titlesData: const FlTitlesData(show: false),
@@ -100,11 +136,14 @@ class _RideElevationChartState extends State<RideElevationChart> {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
-    if (!identical(_lineFor, widget.profile) || _lineColor != color) {
+    if (!identical(_lineFor, widget.profile) ||
+        _lineColor != color ||
+        !identical(_bandsFor, widget.speedBands)) {
       _scale = _scaleOf(widget.profile);
       _line = _buildLine(context);
       _lineFor = widget.profile;
       _lineColor = color;
+      _bandsFor = widget.speedBands;
     }
     final selected = widget.selected;
     return LayoutBuilder(builder: (context, constraints) {
@@ -141,7 +180,6 @@ class _RideElevationChartState extends State<RideElevationChart> {
                       ? null
                       : (widget.profile.altitudes[selected]! - _scale.minY) /
                           (_scale.maxY - _scale.minY),
-                  color: color,
                 ),
               ),
           ],
@@ -161,11 +199,10 @@ class _Scale {
 /// A vertical line at [x] and a dot at height [y] (both 0…1 of the chart;
 /// no dot without a height).
 class _SelectionPainter extends CustomPainter {
-  _SelectionPainter({required this.x, required this.y, required this.color});
+  _SelectionPainter({required this.x, required this.y});
 
   final double x;
   final double? y;
-  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -180,11 +217,13 @@ class _SelectionPainter extends CustomPainter {
     final yy = y;
     if (yy == null) return;
     final py = (1 - yy.clamp(0.0, 1.0)) * size.height;
-    canvas.drawCircle(Offset(px, py), 6, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(px, py), 4, Paint()..color = color);
+    // White with a black ring, like the dot on the map: it shows on every
+    // speed colour of the line.
+    canvas.drawCircle(Offset(px, py), 6, Paint()..color = Colors.black);
+    canvas.drawCircle(Offset(px, py), 4.5, Paint()..color = Colors.white);
   }
 
   @override
   bool shouldRepaint(_SelectionPainter old) =>
-      old.x != x || old.y != y || old.color != color;
+      old.x != x || old.y != y;
 }
